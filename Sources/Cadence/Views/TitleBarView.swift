@@ -228,7 +228,8 @@ private struct SearchResultsPopover: View {
                 Button(action: row.action) {
                     HStack(spacing: Tokens.Space.m) {
                         ArtworkView(artworkID: nil,
-                                    cornerRadius: row.isRound ? 13 : 3,
+                                    cornerRadius: 3,
+                                    isCircular: row.isRound,
                                     stripe: 4)
                             .frame(width: 26, height: 26)
                         VStack(alignment: .leading, spacing: 1) {

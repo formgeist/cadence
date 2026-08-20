@@ -168,7 +168,7 @@ private struct ArtistRow: View {
             }
         } label: {
             HStack(spacing: 14) {
-                ArtworkView(artworkID: nil, cornerRadius: 22)
+                ArtworkView(artworkID: nil, isCircular: true)
                     .frame(width: 44, height: 44)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(artist.name)

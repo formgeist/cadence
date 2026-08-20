@@ -47,16 +47,25 @@ struct ArtworkPlaceholder: View {
 struct ArtworkView: View {
     var artworkID: Artwork.ID?
     var cornerRadius: CGFloat = Tokens.Radius.thumb
+    /// Artists are round in the design. A continuous RoundedRectangle at half
+    /// the side length is a squircle, not a circle — it reads as an octagon at
+    /// avatar sizes — so round artwork gets an actual Circle.
+    var isCircular: Bool = false
     var caption: String?
     var captionSize: CGFloat = 9.5
     var stripe: CGFloat = 5
 
+    private var shape: AnyShape {
+        isCircular
+            ? AnyShape(Circle())
+            : AnyShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+    }
+
     var body: some View {
         ArtworkPlaceholder(caption: caption, captionSize: captionSize, stripe: stripe)
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .clipShape(shape)
             .overlay {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(Tokens.Palette.placeholderBorder, lineWidth: 1)
+                shape.stroke(Tokens.Palette.placeholderBorder, lineWidth: 1)
             }
     }
 }
