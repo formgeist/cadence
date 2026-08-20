@@ -6,7 +6,7 @@ TEST_FLAGS  := -Xlinker -L$(TESTING_LIB) -Xlinker -rpath -Xlinker $(TESTING_LIB)
 
 SNAPSHOT_DIR ?= Snapshots
 
-.PHONY: build test run shots clean
+.PHONY: build test run app shots scan audio-check clean
 
 build:
 	swift build
@@ -16,6 +16,17 @@ test:
 
 run:
 	swift run Cadence
+
+## Assemble a real, signed, sandboxed Cadence.app — no Xcode required.
+##   make app            sandboxed, ad-hoc signed
+##   make app SANDBOX=0  to compare behaviour without the sandbox
+app:
+	@mkdir -p build
+	@SANDBOX=$(or $(SANDBOX),1) CONFIG=$(or $(CONFIG),debug) ./Scripts/make-app.sh
+
+## Answer PLAN.md §3: can a sandboxed build set the output sample rate?
+audio-check: app
+	@./build/Cadence.app/Contents/MacOS/Cadence --audio-check --switch-rates
 
 ## Render every screen against PreviewData for design review.
 shots:

@@ -13,6 +13,8 @@ locally and deliberately not tracked in this repo.
 ```bash
 make run                          # launch the app
 make test                         # 110 tests
+make app                          # assemble a signed, sandboxed Cadence.app
+make audio-check                  # can a sandboxed build go bit-perfect?
 make shots                        # render every screen to Snapshots/
 make scan FOLDER=~/Music/FLAC     # import a folder and print what was found
 ```
@@ -144,18 +146,53 @@ Expected filenames: `Manrope-Regular`, `Manrope-Medium`, `Manrope-SemiBold`,
 `Manrope-Bold`, `Manrope-ExtraBold`, `IBMPlexMono-Regular`,
 `IBMPlexMono-Medium`.
 
-## Toolchain note
+## Bundling without Xcode
 
-This machine has Command Line Tools rather than a full Xcode, which means no
-`.xcodeproj` and no `xcodebuild`. Two consequences, both temporary:
+There is no Xcode on this machine and therefore no `.xcodeproj` — but an `.app`
+is a directory with a known shape, and [`Scripts/make-app.sh`](Scripts/make-app.sh)
+assembles one: Info.plist, the resource bundles, the ten decoder frameworks,
+and an ad-hoc signature with the sandbox entitlements from PLAN.md §5.
 
-- The app is an SPM executable, not an `.app` bundle. `AppDelegate` sets the
-  activation policy by hand so it gets a Dock icon and a key window.
-- Neither `Testing` nor `XCTest` is in the SDK, so swift-testing is an explicit
-  package dependency, scoped to the test target only. `make test` passes the
-  linker the path to `lib_TestingInterop.dylib`.
+That matters more than convenience. A real bundle identity is what Now Playing,
+media keys, the app sandbox, security-scoped bookmarks and window restoration
+all require, so most of phase 5 is reachable without Xcode. `codesign`,
+`notarytool` and `stapler` all ship with Command Line Tools, so even
+notarization needs an Apple Developer account rather than an Xcode install.
 
-Both disappear once Xcode is installed and the app target of PLAN.md §5 exists.
+One consequence to know about: SwiftPM's generated `Bundle.module` accessor
+looks only beside the executable or at the `.app` root — never in
+`Contents/Resources` — and calls `fatalError` when it finds nothing. `FontLoader`
+resolves its own bundle instead, and degrades to system fonts rather than dying.
+
+Also temporary: neither `Testing` nor `XCTest` is in the CLT SDK, so
+swift-testing is an explicit package dependency scoped to the test target, and
+`make test` passes the linker the path to `lib_TestingInterop.dylib`.
+
+## Bit-perfect output
+
+PLAN.md §3 calls the sandbox question the one that could reshape the release
+plan: if a sandboxed build cannot set `kAudioDevicePropertyNominalSampleRate`,
+the choice is direct distribution or the App Store without bit-perfect output.
+
+**It can.** A sandboxed, signed build switches the output device rate and it
+takes effect:
+
+```
+device:     MacBook Pro Speakers
+sandboxed:  yes
+available:  44100, 48000, 88200, 96000
+set rate:   OK (switched, restored)
+```
+
+The check verifies the device actually *reports* the new rate rather than
+trusting the setter's return value — `AudioObjectSetPropertyData` returns
+`noErr` for a request that has merely been accepted, and coreaudiod applies it
+asynchronously.
+
+Two caveats before this settles the release plan: it was tested on built-in
+speakers with an ad-hoc signature, so it is worth re-running against an external
+DAC — which is where bit-perfect actually matters — and under a Developer ID
+build.
 
 ## Licence
 

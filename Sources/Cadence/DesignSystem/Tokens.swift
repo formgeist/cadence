@@ -178,18 +178,47 @@ enum Tokens {
 /// registered, so nothing above here has to know the difference.
 enum FontLoader {
 
-    /// Registers every font file in the bundle, then reports which families
-    /// actually resolved. Scanning the directory rather than naming expected
-    /// files means swapping the variable font for statics, or adding an
-    /// italic, needs no code change here.
+    /// Where the resources actually are.
+    ///
+    /// Deliberately not `Bundle.module`: SwiftPM generates an accessor that
+    /// looks only beside the executable or at the `.app` root, and calls
+    /// `fatalError` when it finds nothing. Inside a hand-assembled bundle the
+    /// resources live in `Contents/Resources`, which that accessor never
+    /// checks — so the app died on launch before drawing a pixel. This
+    /// searches the plausible locations and, finding none, lets the caller
+    /// fall back to system fonts.
+    static let resourceBundles: [Bundle] = {
+        var found: [Bundle] = []
+        let candidates: [URL?] = [
+            Bundle.main.resourceURL?.appendingPathComponent("Cadence_Cadence.bundle"),
+            Bundle.main.bundleURL.appendingPathComponent("Cadence_Cadence.bundle"),
+            Bundle.main.resourceURL,
+            Bundle(for: BundleMarker.self).resourceURL,
+        ]
+        for case let url? in candidates {
+            guard let bundle = Bundle(url: url) else { continue }
+            guard !found.contains(where: { $0.bundleURL == bundle.bundleURL }) else { continue }
+            found.append(bundle)
+        }
+        return found
+    }()
+
+    /// Only exists to give `Bundle(for:)` a class in this module to locate.
+    private final class BundleMarker {}
+
+    /// Registers every font file found, then reports which families actually
+    /// resolved. Scanning rather than naming expected files means swapping the
+    /// variable font for statics, or adding an italic, needs no code change.
     private static let registered: (manrope: Bool, plex: Bool) = {
-        for ext in ["ttf", "otf", "ttc"] {
-            for url in Bundle.module.urls(forResourcesWithExtension: ext,
-                                          subdirectory: nil) ?? [] {
-                // An already-registered file reports an error; harmless, so the
-                // result is ignored and availability is settled by asking for
-                // the face below.
-                CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
+        for bundle in resourceBundles {
+            for ext in ["ttf", "otf", "ttc"] {
+                for url in bundle.urls(forResourcesWithExtension: ext,
+                                       subdirectory: nil) ?? [] {
+                    // An already-registered file reports an error; harmless,
+                    // so the result is ignored and availability is settled by
+                    // asking for the face below.
+                    CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
+                }
             }
         }
         return (NSFont(name: "Manrope-Regular", size: 12) != nil,

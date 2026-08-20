@@ -208,6 +208,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        if CommandLine.arguments.contains("--audio-check") {
+            NSApp.setActivationPolicy(.prohibited)
+            let switchRates = CommandLine.arguments.contains("--switch-rates")
+
+            // `--set-rate <hz>` pins the device, for checking bit-perfect
+            // output against one rate — or putting a device back after a
+            // switch test.
+            if let flag = CommandLine.arguments.firstIndex(of: "--set-rate"),
+               CommandLine.arguments.indices.contains(flag + 1),
+               let rate = Double(CommandLine.arguments[flag + 1]) {
+                do {
+                    let deviceID = try OutputDevice.defaultOutputDeviceID()
+                    let status = OutputDevice.setSampleRate(rate, on: deviceID)
+                    let settled = OutputDevice.waitForSampleRate(rate, on: deviceID)
+                    print("set rate:   \(Int(rate)) Hz — "
+                        + (settled ? "OK" : "failed (OSStatus \(status))"))
+                    exit(settled ? 0 : 1)
+                } catch {
+                    FileHandle.standardError.write(Data("audio check failed: \(error)\n".utf8))
+                    exit(1)
+                }
+            }
+            do {
+                let report = try OutputDevice.probe(switchRates: switchRates)
+                print("device:     \(report.deviceName)")
+                print("sandboxed:  \(report.isSandboxed ? "yes" : "no")")
+                print("rate:       \(Int(report.currentRate)) Hz")
+                print("available:  \(report.availableRates.map { String(Int($0)) }.joined(separator: ", "))")
+                if let status = report.writeStatus {
+                    print("set rate:   DENIED (OSStatus \(status))")
+                    print("\n→ Bit-perfect output is not available here.")
+                } else {
+                    if switchRates {
+                        print("set rate:   OK (switched, "
+                            + (report.restored ? "restored" : "RESTORE FAILED") + ")")
+                    } else {
+                        print("set rate:   OK (same-rate write)")
+                    }
+                    print("\n→ Bit-perfect output is available.")
+                }
+                exit(report.canSetSampleRate ? 0 : 1)
+            } catch {
+                FileHandle.standardError.write(Data("audio check failed: \(error)\n".utf8))
+                exit(1)
+            }
+        }
+
         if CommandLine.arguments.contains("--fonts") {
             for face in FontLoader.report() {
                 print("\(face.available ? "✓" : "✗") \(face.name)")
