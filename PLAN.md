@@ -285,6 +285,9 @@ starts failing in ways that look like corruption.
 
 ## 8. Licence decision — make it now
 
+> **Decided: MIT.** See `LICENSE`. The rest of this section is kept for the
+> reasoning and the dependency table.
+
 It constrains what you can use, so decide before writing more code.
 
 **MIT / BSD / Apache only** keeps every option open, including relicensing or

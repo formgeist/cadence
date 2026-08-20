@@ -1,5 +1,6 @@
 import SwiftUI
 import CoreText
+import AppKit
 
 /// Every value in the interface comes from here. Views reference tokens, never
 /// literals, so when the design shifts one file changes — see PLAN.md §6.
@@ -170,20 +171,29 @@ enum Tokens {
 /// Registers the bundled faces once, and reports whether they took. Keeping the
 /// answer in one place means `Tokens.Typography` is the only caller that has to
 /// think about the fallback.
+///
+/// Manrope ships from Google Fonts as a single variable file rather than one
+/// file per weight. CoreText exposes its named instances — Manrope-Regular
+/// through Manrope-ExtraBold — as ordinary font names once the file is
+/// registered, so nothing above here has to know the difference.
 enum FontLoader {
+
+    /// Registers every font file in the bundle, then reports which families
+    /// actually resolved. Scanning the directory rather than naming expected
+    /// files means swapping the variable font for statics, or adding an
+    /// italic, needs no code change here.
     private static let registered: (manrope: Bool, plex: Bool) = {
-        var manrope = false
-        var plex = false
-        let names = ["Manrope-Regular", "Manrope-Medium", "Manrope-SemiBold",
-                     "Manrope-Bold", "Manrope-ExtraBold",
-                     "IBMPlexMono-Regular", "IBMPlexMono-Medium"]
-        for name in names {
-            guard let url = Bundle.module.url(forResource: name, withExtension: "ttf")
-                ?? Bundle.module.url(forResource: name, withExtension: "otf") else { continue }
-            guard CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil) else { continue }
-            if name.hasPrefix("Manrope") { manrope = true } else { plex = true }
+        for ext in ["ttf", "otf", "ttc"] {
+            for url in Bundle.module.urls(forResourcesWithExtension: ext,
+                                          subdirectory: nil) ?? [] {
+                // An already-registered file reports an error; harmless, so the
+                // result is ignored and availability is settled by asking for
+                // the face below.
+                CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
+            }
         }
-        return (manrope, plex)
+        return (NSFont(name: "Manrope-Regular", size: 12) != nil,
+                NSFont(name: "IBMPlexMono-Regular", size: 12) != nil)
     }()
 
     static var hasManrope: Bool { registered.manrope }
@@ -210,6 +220,16 @@ enum FontLoader {
     /// can log them, rather than lazily on first text draw.
     @discardableResult
     static func warmUp() -> Bool { hasManrope && hasPlexMono }
+
+    /// Every face the design asks for, and whether it resolved. Printed by
+    /// `Cadence --fonts`.
+    static func report() -> [(name: String, available: Bool)] {
+        _ = registered
+        let weights: [Font.Weight] = [.regular, .medium, .semibold, .bold, .heavy]
+        let names = weights.map(manropeName(for:))
+            + [plexMonoName(for: .regular), plexMonoName(for: .medium)]
+        return names.map { ($0, NSFont(name: $0, size: 12) != nil) }
+    }
 }
 
 // MARK: - Hex

@@ -80,7 +80,6 @@ tokens, never literals.
 | Library header | sticky, blurred | fixed above the scroll view | same appearance, no blurred layer pinned over a fast list |
 | Track subtitle | artist under every title | only on compilations, composer for classical | redundant on a single-artist album, essential on a compilation |
 | Album metadata | one line | wraps to two | a box set adds "3 discs" and overflowed |
-| Fonts | Manrope, IBM Plex Mono | system fallback until the files are bundled | see below |
 
 ## Fonts
 
@@ -108,4 +107,13 @@ Both disappear once Xcode is installed and the app target of PLAN.md §5 exists.
 
 ## Licence
 
-Undecided — see PLAN.md §8. Make this call before the dependency list grows.
+**MIT** — see [LICENSE](LICENSE). This settles PLAN.md §8 and keeps every option
+open, including relicensing later. The constraints that follow: Cog is GPL, so
+read it for reference but never copy from it, and Chromaprint is LGPL, so it is
+off the table for static linking if phase 6 wants acoustic fingerprinting.
+
+Bundled fonts are licensed separately under the SIL Open Font License —
+[Manrope](Sources/Cadence/Resources/OFL-Manrope.txt) and
+[IBM Plex Mono](Sources/Cadence/Resources/OFL-IBMPlexMono.txt). OFL permits
+bundling in a commercial or MIT-licensed application; it only requires that the
+fonts themselves stay under OFL and are not sold on their own.

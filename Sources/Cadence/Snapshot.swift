@@ -36,7 +36,13 @@ enum Snapshot {
 
         // The album the design was drawn against.
         Shot(name: "04-album-design-reference", size: Tokens.Layout.defaultWindow) { container in
-            open(container, album: "Sound of the Slow Hours")
+            // Year required: the preview library holds a 2025 remaster under
+            // the same title, which is the whole point of Album.Key.
+            open(container, album: "Sound of the Slow Hours", year: 2023)
+        },
+
+        Shot(name: "04b-album-remaster", size: Tokens.Layout.defaultWindow) { container in
+            open(container, album: "Sound of the Slow Hours", year: 2025)
         },
 
         // Three discs. A flat track list gets this wrong.
@@ -65,7 +71,7 @@ enum Snapshot {
         },
 
         Shot(name: "10-immersive", size: Tokens.Layout.defaultWindow) { container in
-            open(container, album: "Sound of the Slow Hours")
+            open(container, album: "Sound of the Slow Hours", year: 2023)
             container.model.isImmersive = true
         },
 
@@ -80,9 +86,11 @@ enum Snapshot {
         },
     ]
 
-    private static func open(_ container: AppContainer, album title: String) {
-        guard let album = container.model.albums.first(where: { $0.title == title })
-        else { return }
+    private static func open(_ container: AppContainer, album title: String,
+                             year: Int? = nil) {
+        guard let album = container.model.albums.first(where: {
+            $0.title == title && (year == nil || $0.year == year)
+        }) else { return }
         container.model.show(.album(album.key))
         container.playback.play(album)
         container.playback.seek(to: 88)

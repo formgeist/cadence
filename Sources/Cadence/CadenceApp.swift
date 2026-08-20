@@ -90,6 +90,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // An SPM executable is not an app bundle, so it launches as an
         // accessory process with no Dock icon and no key window. Both of these
         // become unnecessary once there is a real .app target.
+        if CommandLine.arguments.contains("--fonts") {
+            for face in FontLoader.report() {
+                print("\(face.available ? "✓" : "✗") \(face.name)")
+            }
+            exit(FontLoader.warmUp() ? 0 : 1)
+        }
+
         if let directory = Snapshot.requestedDirectory {
             // Headless design QA: render every screen and exit without ever
             // showing a window.
