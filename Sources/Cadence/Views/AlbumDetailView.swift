@@ -1,0 +1,229 @@
+import SwiftUI
+import CadenceCore
+
+struct AlbumDetailView: View {
+    @Environment(AppModel.self) private var model
+    @Environment(PlaybackController.self) private var playback
+
+    var album: Album
+
+    private var orderedTracks: [Track] { album.discs.flatMap(\.tracks) }
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                header
+                trackList
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(Tokens.Palette.surface)
+    }
+
+    // MARK: Header
+
+    private var header: some View {
+        HStack(alignment: .bottom, spacing: 48) {
+            ArtworkView(
+                artworkID: album.artworkID,
+                cornerRadius: Tokens.Radius.card,
+                caption: album.artworkID == nil ? "NO ARTWORK" : "ALBUM ARTWORK\n1400 × 1400",
+                captionSize: 10,
+                stripe: 7
+            )
+            .frame(width: Tokens.Layout.albumHeaderArt, height: Tokens.Layout.albumHeaderArt)
+            .shadow(color: .black.opacity(0.55), radius: 25, y: 12)
+
+            VStack(alignment: .leading, spacing: 14) {
+                SectionLabel(album.isCompilation ? "Compilation" : "Album",
+                             size: 10.5, color: Color(hex: 0x8D8D98))
+
+                Text(album.title)
+                    .font(Tokens.Typography.display)
+                    .tracking(Tokens.Typography.Tracking.display)
+                    .foregroundStyle(Color(hex: 0xF4F4F8))
+                    .lineSpacing(-4)
+                    // The design's title is one line. Real ones are not; three
+                    // lines is where a 46pt face stops being a headline.
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                metadataLine
+                badges
+
+                HStack(spacing: 10) {
+                    CapsuleButton(title: "Play", systemImage: "play.fill", kind: .filled) {
+                        playback.play(album)
+                    }
+                    CapsuleButton(title: "Shuffle") { playback.shuffle(album) }
+                    CapsuleButton(systemImage: "plus") {
+                        playback.appendToQueue(orderedTracks)
+                    }
+                    CapsuleButton(systemImage: "ellipsis") {}
+                }
+                .padding(.top, 10)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, Tokens.Space.albumInset)
+        .padding(.top, 38)
+        .padding(.bottom, 30)
+        .background {
+            LinearGradient(
+                colors: [Tokens.Palette.immersiveTop, Tokens.Palette.surface],
+                startPoint: .top, endPoint: .bottom)
+        }
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Color(hex: 0x1C1C21)).frame(height: 1)
+        }
+    }
+
+    /// One concatenated `Text` rather than an HStack of them. In a stack,
+    /// SwiftUI takes the shrinkage out of the first child, so a box set with
+    /// an extra "3 discs" part truncated the album artist — the one thing on
+    /// the line you cannot lose — while empty space sat to its right.
+    private var metadataLine: some View {
+        var line = Text(album.albumArtist)
+            .font(Tokens.Typography.sans(13.5, .semibold))
+            .foregroundColor(Color(hex: 0xB4B4BD))
+
+        for part in metadataParts {
+            line = line
+                + Text("  ·  ").foregroundColor(Color(hex: 0x45454E))
+                + Text(part)
+                    .font(Tokens.Typography.sans(13.5, .medium))
+                    .foregroundColor(Color(hex: 0x82828D))
+        }
+
+        return line
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var metadataParts: [String] {
+        var parts: [String] = []
+        if let year = album.year { parts.append(String(year)) }
+        parts.append(album.trackCount == 1 ? "1 track" : "\(album.trackCount) tracks")
+        // A box set says so here rather than making you count disc headers.
+        if album.hasMultipleDiscs { parts.append("\(album.discCount) discs") }
+        parts.append(DurationFormat.approximate(album.duration))
+        return parts
+    }
+
+    private var badges: some View {
+        HStack(spacing: Tokens.Space.s) {
+            if let format = album.dominantFormat {
+                QualityBadge(text: format.codec.name, emphasis: .accent)
+                QualityBadge(text: format.longDescription)
+            }
+        }
+        .padding(.top, 2)
+    }
+
+    // MARK: Tracks
+
+    private var trackList: some View {
+        VStack(spacing: 0) {
+            columnHeader
+            ForEach(album.discs) { disc in
+                if let number = disc.number {
+                    HStack(spacing: 14) {
+                        SectionLabel("Disc \(number)", size: 10,
+                                     color: Tokens.Palette.textMuted)
+                        Rectangle().fill(Tokens.Palette.separator).frame(height: 1)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.top, Tokens.Space.xl)
+                    .padding(.bottom, Tokens.Space.s)
+                }
+                ForEach(disc.tracks) { track in
+                    TrackRow(
+                        track: track,
+                        isCurrent: playback.currentTrack?.id == track.id,
+                        showsArtist: album.isCompilation
+                    ) {
+                        playback.play(track, in: orderedTracks)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, Tokens.Space.albumInset)
+        .padding(.top, 22)
+        .padding(.bottom, 44)
+    }
+
+    private var columnHeader: some View {
+        HStack(spacing: Tokens.Space.l) {
+            Text("#").frame(width: 28, alignment: .leading)
+            Text("TITLE").frame(maxWidth: .infinity, alignment: .leading)
+            Text("QUALITY").frame(width: 90, alignment: .leading)
+            Text("TIME").frame(width: 56, alignment: .trailing)
+        }
+        .font(Tokens.Typography.mono(10, .medium))
+        .tracking(1.2)
+        .foregroundStyle(Tokens.Palette.textMuted)
+        .padding(.horizontal, 10)
+        .padding(.bottom, 10)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Tokens.Palette.separator).frame(height: 1)
+        }
+    }
+}
+
+private struct TrackRow: View {
+    var track: Track
+    var isCurrent: Bool
+    /// On a single-artist album, repeating the album artist under every title
+    /// is noise. On a compilation it is the most useful column on the screen.
+    var showsArtist: Bool
+    var action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: Tokens.Space.l) {
+                Group {
+                    if isHovering {
+                        Image(systemName: "play.fill").font(.system(size: 9))
+                    } else {
+                        Text(track.trackNumber.map { String(format: "%02d", $0) } ?? "–")
+                            .font(Tokens.Typography.mono(11.5))
+                    }
+                }
+                .foregroundStyle(isCurrent ? Tokens.Palette.accent : Color(hex: 0x5C5C66))
+                .frame(width: 28, alignment: .leading)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(track.title)
+                        .font(Tokens.Typography.trackTitle)
+                        .foregroundStyle(isCurrent
+                                         ? Tokens.Palette.accent : Color(hex: 0xE6E6EC))
+                        .lineLimit(1)
+                    if let subtitle = track.rowSubtitle(isCompilation: showsArtist) {
+                        Text(subtitle)
+                            .font(Tokens.Typography.sans(11, .medium))
+                            .foregroundStyle(Color(hex: 0x6A6A74))
+                            .lineLimit(1)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Text(track.format.shortDescription)
+                    .font(Tokens.Typography.mono(10.5))
+                    .foregroundStyle(Tokens.Palette.textMuted)
+                    .frame(width: 90, alignment: .leading)
+
+                Text(DurationFormat.clock(track.duration))
+                    .font(Tokens.Typography.mono(11.5))
+                    .foregroundStyle(Color(hex: 0x7A7A84))
+                    .frame(width: 56, alignment: .trailing)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
+            .hoverHighlight(isActive: isCurrent)
+        }
+        .plainControl()
+        .onHover { isHovering = $0 }
+    }
+}

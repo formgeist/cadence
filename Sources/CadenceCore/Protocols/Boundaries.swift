@@ -1,0 +1,83 @@
+import Foundation
+
+// MARK: - Player engine
+
+/// Discrete things the engine reports. Position is a separate stream.
+public enum EngineEvent: Sendable, Equatable {
+    case started(URL)
+    case paused
+    case resumed
+    /// Emitted as soon as a track begins, asking the controller for the next
+    /// URL. The gapless handshake starts here, not near the end of the track —
+    /// see PLAN.md §7.
+    case wantsNextTrack
+    /// The engine transitioned to the queued track by itself. The controller
+    /// follows; it does not drive this.
+    case advancedToNext(URL)
+    case finished
+    case failed(PlaybackError)
+}
+
+/// The audio engine boundary. Takes URLs and gain values — it never sees the
+/// database, which is what makes `MockPlayerEngine` possible and swapping
+/// SFBAudioEngine out cheap.
+@MainActor
+public protocol PlayerEngine: AnyObject {
+    /// Discrete state changes.
+    var events: AsyncStream<EngineEvent> { get }
+    /// Position ticks, roughly 10×/second while playing.
+    var positions: AsyncStream<TimeInterval> { get }
+
+    var volume: Double { get set }
+    var currentTime: TimeInterval { get }
+
+    /// Stop whatever is playing and start this file. `gain` is linear
+    /// amplitude, already resolved from ReplayGain by the controller.
+    func play(url: URL, duration: TimeInterval, gain: Double) throws
+    /// Hand the engine the next file so it can transition without a gap.
+    func prepareNext(url: URL, duration: TimeInterval, gain: Double) throws
+    /// Withdraw a previously prepared track — the queue changed under it.
+    func clearNext()
+
+    func pause()
+    func resume()
+    func stop()
+    func seek(to time: TimeInterval)
+}
+
+// MARK: - Metadata
+
+/// Reads tags off a file. Implementations are expected to be forgiving:
+/// `TRACKNUMBER=3/12`, multiple ARTIST fields, `DATE=1969-08-15` and missing
+/// STREAMINFO values are all normal in the wild — see PLAN.md §7.
+public protocol MetadataReader: Sendable {
+    func readTrack(at url: URL) throws -> Track
+    func readArtwork(at url: URL) throws -> Data?
+}
+
+// MARK: - Library
+
+public protocol LibraryStore: Sendable {
+    func allTracks() async throws -> [Track]
+    func albums() async throws -> [Album]
+    func album(for key: Album.Key) async throws -> Album?
+    func artists() async throws -> [Artist]
+    func albums(byArtist name: String) async throws -> [Album]
+    func playlists() async throws -> [Playlist]
+    func tracks(matching query: String) async throws -> [Track]
+    func upsert(_ tracks: [Track]) async throws
+    /// Total bytes on disk, for the sidebar footer.
+    func librarySize() async throws -> Int64
+}
+
+// MARK: - Artwork
+
+public protocol ArtworkStore: Sendable {
+    /// Content-addressed by SHA-256 of the bytes; returns the existing ID when
+    /// the same cover is already on disk.
+    func store(_ data: Data) async throws -> Artwork.ID
+    /// Always a thumbnail, never the full-resolution image. A 200-album grid
+    /// of full-size JPEGs is hundreds of megabytes — see PLAN.md §7.
+    func thumbnail(for id: Artwork.ID, maxPixelSize: Int) async throws -> Data?
+    func full(for id: Artwork.ID) async throws -> Data?
+}
