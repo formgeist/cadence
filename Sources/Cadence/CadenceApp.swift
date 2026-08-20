@@ -1,21 +1,74 @@
 import SwiftUI
 import AppKit
 import CadenceCore
+import CadenceLibrary
 
 /// The composition root. Everything the app depends on is built here and handed
 /// down through the environment, so no view ever reaches for a concrete type —
 /// see PLAN.md §5.
 @MainActor
 final class AppContainer {
+    enum Mode {
+        /// The real database and artwork cache, in their usual locations.
+        case live
+        /// PreviewData in memory — design review and snapshots.
+        case preview
+    }
+
     let playback: PlaybackController
     let model: AppModel
+    let importer: LibraryImporter
+    let artworkLoader: ArtworkLoader
 
-    init() {
-        // Phase 1 wiring: the mock engine and an in-memory store. Swapping in
-        // SFBPlayerEngine and SQLiteLibraryStore is a change to these two
-        // lines and nothing else.
+    /// True while playback is the mock clock rather than a decoder. The
+    /// interface says so rather than pretending, because a transport that
+    /// moves in silence otherwise looks like a bug.
+    let isSilentPlayback: Bool
+
+    /// `--library <path>` points the app at a scratch database instead of the
+    /// real one. Useful for trying an import without disturbing your library.
+    static func libraryURL() throws -> URL {
+        let arguments = CommandLine.arguments
+        if let flag = arguments.firstIndex(of: "--library") {
+            let value = arguments.index(after: flag)
+            if arguments.indices.contains(value) {
+                return URL(fileURLWithPath:
+                    (arguments[value] as NSString).expandingTildeInPath)
+            }
+        }
+        return try SQLiteLibraryStore.defaultURL()
+    }
+
+    init(mode: Mode = .live) {
+        // The engine is still the mock: CadenceAudio does not exist yet. This
+        // is the one line that changes when SFBPlayerEngine lands.
         playback = PlaybackController(engine: MockPlayerEngine())
-        model = AppModel(store: PreviewData.store())
+        isSilentPlayback = true
+
+        switch mode {
+        case .live:
+            // A database that cannot be opened must not take the app down with
+            // it; falling back to the preview library keeps the window usable
+            // and puts the reason on screen.
+            do {
+                let store = try SQLiteLibraryStore(url: try Self.libraryURL())
+                let artwork = try DiskArtworkStore(root: try DiskArtworkStore.defaultURL())
+                model = AppModel(store: store)
+                importer = LibraryImporter(
+                    scanner: LibraryScanner(store: store, artwork: artwork))
+                artworkLoader = ArtworkLoader(store: artwork)
+            } catch {
+                model = AppModel(store: PreviewData.store())
+                model.storeFailure = error.localizedDescription
+                importer = LibraryImporter(scanner: nil)
+                artworkLoader = ArtworkLoader(store: nil)
+            }
+
+        case .preview:
+            model = AppModel(store: PreviewData.store())
+            importer = LibraryImporter(scanner: nil)
+            artworkLoader = ArtworkLoader(store: nil)
+        }
     }
 }
 
@@ -29,6 +82,9 @@ struct CadenceApp: App {
             RootView()
                 .environment(container.model)
                 .environment(container.playback)
+                .environment(container.importer)
+                .environment(container.artworkLoader)
+                .environment(\.isSilentPlayback, container.isSilentPlayback)
                 .frame(minWidth: Tokens.Layout.minWindow.width,
                        minHeight: Tokens.Layout.minWindow.height)
                 .preferredColorScheme(.dark)
@@ -46,6 +102,24 @@ struct CadenceCommands: Commands {
     let container: AppContainer
 
     var body: some Commands {
+        CommandGroup(after: .newItem) {
+            Button("Add Music Folder…") {
+                guard let folder = container.importer.chooseFolder() else { return }
+                container.importer.importFolders([folder]) {
+                    Task { await container.model.load() }
+                }
+            }
+            .keyboardShortcut("o", modifiers: .command)
+
+            Button("Rescan Library") {
+                container.importer.rescanAll {
+                    Task { await container.model.load() }
+                }
+            }
+            .keyboardShortcut("r", modifiers: .command)
+            .disabled(container.importer.folders.isEmpty)
+        }
+
         CommandMenu("Playback") {
             Button(container.playback.isPlaying ? "Pause" : "Play") {
                 container.playback.togglePlayPause()
@@ -90,6 +164,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // An SPM executable is not an app bundle, so it launches as an
         // accessory process with no Dock icon and no key window. Both of these
         // become unnecessary once there is a real .app target.
+        if let options = ScanHarness.parse(CommandLine.arguments) {
+            NSApp.setActivationPolicy(.prohibited)
+            Task { @MainActor in
+                do {
+                    exit(try await ScanHarness.run(options))
+                } catch {
+                    FileHandle.standardError.write(Data("Scan failed: \(error)\n".utf8))
+                    exit(1)
+                }
+            }
+            return
+        }
+
         if CommandLine.arguments.contains("--fonts") {
             for face in FontLoader.report() {
                 print("\(face.available ? "✓" : "✗") \(face.name)")
@@ -104,7 +191,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in
                 print("Rendering snapshots into \(directory.path)")
                 do {
-                    let count = try await Snapshot.run(into: directory)
+                    let live = CommandLine.arguments.contains("--live")
+                    let count = live
+                        ? try await Snapshot.runLive(into: directory)
+                        : try await Snapshot.run(into: directory)
+                    if live {
+                        print("\(count) written.")
+                        exit(count > 0 ? 0 : 1)
+                    }
                     print("\(count) of \(Snapshot.shots.count) written.")
                     exit(count == Snapshot.shots.count ? 0 : 1)
                 } catch {

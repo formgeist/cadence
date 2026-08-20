@@ -6,6 +6,7 @@ let package = Package(
     platforms: [.macOS(.v14)],
     products: [
         .library(name: "CadenceCore", targets: ["CadenceCore"]),
+        .library(name: "CadenceLibrary", targets: ["CadenceLibrary"]),
         .executable(name: "Cadence", targets: ["Cadence"]),
     ],
     dependencies: [
@@ -15,17 +16,26 @@ let package = Package(
         // target, so CadenceCore stays free of third-party code as PLAN.md §1
         // requires. Delete this once a full Xcode is installed.
         .package(url: "https://github.com/swiftlang/swift-testing.git", from: "6.3.2"),
+        .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.11.1"),
     ],
     targets: [
         // No third-party dependencies. Safe to import anywhere, including
         // previews and design prototypes.
         .target(name: "CadenceCore"),
 
-        // The app. Depends only on CadenceCore, so it builds and runs with
-        // no audio or database code compiled at all.
+        // SQLite store, FTS5 search, import scanner, artwork cache, and a
+        // pure-Swift FLAC tag reader.
+        .target(
+            name: "CadenceLibrary",
+            dependencies: [
+                "CadenceCore",
+                .product(name: "GRDB", package: "GRDB.swift"),
+            ]
+        ),
+
         .executableTarget(
             name: "Cadence",
-            dependencies: ["CadenceCore"],
+            dependencies: ["CadenceCore", "CadenceLibrary"],
             resources: [.process("Resources")]
         ),
 
@@ -33,6 +43,15 @@ let package = Package(
             name: "CadenceCoreTests",
             dependencies: [
                 "CadenceCore",
+                .product(name: "Testing", package: "swift-testing"),
+            ]
+        ),
+
+        .testTarget(
+            name: "CadenceLibraryTests",
+            dependencies: [
+                "CadenceCore",
+                "CadenceLibrary",
                 .product(name: "Testing", package: "swift-testing"),
             ]
         ),

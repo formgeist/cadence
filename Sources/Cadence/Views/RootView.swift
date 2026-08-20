@@ -4,11 +4,13 @@ import CadenceCore
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(PlaybackController.self) private var playback
+    @Environment(LibraryImporter.self) private var importer
 
     var body: some View {
         ZStack {
             VStack(spacing: 0) {
                 TitleBarView()
+                ImportProgressBar()
                 HStack(spacing: 0) {
                     SidebarView()
                     content
@@ -24,12 +26,29 @@ struct RootView: View {
         }
         .background(Tokens.Palette.surface)
         .animation(.easeInOut(duration: 0.2), value: model.isImmersive)
-        .task { await model.load() }
+        .animation(.easeOut(duration: 0.2), value: importer.isImporting)
+        .task {
+            await model.load()
+            // A library that already has folders rescans on launch, so files
+            // added since last time appear without being asked for.
+            if !importer.folders.isEmpty, !model.isEmpty {
+                importer.rescanAll { Task { await model.load() } }
+            }
+        }
         .overlay(alignment: .bottom) { errorBanner }
     }
 
     @ViewBuilder
     private var content: some View {
+        if model.isEmpty {
+            EmptyLibraryView()
+        } else {
+            libraryContent
+        }
+    }
+
+    @ViewBuilder
+    private var libraryContent: some View {
         switch model.screen {
         case .library:
             LibraryView()

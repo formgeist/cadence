@@ -56,7 +56,8 @@ struct ImmersiveView: View {
                 cornerRadius: 12,
                 caption: "ALBUM ARTWORK\n1400 × 1400",
                 captionSize: 11,
-                stripe: 10
+                stripe: 10,
+                displaySize: 600
             )
             .frame(width: Tokens.Layout.immersiveArt, height: Tokens.Layout.immersiveArt)
             .shadow(color: .black.opacity(0.72), radius: 55, y: 30)

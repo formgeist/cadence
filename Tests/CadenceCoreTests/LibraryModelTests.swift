@@ -72,6 +72,47 @@ struct AlbumGroupingTests {
     func singleArtistIsNotCompilation() throws {
         let album = try #require(PreviewData.album("Northerly"))
         #expect(!album.isCompilation)
+        #expect(!album.showsTrackArtists)
+    }
+
+    @Test("A deluxe edition mis-tagged as a compilation is not believed")
+    func misTaggedCompilation() {
+        // Real libraries are full of these: COMPILATION=1 on every track of a
+        // deluxe edition by a single band.
+        let tracks = (1...3).map { index in
+            Track(url: URL(fileURLWithPath: "/m/\(index).flac"),
+                  title: "T\(index)", artist: "Sleep Token",
+                  albumArtist: "Sleep Token", albumTitle: "Take Me Back To Eden",
+                  duration: 100, isCompilation: true)
+        }
+        let album = Album(key: tracks[0].albumKey, tracks: tracks)
+        #expect(!album.isCompilation)
+        #expect(!album.showsTrackArtists)
+    }
+
+    @Test("One guest feature shows an artist line without becoming a compilation")
+    func guestFeature() {
+        var tracks = (1...3).map { index in
+            Track(url: URL(fileURLWithPath: "/m/\(index).flac"),
+                  title: "T\(index)", artist: "blink-182",
+                  albumArtist: "blink-182", albumTitle: "blink-182", duration: 100)
+        }
+        tracks[1].artist = "blink-182 feat. Robert Smith"
+        let album = Album(key: tracks[0].albumKey, tracks: tracks)
+        #expect(!album.isCompilation)
+        // The feature still needs saying, on that row.
+        #expect(album.showsTrackArtists)
+    }
+
+    @Test("Various Artists is a compilation whatever the tags say")
+    func variousArtistsAlwaysCompilation() {
+        let tracks = [
+            Track(url: URL(fileURLWithPath: "/m/1.flac"), title: "A", artist: "X",
+                  albumArtist: "Various Artists", albumTitle: "Comp", duration: 10),
+            Track(url: URL(fileURLWithPath: "/m/2.flac"), title: "B", artist: "Y",
+                  albumArtist: "Various Artists", albumTitle: "Comp", duration: 10),
+        ]
+        #expect(Album(key: tracks[0].albumKey, tracks: tracks).isCompilation)
     }
 
     @Test("The album badge reports the highest quality present, not the first")
@@ -93,7 +134,7 @@ struct RowSubtitleTests {
         let track = Track(url: URL(fileURLWithPath: "/a.flac"), title: "Slow Hours",
                           artist: "Vera Lindqvist", albumArtist: "Vera Lindqvist",
                           albumTitle: "Sound of the Slow Hours", duration: 10)
-        #expect(track.rowSubtitle(isCompilation: false) == nil)
+        #expect(track.rowSubtitle(showingArtist: false) == nil)
     }
 
     @Test("A compilation shows the artist on every row")
@@ -101,7 +142,7 @@ struct RowSubtitleTests {
         let track = Track(url: URL(fileURLWithPath: "/a.flac"), title: "Hydrofoil",
                           artist: "Ansel Vaughn", albumArtist: "Various Artists",
                           albumTitle: "Nordic Ambient, Vol. 4", duration: 10)
-        #expect(track.rowSubtitle(isCompilation: true) == "Ansel Vaughn")
+        #expect(track.rowSubtitle(showingArtist: true) == "Ansel Vaughn")
     }
 
     @Test("Classical prefers the composer over the performer")
@@ -109,7 +150,7 @@ struct RowSubtitleTests {
         let track = Track(url: URL(fileURLWithPath: "/a.flac"), title: "Passacaglia",
                           artist: "Cyrille Marchand", albumTitle: "Aldeburgh",
                           composer: "Benjamin Britten", duration: 10)
-        #expect(track.rowSubtitle(isCompilation: false) == "Benjamin Britten")
+        #expect(track.rowSubtitle(showingArtist: false) == "Benjamin Britten")
     }
 }
 

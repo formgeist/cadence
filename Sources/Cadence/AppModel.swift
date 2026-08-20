@@ -86,6 +86,13 @@ final class AppModel {
     private(set) var librarySize: Int64 = 0
     private(set) var isLoading = true
     private(set) var loadError: String?
+    /// Set when the real database could not be opened and the preview library
+    /// is standing in.
+    var storeFailure: String?
+
+    /// A freshly installed app with nothing imported yet. Distinct from a
+    /// library that is still loading, which should not flash an empty state.
+    var isEmpty: Bool { !isLoading && allTracks.isEmpty }
 
     let store: any LibraryStore
 

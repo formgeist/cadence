@@ -106,7 +106,8 @@ private struct PlaylistRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            ArtworkView(artworkID: nil, cornerRadius: Tokens.Radius.thumb, stripe: 4)
+            ArtworkView(artworkID: nil, cornerRadius: Tokens.Radius.thumb,
+                        stripe: 4, displaySize: 32)
                 .frame(width: 18, height: 18)
             Text(playlist.name)
                 .font(Tokens.Typography.sans(12.5, .medium))

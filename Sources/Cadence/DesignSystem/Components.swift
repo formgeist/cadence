@@ -45,6 +45,8 @@ struct ArtworkPlaceholder: View {
 /// Cover art at any size. Falls back to the hatch, which is the common case
 /// until the artwork store exists.
 struct ArtworkView: View {
+    @Environment(ArtworkLoader.self) private var loader
+
     var artworkID: Artwork.ID?
     var cornerRadius: CGFloat = Tokens.Radius.thumb
     /// Artists are round in the design. A continuous RoundedRectangle at half
@@ -61,8 +63,30 @@ struct ArtworkView: View {
             : AnyShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
 
+    /// Longest edge in points. Drives which cached thumbnail is asked for, so
+    /// a 32pt queue row never decodes the same image a 540pt immersive view
+    /// needs.
+    var displaySize: Int = 64
+
     var body: some View {
-        ArtworkPlaceholder(caption: caption, captionSize: captionSize, stripe: stripe)
+        // Color.clear takes exactly the size it is offered, and the cover is
+        // drawn as an overlay on top of it. Putting the image in the layout
+        // directly does not work: `.aspectRatio(.fill)` makes it *larger* than
+        // the space offered, and it then overflows a frame applied by the
+        // caller — a 248pt square cover rendering 328pt wide.
+        Color.clear
+            .overlay {
+                if let image = loader.image(for: artworkID, size: displaySize) {
+                    Image(nsImage: image)
+                        .resizable()
+                        // Covers are square by convention but not by guarantee;
+                        // filling crops rather than letterboxing an odd one.
+                        .aspectRatio(contentMode: .fill)
+                } else {
+                    ArtworkPlaceholder(caption: caption, captionSize: captionSize,
+                                       stripe: stripe)
+                }
+            }
             .clipShape(shape)
             .overlay {
                 shape.stroke(Tokens.Palette.placeholderBorder, lineWidth: 1)

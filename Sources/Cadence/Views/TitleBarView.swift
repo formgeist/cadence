@@ -230,7 +230,8 @@ private struct SearchResultsPopover: View {
                         ArtworkView(artworkID: nil,
                                     cornerRadius: 3,
                                     isCircular: row.isRound,
-                                    stripe: 4)
+                                    stripe: 4,
+                                    displaySize: 32)
                             .frame(width: 26, height: 26)
                         VStack(alignment: .leading, spacing: 1) {
                             Text(row.title)
@@ -284,7 +285,8 @@ private struct TopHitRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: Tokens.Space.m) {
-                ArtworkView(artworkID: album.artworkID, cornerRadius: Tokens.Radius.thumb)
+                ArtworkView(artworkID: album.artworkID, cornerRadius: Tokens.Radius.thumb,
+                                displaySize: 48)
                     .frame(width: 40, height: 40)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(album.title)

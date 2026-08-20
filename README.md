@@ -3,18 +3,19 @@
 A native macOS FLAC player built with SwiftUI. Local library, real metadata,
 gapless playback, and an interface that isn't a reskin of iTunes.
 
-**Status:** the app runs. `CadenceCore` — models, protocol boundary,
-`PlaybackController`, mock engine, preview library — is complete and tested, and
-the full interface is built against it from the design canvas. No audio is
-decoded and no database is opened yet: `MockPlayerEngine` advances a clock and
-`InMemoryLibraryStore` serves `PreviewData`.
+**Status:** the app runs against a real library. Point it at a folder of FLAC
+files and it reads the tags, extracts the artwork, and builds a searchable
+SQLite library. What is still missing is the audio: `MockPlayerEngine` advances
+a clock instead of decoding, and the interface says so rather than pretending.
 
-See [PLAN.md](PLAN.md) for the build plan and open questions.
+The build plan and open questions live in `PLAN.md`, which is kept
+locally and deliberately not tracked in this repo.
 
 ```bash
-make run     # launch the app
-make test    # 48 tests, no third-party dependencies in the code under test
-make shots   # render every screen to Snapshots/ for design review
+make run                          # launch the app
+make test                         # 99 tests
+make shots                        # render every screen to Snapshots/
+make scan FOLDER=~/Music/FLAC     # import a folder and print what was found
 ```
 
 ## Layout
@@ -22,18 +23,53 @@ make shots   # render every screen to Snapshots/ for design review
 | Target | Dependencies | Contains |
 |---|---|---|
 | `CadenceCore` | none | models, protocols, `PlaybackController`, mock engine, preview data |
-| `Cadence` | `CadenceCore` | the app — views, design tokens, snapshot tool |
+| `CadenceLibrary` | GRDB | SQLite store, FTS5 search, FLAC tag reader, import scanner, artwork cache |
+| `Cadence` | both | the app — views, design tokens, snapshot and scan tools |
 
-`CadenceAudio` (SFBAudioEngine) and `CadenceLibrary` (GRDB) are not written yet.
-The protocol boundary they will implement — `PlayerEngine`, `MetadataReader`,
-`LibraryStore`, `ArtworkStore` — is in
+`CadenceAudio` (SFBAudioEngine) does not exist yet, so nothing decodes. The
+protocol it will implement, `PlayerEngine`, is in
 [`Boundaries.swift`](Sources/CadenceCore/Protocols/Boundaries.swift), and the
-composition root that will name them is
-[`AppContainer`](Sources/Cadence/CadenceApp.swift). Swapping the real
-implementations in is a change to those two lines and nothing above them.
+composition root that will name it is
+[`AppContainer`](Sources/Cadence/CadenceApp.swift) — one line.
 
 `CadenceCore` has no third-party dependencies, so previews and design
 prototypes can import it freely.
+
+## Importing
+
+`⌘O` in the app, or from the command line:
+
+```bash
+swift run Cadence --scan ~/Music/FLAC            # into the real library
+swift run Cadence --scan ~/Music --library /tmp/scratch.sqlite --tracks
+```
+
+The scanner skips files whose size and mtime are unchanged, parses with bounded
+parallelism, and writes in batched transactions. Re-importing a path updates
+that row and keeps its id, so playlists pointing at it survive a rescan. A file
+that fails to parse is reported and the import continues.
+
+Tags are read directly rather than through an audio library — FLAC's metadata
+blocks are simple enough that import works before the audio layer compiles,
+which is what the protocol boundary is for. Other formats wait for
+`SFBMetadataReader`.
+
+### What the parsers forgive
+
+Metadata in the wild breaks the spec constantly. Each of these is handled, with
+a test:
+
+- `TRACKNUMBER=3/12`, `DISCNUMBER=1/3` — index and total in one field
+- `DATE=1969-08-15`, `DATE=1969/08` — a year wearing a date's clothes
+- Repeated `ARTIST` fields — joined, not silently dropped
+- `REPLAYGAIN_TRACK_GAIN=-6.40 dB` — the unit is part of the value
+- Tags that aren't valid UTF-8 — falls back to Latin-1 rather than losing them
+- Leading and trailing whitespace — `" Korn"` and `"Korn"` are otherwise two artists
+- `COMPILATION=1` on a deluxe edition by one band — believed only when the
+  track artists back it up
+- `Kid A (1)` / `Kid A (2)` with matching `DISCNUMBER` — one album, two discs,
+  not two albums
+- Missing or zero `STREAMINFO` values — no division by zero, no NaN durations
 
 ## Building UI before the audio layer works
 
@@ -107,7 +143,7 @@ Both disappear once Xcode is installed and the app target of PLAN.md §5 exists.
 
 ## Licence
 
-**MIT** — see [LICENSE](LICENSE). This settles PLAN.md §8 and keeps every option
+**MIT** — see [LICENSE](LICENSE). This settles the licence question and keeps every option
 open, including relicensing later. The constraints that follow: Cog is GPL, so
 read it for reference but never copy from it, and Chromaprint is LGPL, so it is
 off the table for static linking if phase 6 wants acoustic fingerprinting.

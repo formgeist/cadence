@@ -115,7 +115,7 @@ enum Snapshot {
         var retained: [NSWindow] = []
 
         for shot in shots {
-            let container = AppContainer()
+            let container = AppContainer(mode: .preview)
             await container.model.load()
             container.playback.play(PreviewData.slowHours[2], in: PreviewData.slowHours)
             container.playback.seek(to: 88)
@@ -124,6 +124,9 @@ enum Snapshot {
             let view = RootView()
                 .environment(container.model)
                 .environment(container.playback)
+                .environment(container.importer)
+                .environment(container.artworkLoader)
+                .environment(\.isSilentPlayback, container.isSilentPlayback)
                 .preferredColorScheme(.dark)
                 .background(Tokens.Palette.surface)
 
@@ -167,6 +170,86 @@ enum Snapshot {
             let url = directory.appendingPathComponent("\(shot.name).png")
             try png.write(to: url)
             print("  ✓ \(shot.name).png  \(rep.pixelsWide)×\(rep.pixelsHigh)")
+            fflush(stdout)
+            written += 1
+            window.orderOut(nil)
+        }
+        return written
+    }
+
+    /// Renders the same window against the real library, choosing whatever
+    /// albums are actually there. PreviewData proves the layout survives the
+    /// awkward cases; this proves it survives your records.
+    static func runLive(into directory: URL) async throws -> Int {
+        try FileManager.default.createDirectory(
+            at: directory, withIntermediateDirectories: true)
+
+        let container = AppContainer(mode: .live)
+        await container.model.load()
+
+        var shots: [(String, (AppContainer) -> Void)] = [
+            ("live-01-artists", { $0.model.tab = .artists }),
+            ("live-02-albums", { $0.model.tab = .albums }),
+        ]
+
+        // The most interesting records to look at: one with many discs, and
+        // one with cover art.
+        let albums = container.model.albums
+        if let boxSet = albums.first(where: \.hasMultipleDiscs) {
+            shots.append(("live-03-box-set", { container in
+                container.model.show(.album(boxSet.key))
+                container.playback.play(boxSet)
+            }))
+        }
+        if let withArt = albums.first(where: { $0.artworkID != nil }) {
+            shots.append(("live-04-artwork", { container in
+                container.model.show(.album(withArt.key))
+                container.playback.play(withArt)
+            }))
+            shots.append(("live-05-immersive", { container in
+                container.model.show(.album(withArt.key))
+                container.playback.play(withArt)
+                container.model.isImmersive = true
+            }))
+        }
+
+        var written = 0
+        var retained: [NSWindow] = []
+        for (name, configure) in shots {
+            configure(container)
+
+            let view = RootView()
+                .environment(container.model)
+                .environment(container.playback)
+                .environment(container.importer)
+                .environment(container.artworkLoader)
+                .environment(\.isSilentPlayback, container.isSilentPlayback)
+                .preferredColorScheme(.dark)
+                .background(Tokens.Palette.surface)
+
+            let window = NSWindow(
+                contentRect: CGRect(origin: .zero, size: Tokens.Layout.defaultWindow),
+                styleMask: [.borderless], backing: .buffered, defer: false)
+            window.contentView = NSHostingView(rootView: view)
+            window.isReleasedWhenClosed = false
+            window.setFrameOrigin(NSPoint(x: -30_000, y: -30_000))
+            window.orderFrontRegardless()
+            retained.append(window)
+
+            // Longer than the preview pass: artwork loads asynchronously, and a
+            // shot taken before it arrives shows placeholders and proves
+            // nothing.
+            for _ in 0..<10 { try await Task.sleep(for: .milliseconds(120)) }
+
+            guard let contentView = window.contentView else { continue }
+            contentView.layoutSubtreeIfNeeded()
+            guard let rep = contentView.bitmapImageRepForCachingDisplay(
+                    in: contentView.bounds) else { continue }
+            contentView.cacheDisplay(in: contentView.bounds, to: rep)
+            guard let png = rep.representation(using: .png, properties: [:]) else { continue }
+
+            try png.write(to: directory.appendingPathComponent("\(name).png"))
+            print("  ✓ \(name).png")
             fflush(stdout)
             written += 1
             window.orderOut(nil)

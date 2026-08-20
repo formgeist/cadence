@@ -168,7 +168,7 @@ private struct ArtistRow: View {
             }
         } label: {
             HStack(spacing: 14) {
-                ArtworkView(artworkID: nil, isCircular: true)
+                ArtworkView(artworkID: nil, isCircular: true, displaySize: 48)
                     .frame(width: 44, height: 44)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(artist.name)
@@ -223,7 +223,8 @@ private struct AlbumCard: View {
             VStack(alignment: .leading, spacing: 11) {
                 ArtworkView(artworkID: album.artworkID,
                             cornerRadius: Tokens.Radius.control,
-                            caption: album.artworkID == nil ? "NO COVER ART" : "COVER ART")
+                            caption: album.artworkID == nil ? "NO COVER ART" : "COVER ART",
+                            displaySize: 320)
                     .aspectRatio(1, contentMode: .fit)
                     .shadow(color: .black.opacity(0.4), radius: 12, y: 6)
 
@@ -257,7 +258,7 @@ private struct PlaylistList: View {
         LazyVStack(spacing: Tokens.Space.xxs) {
             ForEach(model.playlists) { playlist in
                 HStack(spacing: Tokens.Space.l) {
-                    ArtworkView(artworkID: nil, cornerRadius: 5)
+                    ArtworkView(artworkID: nil, cornerRadius: 5, displaySize: 64)
                         .frame(width: 56, height: 56)
                     VStack(alignment: .leading, spacing: 4) {
                         Text(playlist.name)

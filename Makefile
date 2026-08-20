@@ -21,5 +21,10 @@ run:
 shots:
 	swift run Cadence --snapshot $(SNAPSHOT_DIR)
 
+## Scan a folder and print the resulting library, without opening a window.
+##   make scan FOLDER=~/Music/FLAC [LIBRARY=/tmp/scratch.sqlite]
+scan:
+	swift run Cadence --scan $(FOLDER) $(if $(LIBRARY),--library $(LIBRARY),) $(if $(TRACKS),--tracks,)
+
 clean:
 	swift package clean

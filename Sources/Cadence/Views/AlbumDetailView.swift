@@ -29,7 +29,8 @@ struct AlbumDetailView: View {
                 cornerRadius: Tokens.Radius.card,
                 caption: album.artworkID == nil ? "NO ARTWORK" : "ALBUM ARTWORK\n1400 × 1400",
                 captionSize: 10,
-                stripe: 7
+                stripe: 7,
+                displaySize: 320
             )
             .frame(width: Tokens.Layout.albumHeaderArt, height: Tokens.Layout.albumHeaderArt)
             .shadow(color: .black.opacity(0.55), radius: 25, y: 12)
@@ -140,7 +141,7 @@ struct AlbumDetailView: View {
                     TrackRow(
                         track: track,
                         isCurrent: playback.currentTrack?.id == track.id,
-                        showsArtist: album.isCompilation
+                        showsArtist: album.showsTrackArtists
                     ) {
                         playback.play(track, in: orderedTracks)
                     }
@@ -200,7 +201,7 @@ private struct TrackRow: View {
                         .foregroundStyle(isCurrent
                                          ? Tokens.Palette.accent : Color(hex: 0xE6E6EC))
                         .lineLimit(1)
-                    if let subtitle = track.rowSubtitle(isCompilation: showsArtist) {
+                    if let subtitle = track.rowSubtitle(showingArtist: showsArtist) {
                         Text(subtitle)
                             .font(Tokens.Typography.sans(11, .medium))
                             .foregroundStyle(Color(hex: 0x6A6A74))

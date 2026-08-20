@@ -4,6 +4,7 @@ import CadenceCore
 struct NowPlayingPane: View {
     @Environment(AppModel.self) private var model
     @Environment(PlaybackController.self) private var playback
+    @Environment(\.isSilentPlayback) private var isSilentPlayback
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -43,7 +44,8 @@ struct NowPlayingPane: View {
             ArtworkView(artworkID: track.artworkID,
                         cornerRadius: Tokens.Radius.card,
                         caption: "ARTWORK",
-                        stripe: 7)
+                        stripe: 7,
+                        displaySize: 320)
                 .aspectRatio(1, contentMode: .fit)
                 .shadow(color: .black.opacity(0.5), radius: 18, y: 9)
         }
@@ -107,6 +109,16 @@ struct NowPlayingPane: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.top, Tokens.Space.l)
+
+        if isSilentPlayback {
+            // The transport moves but nothing is decoded. Saying so beats
+            // letting it look like broken audio.
+            Text("Silent preview — audio engine not built yet")
+                .font(Tokens.Typography.sans(10, .medium))
+                .foregroundStyle(Tokens.Palette.textFaint)
+                .frame(maxWidth: .infinity)
+                .padding(.top, Tokens.Space.s)
+        }
 
         upNext
     }
@@ -262,7 +274,8 @@ private struct QueueRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            ArtworkView(artworkID: track.artworkID, cornerRadius: Tokens.Radius.thumb, stripe: 4)
+            ArtworkView(artworkID: track.artworkID, cornerRadius: Tokens.Radius.thumb,
+                        stripe: 4, displaySize: 40)
                 .frame(width: 32, height: 32)
             VStack(alignment: .leading, spacing: 1) {
                 Text(track.title)

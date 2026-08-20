@@ -30,6 +30,21 @@ public struct AudioFormat: Hashable, Sendable {
             case .other: false
             }
         }
+
+        /// Round-trips `name`, so a codec survives a database column.
+        public init(name: String) {
+            switch name.uppercased() {
+            case "FLAC": self = .flac
+            case "ALAC": self = .alac
+            case "AIFF": self = .aiff
+            case "WAV": self = .wav
+            case "MP3": self = .mp3
+            case "AAC": self = .aac
+            case "OPUS": self = .opus
+            case "VORBIS": self = .vorbis
+            default: self = .other(name)
+            }
+        }
     }
 
     public var codec: Codec
@@ -198,11 +213,11 @@ public struct Track: Identifiable, Hashable, Sendable {
     }
 
     /// What the track-row secondary line should say. On a single-artist album
-    /// repeating the album artist under every title is noise; on a compilation
-    /// it is the most important column on the screen.
-    public func rowSubtitle(isCompilation: Bool) -> String? {
+    /// repeating the album artist under every title is noise; where the artists
+    /// differ it is the most useful column on the screen.
+    public func rowSubtitle(showingArtist: Bool) -> String? {
         if let composer, !composer.isEmpty { return composer }
-        if isCompilation || artist != albumArtist { return artist }
+        if showingArtist || artist != albumArtist { return artist }
         return nil
     }
 }
@@ -241,10 +256,26 @@ public struct Album: Identifiable, Hashable, Sendable {
     public var trackCount: Int { tracks.count }
     public var artworkID: Artwork.ID? { tracks.compactMap(\.artworkID).first }
 
+    /// A record by many artists. Deliberately harder to satisfy than "the
+    /// COMPILATION tag is set": deluxe editions in the wild carry that tag
+    /// while every track is by the same band, and labelling those a
+    /// compilation is visibly wrong. A tag is believed only when the track
+    /// artists back it up.
     public var isCompilation: Bool {
-        if tracks.contains(where: \.isCompilation) { return true }
-        return Set(tracks.map(\.artist)).count > 1
+        if albumArtist.caseInsensitiveCompare("Various Artists") == .orderedSame {
+            return true
+        }
+        return tracks.contains(where: \.isCompilation) && distinctArtistCount > 1
     }
+
+    /// Whether track rows should carry an artist line. Separate from
+    /// `isCompilation` on purpose: a self-titled album with one guest feature
+    /// is not a compilation, but that one row still needs to say who is on it.
+    public var showsTrackArtists: Bool {
+        tracks.contains { $0.artist != albumArtist }
+    }
+
+    public var distinctArtistCount: Int { Set(tracks.map(\.artist)).count }
 
     public var discCount: Int {
         let discs = Set(tracks.compactMap(\.discNumber))
