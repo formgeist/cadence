@@ -3,17 +3,16 @@
 A native macOS FLAC player built with SwiftUI. Local library, real metadata,
 gapless playback, and an interface that isn't a reskin of iTunes.
 
-**Status:** the app runs against a real library. Point it at a folder of FLAC
-files and it reads the tags, extracts the artwork, and builds a searchable
-SQLite library. What is still missing is the audio: `MockPlayerEngine` advances
-a clock instead of decoding, and the interface says so rather than pretending.
+**Status:** it plays. Point it at a folder, and Cadence reads the tags, extracts
+the artwork, builds a searchable SQLite library, and decodes it through
+SFBAudioEngine with gapless transitions.
 
 The build plan and open questions live in `PLAN.md`, which is kept
 locally and deliberately not tracked in this repo.
 
 ```bash
 make run                          # launch the app
-make test                         # 99 tests
+make test                         # 110 tests
 make shots                        # render every screen to Snapshots/
 make scan FOLDER=~/Music/FLAC     # import a folder and print what was found
 ```
@@ -24,16 +23,33 @@ make scan FOLDER=~/Music/FLAC     # import a folder and print what was found
 |---|---|---|
 | `CadenceCore` | none | models, protocols, `PlaybackController`, mock engine, preview data |
 | `CadenceLibrary` | GRDB | SQLite store, FTS5 search, FLAC tag reader, import scanner, artwork cache |
-| `Cadence` | both | the app — views, design tokens, snapshot and scan tools |
-
-`CadenceAudio` (SFBAudioEngine) does not exist yet, so nothing decodes. The
-protocol it will implement, `PlayerEngine`, is in
-[`Boundaries.swift`](Sources/CadenceCore/Protocols/Boundaries.swift), and the
-composition root that will name it is
-[`AppContainer`](Sources/Cadence/CadenceApp.swift) — one line.
+| `CadenceAudio` | SFBAudioEngine | decode, gapless, metadata for every other format |
+| `Cadence` | all three | the app — views, design tokens, snapshot and diagnostic tools |
 
 `CadenceCore` has no third-party dependencies, so previews and design
-prototypes can import it freely.
+prototypes can import it freely. Nothing above
+[`Boundaries.swift`](Sources/CadenceCore/Protocols/Boundaries.swift) knows SFB
+exists; the composition root names it in one line.
+
+### Formats
+
+FLAC goes to the pure-Swift reader in `CadenceLibrary`, which needs no audio
+library and is what let import ship before the audio layer existed. Everything
+else SFB decodes — ALAC, AIFF, WAV, MP3, AAC, Opus, Vorbis, WavPack, Monkey's
+Audio — goes to `SFBMetadataReader`. `MetadataRouter` composes the two.
+
+### Diagnostics
+
+```bash
+swift run Cadence --play ~/Music/FLAC/Some/Album   # verify audio and gapless
+swift run Cadence --fonts                          # verify bundled faces
+```
+
+`--play` starts near the end of the first track and reports whether frames are
+rendering and whether the move to the second track was engine-driven or a
+controller restart. A restart is the bug PLAN.md §7 warns about; engine-driven
+is what gapless looks like from the outside. Whether the seam is *audible*
+still needs headphones.
 
 ## Importing
 
@@ -143,10 +159,17 @@ Both disappear once Xcode is installed and the app target of PLAN.md §5 exists.
 
 ## Licence
 
-**MIT** — see [LICENSE](LICENSE). This settles the licence question and keeps every option
-open, including relicensing later. The constraints that follow: Cog is GPL, so
-read it for reference but never copy from it, and Chromaprint is LGPL, so it is
-off the table for static linking if phase 6 wants acoustic fingerprinting.
+**MIT** — see [LICENSE](LICENSE). This settles the licence question and keeps
+every option open, including relicensing later. The constraints that follow:
+Cog is GPL, so read it for reference but never copy from it, and Chromaprint is
+LGPL, so it is off the table for static linking if phase 6 wants acoustic
+fingerprinting.
+
+SFBAudioEngine pulls in three LGPL components — lame, mpg123 and musepack — and
+they arrive as **dynamic** frameworks, which is what makes them compatible with
+an MIT app. Two things follow at phase 7: embed them as frameworks rather than
+merging them into the binary, and ship their licence texts. Statically linking
+them would be the case PLAN.md §8 rules out.
 
 Bundled fonts are licensed separately under the SIL Open Font License —
 [Manrope](Sources/Cadence/Resources/OFL-Manrope.txt) and

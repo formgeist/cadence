@@ -52,26 +52,28 @@ public actor LibraryScanner {
         }
     }
 
-    /// Extensions the pure-Swift reader can handle. Widens when the SFB reader
-    /// lands and brings ALAC, AIFF and the rest with it.
-    public static let supportedExtensions: Set<String> = ["flac"]
+    /// FLAC only, which is what `CadenceLibrary` can read on its own. The app
+    /// layers SFB's formats on top.
+    public static let flacOnly = MetadataRouter(FLACMetadataReader(), extensions: ["flac"])
 
     private let store: SQLiteLibraryStore
     private let artwork: DiskArtworkStore?
-    private let reader: FLACMetadataReader
+    private let router: MetadataRouter
     private let batchSize: Int
     private let parallelism: Int
+
+    public var supportedExtensions: Set<String> { router.supportedExtensions }
 
     public init(
         store: SQLiteLibraryStore,
         artwork: DiskArtworkStore? = nil,
-        reader: FLACMetadataReader = FLACMetadataReader(),
+        router: MetadataRouter = LibraryScanner.flacOnly,
         batchSize: Int = 200,
         parallelism: Int = max(2, ProcessInfo.processInfo.activeProcessorCount)
     ) {
         self.store = store
         self.artwork = artwork
-        self.reader = reader
+        self.router = router
         self.batchSize = batchSize
         self.parallelism = parallelism
     }
@@ -91,7 +93,7 @@ public actor LibraryScanner {
         // rewrites /private/tmp to /tmp, so a caller passing either form must
         // end up at the same place.
         let root = Self.normalize(folder)
-        let files = Self.audioFiles(in: root)
+        let files = Self.audioFiles(in: root, extensions: router.supportedExtensions)
         var progress = Progress(found: files.count, processed: 0, imported: 0,
                                 skipped: 0, failed: 0, removed: 0, currentFile: nil)
         onProgress?(progress)
@@ -112,7 +114,7 @@ public actor LibraryScanner {
             // limit long before it exhausts the CPU.
             let results = await withTaskGroup(of: FileResult.self) { group in
                 for url in slice {
-                    let reader = self.reader
+                    let reader = self.router.reader(for: url)
                     let fingerprint = FLACMetadataReader.fingerprint(for: url)
                     let unchanged = fingerprint != nil && known[url] == fingerprint
                     group.addTask {
@@ -194,9 +196,12 @@ public actor LibraryScanner {
     }
 
     private static func process(
-        url: URL, unchanged: Bool, reader: FLACMetadataReader
+        url: URL, unchanged: Bool, reader: (any MetadataReader)?
     ) -> FileResult {
         guard !unchanged else { return FileResult(url: url, outcome: .skipped) }
+        guard let reader else {
+            return FileResult(url: url, outcome: .failed("no reader for .\(url.pathExtension)"))
+        }
         do {
             let (track, artwork) = try reader.readTrackAndArtwork(at: url)
             let size = (try? FileManager.default.attributesOfItem(atPath: url.path))
@@ -237,7 +242,9 @@ public actor LibraryScanner {
 
     /// Depth-first, skipping package directories and hidden files. Sorted so a
     /// scan is reproducible and progress moves in a sensible order.
-    public static func audioFiles(in folder: URL) -> [URL] {
+    public static func audioFiles(
+        in folder: URL, extensions: Set<String> = ["flac"]
+    ) -> [URL] {
         let manager = FileManager.default
         guard let enumerator = manager.enumerator(
             at: folder,
@@ -247,7 +254,7 @@ public actor LibraryScanner {
 
         var found: [URL] = []
         for case let url as URL in enumerator {
-            guard supportedExtensions.contains(url.pathExtension.lowercased()) else { continue }
+            guard extensions.contains(url.pathExtension.lowercased()) else { continue }
             let values = try? url.resourceValues(forKeys: [.isRegularFileKey])
             guard values?.isRegularFile == true else { continue }
             found.append(normalize(url))

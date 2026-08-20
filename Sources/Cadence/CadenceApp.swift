@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import CadenceCore
 import CadenceLibrary
+import CadenceAudio
 
 /// The composition root. Everything the app depends on is built here and handed
 /// down through the environment, so no view ever reaches for a concrete type —
@@ -25,6 +26,15 @@ final class AppContainer {
     /// moves in silence otherwise looks like a bug.
     let isSilentPlayback: Bool
 
+    /// FLAC goes to the pure-Swift reader, which is faster and needs no audio
+    /// library; everything else SFB can decode goes to SFB. Layering in that
+    /// order means the FLAC reader wins where both could serve.
+    static var metadataRouter: MetadataRouter {
+        MetadataRouter(SFBMetadataReader(),
+                       extensions: SFBMetadataReader.supportedExtensions)
+            .merging(LibraryScanner.flacOnly)
+    }
+
     /// `--library <path>` points the app at a scratch database instead of the
     /// real one. Useful for trying an import without disturbing your library.
     static func libraryURL() throws -> URL {
@@ -40,10 +50,17 @@ final class AppContainer {
     }
 
     init(mode: Mode = .live) {
-        // The engine is still the mock: CadenceAudio does not exist yet. This
-        // is the one line that changes when SFBPlayerEngine lands.
-        playback = PlaybackController(engine: MockPlayerEngine())
-        isSilentPlayback = true
+        // The line PLAN.md §4 was written around: swapping the engine touches
+        // nothing above this point. Preview mode keeps the mock so snapshots
+        // and design review never open an audio device.
+        switch mode {
+        case .live:
+            playback = PlaybackController(engine: SFBPlayerEngine())
+            isSilentPlayback = false
+        case .preview:
+            playback = PlaybackController(engine: MockPlayerEngine())
+            isSilentPlayback = true
+        }
 
         switch mode {
         case .live:
@@ -55,7 +72,8 @@ final class AppContainer {
                 let artwork = try DiskArtworkStore(root: try DiskArtworkStore.defaultURL())
                 model = AppModel(store: store)
                 importer = LibraryImporter(
-                    scanner: LibraryScanner(store: store, artwork: artwork))
+                    scanner: LibraryScanner(
+                        store: store, artwork: artwork, router: Self.metadataRouter))
                 artworkLoader = ArtworkLoader(store: artwork)
             } catch {
                 model = AppModel(store: PreviewData.store())
@@ -164,6 +182,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // An SPM executable is not an app bundle, so it launches as an
         // accessory process with no Dock icon and no key window. Both of these
         // become unnecessary once there is a real .app target.
+        if let options = PlayHarness.parse(CommandLine.arguments) {
+            NSApp.setActivationPolicy(.prohibited)
+            Task { @MainActor in
+                do {
+                    exit(try await PlayHarness.run(options))
+                } catch {
+                    FileHandle.standardError.write(Data("Playback failed: \(error)\n".utf8))
+                    exit(1)
+                }
+            }
+            return
+        }
+
         if let options = ScanHarness.parse(CommandLine.arguments) {
             NSApp.setActivationPolicy(.prohibited)
             Task { @MainActor in

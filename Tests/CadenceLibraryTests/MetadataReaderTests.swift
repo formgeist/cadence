@@ -21,6 +21,8 @@ struct TagParserTests {
     @Test("Dates in every shape a tagger writes", arguments: [
         ("1969", 1969), ("1969-08-15", 1969), ("1969/08/15", 1969),
         ("15-08-1969", nil), ("", nil), ("not a year", nil), ("69", nil),
+        // Junk that is four digits long is still junk.
+        ("9999", nil), ("0000", nil),
     ])
     func year(raw: String, expected: Int?) {
         #expect(FLACMetadataReader.year(from: raw) == expected)

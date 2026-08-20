@@ -261,12 +261,12 @@ public struct FLACMetadataReader: MetadataReader, Sendable {
     }
 
     /// `1969-08-15`, `1969/08`, `1969` → `1969`. Anything without four leading
-    /// digits is not a year we can trust.
+    /// digits, or outside the plausible range, is not a year we can trust.
     static func year(from value: String?) -> Int? {
         guard let value else { return nil }
         let digits = value.prefix { $0.isNumber }
-        guard digits.count == 4, let year = Int(digits) else { return nil }
-        return year
+        guard digits.count == 4 else { return nil }
+        return PlausibleYear.validated(Int(digits))
     }
 
     /// `-6.40 dB` → `-6.4`. The unit is part of the tag in most encoders.

@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .library(name: "CadenceCore", targets: ["CadenceCore"]),
         .library(name: "CadenceLibrary", targets: ["CadenceLibrary"]),
+        .library(name: "CadenceAudio", targets: ["CadenceAudio"]),
         .executable(name: "Cadence", targets: ["Cadence"]),
     ],
     dependencies: [
@@ -17,11 +18,21 @@ let package = Package(
         // requires. Delete this once a full Xcode is installed.
         .package(url: "https://github.com/swiftlang/swift-testing.git", from: "6.3.2"),
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.11.1"),
+        .package(url: "https://github.com/sbooth/SFBAudioEngine.git", from: "0.13.0"),
     ],
     targets: [
         // No third-party dependencies. Safe to import anywhere, including
         // previews and design prototypes.
         .target(name: "CadenceCore"),
+
+        // Decode, gapless, and metadata for every format SFB handles.
+        .target(
+            name: "CadenceAudio",
+            dependencies: [
+                "CadenceCore",
+                .product(name: "SFBAudioEngine", package: "SFBAudioEngine"),
+            ]
+        ),
 
         // SQLite store, FTS5 search, import scanner, artwork cache, and a
         // pure-Swift FLAC tag reader.
@@ -35,7 +46,7 @@ let package = Package(
 
         .executableTarget(
             name: "Cadence",
-            dependencies: ["CadenceCore", "CadenceLibrary"],
+            dependencies: ["CadenceCore", "CadenceLibrary", "CadenceAudio"],
             resources: [.process("Resources")]
         ),
 
@@ -43,6 +54,15 @@ let package = Package(
             name: "CadenceCoreTests",
             dependencies: [
                 "CadenceCore",
+                .product(name: "Testing", package: "swift-testing"),
+            ]
+        ),
+
+        .testTarget(
+            name: "CadenceAudioTests",
+            dependencies: [
+                "CadenceCore",
+                "CadenceAudio",
                 .product(name: "Testing", package: "swift-testing"),
             ]
         ),

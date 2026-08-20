@@ -53,6 +53,50 @@ public protocol PlayerEngine: AnyObject {
 public protocol MetadataReader: Sendable {
     func readTrack(at url: URL) throws -> Track
     func readArtwork(at url: URL) throws -> Data?
+    /// Both in a single pass. The scanner wants tags and cover for every file,
+    /// and reading twice doubles the syscalls across a library.
+    func readTrackAndArtwork(at url: URL) throws -> (track: Track, artwork: Data?)
+}
+
+extension MetadataReader {
+    /// Correct for any reader; implementations that can genuinely do it in one
+    /// read should override.
+    public func readTrackAndArtwork(at url: URL) throws -> (track: Track, artwork: Data?) {
+        (try readTrack(at: url), try readArtwork(at: url))
+    }
+}
+
+/// Picks a reader by file extension.
+///
+/// FLAC has a dedicated pure-Swift reader that needs no audio library; every
+/// other format goes to SFB. Which reader handles what is a composition
+/// decision, so it lives here rather than inside the scanner.
+public struct MetadataRouter: Sendable {
+    private let readers: [String: any MetadataReader]
+
+    /// Keys are lowercased file extensions.
+    public init(_ readers: [String: any MetadataReader]) {
+        self.readers = readers.reduce(into: [:]) { result, pair in
+            result[pair.key.lowercased()] = pair.value
+        }
+    }
+
+    /// Builds a router from one reader and the extensions it claims.
+    public init(_ reader: any MetadataReader, extensions: Set<String>) {
+        self.init(extensions.reduce(into: [:]) { $0[$1] = reader })
+    }
+
+    public var supportedExtensions: Set<String> { Set(readers.keys) }
+
+    public func reader(for url: URL) -> (any MetadataReader)? {
+        readers[url.pathExtension.lowercased()]
+    }
+
+    /// Later routers win on conflicts, so a caller can layer a specialised
+    /// reader over a general one.
+    public func merging(_ other: MetadataRouter) -> MetadataRouter {
+        MetadataRouter(readers.merging(other.readers) { _, new in new })
+    }
 }
 
 // MARK: - Library

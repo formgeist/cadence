@@ -1,6 +1,7 @@
 import Foundation
 import CadenceCore
 import CadenceLibrary
+import CadenceAudio
 
 /// `Cadence --scan <folder>` — scans a folder and prints the resulting library.
 ///
@@ -51,7 +52,8 @@ enum ScanHarness {
 
         let store = try SQLiteLibraryStore(url: libraryURL)
         let artwork = try DiskArtworkStore(root: artworkURL)
-        let scanner = LibraryScanner(store: store, artwork: artwork)
+        let scanner = LibraryScanner(store: store, artwork: artwork,
+                                     router: AppContainer.metadataRouter)
 
         print("Scanning \(options.folder.path)")
         print("Library  \(libraryURL.path)\n")

@@ -390,6 +390,21 @@ public struct Playlist: Identifiable, Hashable, Sendable {
 
 // MARK: - Duration formatting
 
+/// Years a music file could plausibly carry. Anything outside this is junk
+/// metadata — `9999`, `0000`, a track number that landed in the date field —
+/// and showing it in an album header is worse than showing nothing.
+///
+/// Shared so that every reader agrees: the same tag must not become a
+/// different year depending on which reader happened to open the file.
+public enum PlausibleYear {
+    public static let range = 1000...3000
+
+    public static func validated(_ year: Int?) -> Int? {
+        guard let year, range.contains(year) else { return nil }
+        return year
+    }
+}
+
 public enum DurationFormat {
     /// `5:38`, and `1:02:11` once an hour is in play — for track rows and the
     /// transport clock.
