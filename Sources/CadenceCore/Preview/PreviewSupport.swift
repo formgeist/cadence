@@ -185,6 +185,49 @@ public actor InMemoryLibraryStore: LibraryStore {
         return playlist
     }
 
+    public func addTracks(_ trackIDs: [Track.ID], to playlistID: Playlist.ID) async throws {
+        let known = Set(tracks.map(\.id))
+        edit(playlistID) { $0.append(contentsOf: trackIDs.filter(known.contains)) }
+    }
+
+    public func removeTracks(
+        atOffsets offsets: IndexSet, from playlistID: Playlist.ID
+    ) async throws {
+        edit(playlistID) { ids in
+            for offset in offsets.sorted(by: >) where ids.indices.contains(offset) {
+                ids.remove(at: offset)
+            }
+        }
+    }
+
+    public func moveTracks(
+        fromOffsets source: IndexSet, toOffset destination: Int, in playlistID: Playlist.ID
+    ) async throws {
+        edit(playlistID) { Ordering.move(&$0, fromOffsets: source, toOffset: destination) }
+    }
+
+    public func renamePlaylist(_ id: Playlist.ID, to name: String) async throws {
+        guard let index = storedPlaylists.firstIndex(where: { $0.id == id }) else { return }
+        storedPlaylists[index].name = name
+    }
+
+    public func deletePlaylist(_ id: Playlist.ID) async throws {
+        storedPlaylists.removeAll { $0.id == id }
+    }
+
+    /// Rewrites one playlist's contents and the duration that follows from
+    /// them. The real store recomputes the total with a `SUM`; here it has to
+    /// be kept in step by hand, or the sidebar would go on quoting the length
+    /// the playlist had before the edit.
+    private func edit(_ id: Playlist.ID, _ change: (inout [Track.ID]) -> Void) {
+        guard let index = storedPlaylists.firstIndex(where: { $0.id == id }) else { return }
+        var ids = storedPlaylists[index].trackIDs
+        change(&ids)
+        let durations = Dictionary(tracks.map { ($0.id, $0.duration) }) { first, _ in first }
+        storedPlaylists[index].trackIDs = ids
+        storedPlaylists[index].duration = ids.reduce(0) { $0 + (durations[$1] ?? 0) }
+    }
+
     public func tracks(matching query: String) async throws -> [Track] {
         let needle = query.trimmingCharacters(in: .whitespaces).lowercased()
         guard !needle.isEmpty else { return [] }

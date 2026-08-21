@@ -186,6 +186,140 @@ struct SQLiteLibraryStoreTests {
             #expect(try await store.playlists().count == 2)
         }
     }
+
+    @Test("Tracks append in the order given, and the total follows")
+    func addTracks() async throws {
+        try await withStore { store in
+            let tracks = (1...3).map { makeTrack("Track \($0)", number: $0, seconds: 100) }
+            try await store.upsert(tracks)
+            let playlist = try await store.createPlaylist(named: "Late Desk")
+
+            try await store.addTracks([tracks[2].id, tracks[0].id], to: playlist.id)
+            try await store.addTracks([tracks[1].id], to: playlist.id)
+
+            let fetched = try #require(try await store.playlists().first)
+            #expect(fetched.trackIDs == [tracks[2].id, tracks[0].id, tracks[1].id])
+            #expect(fetched.duration == 300)
+        }
+    }
+
+    @Test("Editing one playlist leaves the others alone")
+    func editsAreLocal() async throws {
+        try await withStore { store in
+            let track = makeTrack("Slow Hours")
+            try await store.upsert([track])
+            let edited = try await store.createPlaylist(named: "Late Desk")
+            let untouched = try await store.createPlaylist(named: "Headphones Only")
+            try await store.addTracks([track.id], to: untouched.id)
+
+            try await store.addTracks([track.id], to: edited.id)
+            try await store.renamePlaylist(edited.id, to: "Late Desk, Revised")
+
+            let fetched = try await store.playlists()
+            #expect(fetched.map(\.name) == ["Late Desk, Revised", "Headphones Only"])
+            // The whole point of the per-playlist methods: the other playlist
+            // keeps its id, its position and its contents.
+            #expect(fetched.last?.id == untouched.id)
+            #expect(fetched.last?.trackIDs == [track.id])
+        }
+    }
+
+    @Test("The same track may sit in a playlist twice, and one copy can leave")
+    func duplicateEntries() async throws {
+        try await withStore { store in
+            let track = makeTrack("Slow Hours")
+            try await store.upsert([track])
+            let playlist = try await store.createPlaylist(named: "Late Desk")
+
+            try await store.addTracks([track.id, track.id], to: playlist.id)
+            #expect(try await store.playlists().first?.trackIDs.count == 2)
+
+            // By offset, not by id: removing "the track" would empty the
+            // playlist rather than remove the row that was clicked.
+            try await store.removeTracks(atOffsets: IndexSet([0]), from: playlist.id)
+            #expect(try await store.playlists().first?.trackIDs == [track.id])
+        }
+    }
+
+    @Test("Removing renumbers, so the next append lands at the end")
+    func removeThenAppend() async throws {
+        try await withStore { store in
+            let tracks = (1...3).map { makeTrack("Track \($0)", number: $0) }
+            try await store.upsert(tracks)
+            let playlist = try await store.createPlaylist(named: "Late Desk")
+            try await store.addTracks(tracks.map(\.id), to: playlist.id)
+
+            try await store.removeTracks(atOffsets: IndexSet([0, 1]), from: playlist.id)
+            try await store.addTracks([tracks[0].id], to: playlist.id)
+
+            #expect(try await store.playlists().first?.trackIDs
+                    == [tracks[2].id, tracks[0].id])
+        }
+    }
+
+    @Test("Reordering rewrites the order and nothing else")
+    func moveTracks() async throws {
+        try await withStore { store in
+            let tracks = (1...4).map { makeTrack("Track \($0)", number: $0) }
+            try await store.upsert(tracks)
+            let playlist = try await store.createPlaylist(named: "Late Desk")
+            try await store.addTracks(tracks.map(\.id), to: playlist.id)
+
+            // SwiftUI's semantics: the destination indexes the original array.
+            try await store.moveTracks(fromOffsets: IndexSet([0]), toOffset: 3,
+                                       in: playlist.id)
+
+            #expect(try await store.playlists().first?.trackIDs
+                    == [tracks[1].id, tracks[2].id, tracks[0].id, tracks[3].id])
+        }
+    }
+
+    @Test("Adding a track that has left the library adds nothing, and no gap")
+    func addGhostTrack() async throws {
+        try await withStore { store in
+            let track = makeTrack("Slow Hours")
+            try await store.upsert([track])
+            let playlist = try await store.createPlaylist(named: "Late Desk")
+
+            try await store.addTracks([UUID(), track.id], to: playlist.id)
+            try await store.addTracks([track.id], to: playlist.id)
+
+            // The ghost spent no position, so the second append did not land
+            // on top of the first.
+            #expect(try await store.playlists().first?.trackIDs == [track.id, track.id])
+        }
+    }
+
+    @Test("Deleting a playlist takes its items with it")
+    func deletePlaylist() async throws {
+        try await withStore { store in
+            let track = makeTrack("Slow Hours")
+            try await store.upsert([track])
+            let playlist = try await store.createPlaylist(named: "Late Desk")
+            try await store.addTracks([track.id], to: playlist.id)
+
+            try await store.deletePlaylist(playlist.id)
+
+            #expect(try await store.playlists().isEmpty)
+            // The track itself is library, not playlist, and stays.
+            #expect(try await store.allTracks().count == 1)
+        }
+    }
+
+    @Test("Removing a track from the library removes it from playlists")
+    func removingTrackCascades() async throws {
+        try await withStore { store in
+            let track = makeTrack("Slow Hours")
+            let kept = makeTrack("Undertow", number: 2)
+            try await store.upsert([track, kept])
+            let playlist = try await store.createPlaylist(named: "Late Desk")
+            try await store.addTracks([track.id, kept.id], to: playlist.id)
+
+            try await store.remove(urls: [track.url])
+
+            #expect(try await store.playlists().first?.trackIDs == [kept.id])
+        }
+    }
 }
 
 /// Search is the part PLAN.md §1 calls out as unfinished: `upsert` wrote the

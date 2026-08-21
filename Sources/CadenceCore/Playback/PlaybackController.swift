@@ -153,7 +153,7 @@ public final class PlaybackController {
         guard head < queue.count else { return }
 
         var upcoming = Array(queue[head...])
-        Self.move(&upcoming, fromOffsets: source, toOffset: destination)
+        Ordering.move(&upcoming, fromOffsets: source, toOffset: destination)
         queue.replaceSubrange(head..., with: upcoming)
 
         // Keep the unshuffled order in step, so turning shuffle off later does
@@ -178,22 +178,6 @@ public final class PlaybackController {
     public func jump(to track: Track) {
         guard let index = queue.firstIndex(where: { $0.id == track.id }) else { return }
         start(at: index)
-    }
-
-    /// `move(fromOffsets:toOffset:)` lives in SwiftUI, and CadenceCore has no
-    /// third-party or UI dependencies — PLAN.md §1. The semantics are SwiftUI's:
-    /// `toOffset` is an index in the *original* array, before anything is
-    /// removed.
-    static func move<T>(_ array: inout [T], fromOffsets source: IndexSet, toOffset destination: Int) {
-        let moving = source.compactMap { array.indices.contains($0) ? array[$0] : nil }
-        guard !moving.isEmpty else { return }
-
-        // Removing items ahead of the destination shifts it left by that many.
-        let insertion = destination - source.count(where: { $0 < destination })
-        for index in source.sorted(by: >) where array.indices.contains(index) {
-            array.remove(at: index)
-        }
-        array.insert(contentsOf: moving, at: min(max(0, insertion), array.count))
     }
 
     /// The track after the current one may have changed; withdraw whatever the
