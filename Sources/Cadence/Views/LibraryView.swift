@@ -351,7 +351,9 @@ struct AlbumCard: View {
         .plainControl()
         .onHover { isHovering = $0 }
         // A whole record onto a playlist row, in album order.
-        .draggable(TrackSelection(album.discs.flatMap(\.tracks)))
+        .draggable(TrackSelection(album.discs.flatMap(\.tracks))) {
+            TrackDragPreview.album(album)
+        }
         .contextMenu {
             Button("Play") { playback.play(album) }
             Button("Shuffle") { playback.shuffle(album) }

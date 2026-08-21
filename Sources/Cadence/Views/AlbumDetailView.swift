@@ -171,7 +171,9 @@ struct AlbumDetailView: View {
                     )
                     // Onto a playlist row in the sidebar. One track at a time:
                     // the album screen has no multiple selection to drag.
-                    .draggable(TrackSelection([track.id]))
+                    .draggable(TrackSelection([track.id])) {
+                        TrackDragPreview.track(track)
+                    }
                     .contextMenu {
                         Button("Play") {
                             selectedTrackID = track.id

@@ -28,6 +28,76 @@ struct TrackSelection: Codable, Transferable {
     }
 }
 
+/// What follows the cursor while tracks are in flight.
+///
+/// Without an explicit preview, `.draggable` lifts the view it is attached to.
+/// An album's track row is as wide as the window, so dragging one hauled a
+/// 700pt bar across the screen to drop it on a 180pt sidebar row — the pointer
+/// ended up somewhere in the middle of a slab that covered the target.
+///
+/// No `ArtworkView` here on purpose. It reads `ArtworkLoader` out of the
+/// environment and traps if it is missing, and a drag preview is rendered
+/// outside the ordinary view tree — the same uncertainty that made the menus
+/// take their model as a parameter. A glyph cannot fail.
+struct TrackDragPreview: View {
+    var systemImage: String
+    var title: String
+    var detail: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: systemImage)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Tokens.Palette.accent)
+                .frame(width: 20, height: 20)
+                .background {
+                    RoundedRectangle(cornerRadius: Tokens.Radius.thumb, style: .continuous)
+                        .fill(Tokens.Palette.accentDim)
+                }
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(Tokens.Typography.sans(11.5, .semibold))
+                    .foregroundStyle(Color(hex: 0xE6E6EC))
+                    .lineLimit(1)
+                Text(detail)
+                    .font(Tokens.Typography.sans(10, .medium))
+                    .foregroundStyle(Tokens.Palette.textMuted)
+                    .lineLimit(1)
+            }
+            // Capped rather than flexible: a long title should truncate, not
+            // grow the chip back to the width this exists to avoid.
+            .frame(maxWidth: 150, alignment: .leading)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background {
+            RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous)
+                .fill(Tokens.Palette.popover)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous)
+                .strokeBorder(Tokens.Palette.borderStrong, lineWidth: 1)
+        }
+        // It floats over whatever is underneath, which is usually a dark grid
+        // of covers. Without a lift it reads as part of the page.
+        .shadow(color: .black.opacity(0.5), radius: 12, y: 4)
+    }
+
+    /// One track on its way to a playlist.
+    static func track(_ track: Track) -> TrackDragPreview {
+        TrackDragPreview(systemImage: "music.note",
+                         title: track.title, detail: track.artist)
+    }
+
+    /// A whole record. The count is the part worth knowing before you let go.
+    static func album(_ album: Album) -> TrackDragPreview {
+        let count = album.trackCount == 1 ? "1 track" : "\(album.trackCount) tracks"
+        return TrackDragPreview(systemImage: "square.stack",
+                                title: album.title, detail: count)
+    }
+}
+
 // MARK: - Menus
 
 /// "Add to Playlist" wherever tracks are listed. A submenu rather than a
