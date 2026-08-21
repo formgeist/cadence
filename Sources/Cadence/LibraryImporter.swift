@@ -6,11 +6,10 @@ import CadenceLibrary
 
 /// Owns the folder choice and the import that follows it.
 ///
-/// Security-scoped bookmarks are what PLAN.md §5 requires, and `Track.bookmark`
-/// exists for them — but they need the sandbox entitlement, which needs an app
-/// bundle, which needs Xcode. Until then the folder is remembered as a plain
-/// path. The storage is isolated here so switching to a bookmark is a change to
-/// two methods.
+/// Folders are remembered as app-scoped bookmarks, so access survives relaunch —
+/// PLAN.md §5 is explicit that there is no workaround for getting this wrong.
+/// `SecurityScopedFolders` holds the access open and pairs every start with a
+/// stop.
 @MainActor
 @Observable
 final class LibraryImporter {
@@ -22,17 +21,18 @@ final class LibraryImporter {
     var isImporting: Bool { progress != nil }
 
     /// The folders the user has added.
-    private(set) var folders: [URL]
+    private(set) var folders: [URL] = []
 
     private let scanner: LibraryScanner?
+    private let bookmarks: SecurityScopedFolders
     private var task: Task<Void, Never>?
 
-    private static let foldersKey = "CadenceMusicFolders"
-
-    init(scanner: LibraryScanner?) {
+    init(scanner: LibraryScanner?, bookmarks: SecurityScopedFolders = SecurityScopedFolders()) {
         self.scanner = scanner
-        folders = (UserDefaults.standard.array(forKey: Self.foldersKey) as? [String] ?? [])
-            .map { URL(fileURLWithPath: $0) }
+        self.bookmarks = bookmarks
+        // Resolving on launch is what re-opens access to the music folder. A
+        // folder that has moved gets its bookmark re-made rather than lost.
+        folders = bookmarks.restoreAll().map(\.url)
     }
 
     // MARK: - Choosing
@@ -46,19 +46,24 @@ final class LibraryImporter {
         panel.prompt = "Add to Library"
         panel.message = "Choose a folder of FLAC files."
         guard panel.runModal() == .OK, let url = panel.url else { return nil }
-        remember(url)
-        return url
-    }
 
-    private func remember(_ url: URL) {
-        guard !folders.contains(url) else { return }
-        folders.append(url)
-        UserDefaults.standard.set(folders.map(\.path), forKey: Self.foldersKey)
+        // The bookmark has to be made now, while the panel's grant is live.
+        do {
+            try bookmarks.remember(url)
+            bookmarks.beginAccess(to: url)
+        } catch {
+            errorMessage = "Could not keep access to that folder: "
+                + error.localizedDescription
+            return nil
+        }
+
+        if !folders.contains(url) { folders.append(url) }
+        return url
     }
 
     func forget(_ url: URL) {
         folders.removeAll { $0 == url }
-        UserDefaults.standard.set(folders.map(\.path), forKey: Self.foldersKey)
+        bookmarks.forget(url)
     }
 
     // MARK: - Importing

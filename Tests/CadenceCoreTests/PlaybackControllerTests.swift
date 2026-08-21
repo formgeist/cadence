@@ -284,6 +284,153 @@ struct PlaybackControllerTests {
 }
 
 @MainActor
+@Suite("Editing the queue")
+struct QueueEditingTests {
+
+    @Test("move matches SwiftUI's onMove semantics", arguments: [
+        // (source offsets, destination, expected)
+        ([0], 3, ["B", "C", "A", "D"]),
+        ([3], 0, ["D", "A", "B", "C"]),
+        ([0, 1], 4, ["C", "D", "A", "B"]),
+        ([2], 1, ["A", "C", "B", "D"]),
+        // A no-op destination leaves the order alone.
+        ([1], 1, ["A", "B", "C", "D"]),
+    ])
+    func move(offsets: [Int], destination: Int, expected: [String]) {
+        var items = ["A", "B", "C", "D"]
+        PlaybackController.move(&items, fromOffsets: IndexSet(offsets), toOffset: destination)
+        #expect(items == expected)
+    }
+
+    @Test("Out-of-range offsets are ignored rather than trapping")
+    func moveOutOfRange() {
+        var items = ["A", "B"]
+        PlaybackController.move(&items, fromOffsets: IndexSet([5]), toOffset: 0)
+        #expect(items == ["A", "B"])
+    }
+
+    @Test("Reordering Up Next does not disturb what is playing")
+    func reorderKeepsCurrentTrack() {
+        let engine = SpyEngine()
+        let controller = PlaybackController(engine: engine)
+        let tracks = (1...5).map { makeTrack("T\($0)") }
+
+        controller.play(tracks[0], in: tracks)
+        // Up Next is T2…T5; move T5 to the front of it.
+        controller.moveUpNext(fromOffsets: IndexSet([3]), toOffset: 0)
+
+        #expect(controller.currentTrack?.title == "T1")
+        #expect(Array(controller.upNext).map(\.title) == ["T5", "T2", "T3", "T4"])
+    }
+
+    @Test("Reordering re-arms the engine with the track that is now next")
+    func reorderRequeues() async {
+        let engine = SpyEngine()
+        let controller = PlaybackController(engine: engine)
+        let tracks = (1...4).map { makeTrack("T\($0)") }
+
+        controller.play(tracks[0], in: tracks)
+        await engine.emit(.started(tracks[0].url))
+        #expect(engine.prepared.last?.lastPathComponent == "T2.flac")
+
+        controller.moveUpNext(fromOffsets: IndexSet([2]), toOffset: 0)
+
+        // The engine was holding T2, which is no longer next.
+        #expect(engine.clearNextCount >= 1)
+        #expect(engine.prepared.last?.lastPathComponent == "T4.flac")
+    }
+
+    @Test("Removing from Up Next drops the track and re-arms")
+    func removeFromUpNext() async {
+        let engine = SpyEngine()
+        let controller = PlaybackController(engine: engine)
+        let tracks = (1...4).map { makeTrack("T\($0)") }
+
+        controller.play(tracks[0], in: tracks)
+        await engine.emit(.started(tracks[0].url))
+        controller.removeFromUpNext(tracks[1])
+
+        #expect(Array(controller.upNext).map(\.title) == ["T3", "T4"])
+        #expect(engine.prepared.last?.lastPathComponent == "T3.flac")
+    }
+
+    @Test("The playing track cannot be removed from Up Next")
+    func cannotRemoveCurrent() {
+        let engine = SpyEngine()
+        let controller = PlaybackController(engine: engine)
+        let tracks = (1...3).map { makeTrack("T\($0)") }
+
+        controller.play(tracks[1], in: tracks)
+        controller.removeFromUpNext(tracks[1])
+
+        #expect(controller.currentTrack?.title == "T2")
+        #expect(controller.queue.count == 3)
+    }
+
+    @Test("Jumping to a queued track leaves the rest of the queue alone")
+    func jump() {
+        let engine = SpyEngine()
+        let controller = PlaybackController(engine: engine)
+        let tracks = (1...4).map { makeTrack("T\($0)") }
+
+        controller.play(tracks[0], in: tracks)
+        controller.jump(to: tracks[2])
+
+        #expect(controller.currentTrack?.title == "T3")
+        #expect(controller.queue.count == 4)
+        #expect(Array(controller.upNext).map(\.title) == ["T4"])
+    }
+
+    @Test("Reordering survives a later shuffle toggle")
+    func reorderSurvivesUnshuffle() {
+        let engine = SpyEngine()
+        let controller = PlaybackController(engine: engine)
+        let tracks = (1...5).map { makeTrack("T\($0)") }
+
+        controller.play(tracks[0], in: tracks)
+        controller.moveUpNext(fromOffsets: IndexSet([3]), toOffset: 0)
+        let reordered = controller.queue
+
+        controller.shuffleMode = .on
+        controller.shuffleMode = .off
+
+        // Turning shuffle off restores the order the user last arranged, not
+        // the order the album came in.
+        #expect(controller.queue == reordered)
+    }
+}
+
+@MainActor
+@Suite("Mute")
+struct MuteTests {
+
+    @Test("Muting silences, unmuting restores the level it had")
+    func muteRoundTrip() {
+        let engine = SpyEngine()
+        let controller = PlaybackController(engine: engine)
+        controller.volume = 0.4
+
+        controller.isMuted = true
+        #expect(controller.volume == 0)
+        #expect(engine.volume == 0)
+
+        controller.isMuted = false
+        #expect(abs(controller.volume - 0.4) < 0.0001)
+    }
+
+    @Test("Muting twice does not lose the original level")
+    func repeatedMute() {
+        let engine = SpyEngine()
+        let controller = PlaybackController(engine: engine)
+        controller.volume = 0.6
+        controller.isMuted = true
+        controller.isMuted = true
+        controller.isMuted = false
+        #expect(abs(controller.volume - 0.6) < 0.0001)
+    }
+}
+
+@MainActor
 @Suite("ReplayGain resolution")
 struct ReplayGainTests {
 

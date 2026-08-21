@@ -12,7 +12,7 @@ locally and deliberately not tracked in this repo.
 
 ```bash
 make run                          # launch the app
-make test                         # 110 tests
+make test                         # 127 tests
 make app                          # assemble a signed, sandboxed Cadence.app
 make audio-check                  # can a sandboxed build go bit-perfect?
 make shots                        # render every screen to Snapshots/
@@ -52,6 +52,24 @@ rendering and whether the move to the second track was engine-driven or a
 controller restart. A restart is the bug PLAN.md §7 warns about; engine-driven
 is what gapless looks like from the outside. Whether the seam is *audible*
 still needs headphones.
+
+## Folder access
+
+Folders are remembered as **app-scoped bookmarks**, not paths. Without them the
+music folder becomes unreadable on the second launch of a sandboxed build and
+there is no workaround — PLAN.md §5.
+
+`SecurityScopedFolders` also handles the half of §7 that is easier to get
+wrong: every `startAccessingSecurityScopedResource()` must be paired with a
+stop, because leaked scopes eventually exhaust the kernel's limit and file
+access starts failing in ways that look like corruption. Access is therefore
+handed out as a token whose lifetime *is* the access — there is no unpaired
+call to forget. Bookmarks that go stale are re-made in place, so a folder that
+moves keeps working; bookmarks that cannot resolve at all are dropped rather
+than retried on every launch.
+
+Folders are bookmarked rather than individual files: access to a folder extends
+to its contents, so one scope covers a whole library.
 
 ## Importing
 

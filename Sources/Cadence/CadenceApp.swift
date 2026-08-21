@@ -20,6 +20,9 @@ final class AppContainer {
     let model: AppModel
     let importer: LibraryImporter
     let artworkLoader: ArtworkLoader
+    /// Held for the process lifetime: access must stay open for playback, not
+    /// just for the import that first granted it.
+    let folders: SecurityScopedFolders
 
     /// True while playback is the mock clock rather than a decoder. The
     /// interface says so rather than pretending, because a transport that
@@ -67,24 +70,28 @@ final class AppContainer {
             // A database that cannot be opened must not take the app down with
             // it; falling back to the preview library keeps the window usable
             // and puts the reason on screen.
+            let scoped = SecurityScopedFolders()
+            folders = scoped
             do {
                 let store = try SQLiteLibraryStore(url: try Self.libraryURL())
                 let artwork = try DiskArtworkStore(root: try DiskArtworkStore.defaultURL())
                 model = AppModel(store: store)
                 importer = LibraryImporter(
                     scanner: LibraryScanner(
-                        store: store, artwork: artwork, router: Self.metadataRouter))
+                        store: store, artwork: artwork, router: Self.metadataRouter),
+                    bookmarks: scoped)
                 artworkLoader = ArtworkLoader(store: artwork)
             } catch {
                 model = AppModel(store: PreviewData.store())
                 model.storeFailure = error.localizedDescription
-                importer = LibraryImporter(scanner: nil)
+                importer = LibraryImporter(scanner: nil, bookmarks: scoped)
                 artworkLoader = ArtworkLoader(store: nil)
             }
 
         case .preview:
+            folders = SecurityScopedFolders(defaultsKey: "CadencePreviewBookmarks")
             model = AppModel(store: PreviewData.store())
-            importer = LibraryImporter(scanner: nil)
+            importer = LibraryImporter(scanner: nil, bookmarks: folders)
             artworkLoader = ArtworkLoader(store: nil)
         }
     }

@@ -127,6 +127,68 @@ public final class PlaybackController {
         start(at: 0)
     }
 
+    // MARK: - Editing the queue
+
+    /// Reorders the queue. Offsets are into `upNext`, which is what the queue
+    /// view shows, so the caller never has to reason about where the currently
+    /// playing track sits.
+    public func moveUpNext(fromOffsets source: IndexSet, toOffset destination: Int) {
+        guard let currentIndex else { return }
+        let head = currentIndex + 1
+        guard head < queue.count else { return }
+
+        var upcoming = Array(queue[head...])
+        Self.move(&upcoming, fromOffsets: source, toOffset: destination)
+        queue.replaceSubrange(head..., with: upcoming)
+
+        // Keep the unshuffled order in step, so turning shuffle off later does
+        // not silently undo the reordering the user just did.
+        if !shuffleMode.isOn { orderedQueue = queue }
+
+        requeueNext()
+    }
+
+    /// Removes a track from what is coming up. Removing the playing track is
+    /// deliberately not possible here — that is what `next()` is for.
+    public func removeFromUpNext(_ track: Track) {
+        guard let currentIndex,
+              let index = queue.firstIndex(where: { $0.id == track.id }),
+              index > currentIndex else { return }
+        queue.remove(at: index)
+        orderedQueue.removeAll { $0.id == track.id }
+        requeueNext()
+    }
+
+    /// Plays something already in the queue, without disturbing the rest of it.
+    public func jump(to track: Track) {
+        guard let index = queue.firstIndex(where: { $0.id == track.id }) else { return }
+        start(at: index)
+    }
+
+    /// `move(fromOffsets:toOffset:)` lives in SwiftUI, and CadenceCore has no
+    /// third-party or UI dependencies — PLAN.md §1. The semantics are SwiftUI's:
+    /// `toOffset` is an index in the *original* array, before anything is
+    /// removed.
+    static func move<T>(_ array: inout [T], fromOffsets source: IndexSet, toOffset destination: Int) {
+        let moving = source.compactMap { array.indices.contains($0) ? array[$0] : nil }
+        guard !moving.isEmpty else { return }
+
+        // Removing items ahead of the destination shifts it left by that many.
+        let insertion = destination - source.count(where: { $0 < destination })
+        for index in source.sorted(by: >) where array.indices.contains(index) {
+            array.remove(at: index)
+        }
+        array.insert(contentsOf: moving, at: min(max(0, insertion), array.count))
+    }
+
+    /// The track after the current one may have changed; withdraw whatever the
+    /// engine is holding and hand it the right one.
+    private func requeueNext() {
+        preparedNext = nil
+        engine.clearNext()
+        prepareNextIfNeeded()
+    }
+
     public func appendToQueue(_ tracks: [Track]) {
         orderedQueue.append(contentsOf: tracks)
         queue.append(contentsOf: tracks)
@@ -221,6 +283,21 @@ public final class PlaybackController {
 
     /// Keeps the current track in place and shuffles everything around it, so
     /// toggling shuffle mid-song doesn't interrupt what's playing.
+    /// 0…1. Kept separate from ReplayGain, which the engine folds in itself.
+    public var isMuted: Bool = false {
+        didSet {
+            guard oldValue != isMuted else { return }
+            if isMuted {
+                volumeBeforeMute = volume
+                volume = 0
+            } else {
+                volume = volumeBeforeMute
+            }
+        }
+    }
+
+    private var volumeBeforeMute: Double = 1.0
+
     private func reshuffleAroundCurrent() {
         guard let current = currentTrack else {
             queue = shuffleMode.isOn ? orderedQueue.shuffled() : orderedQueue

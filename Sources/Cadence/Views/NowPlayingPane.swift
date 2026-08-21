@@ -110,6 +110,10 @@ struct NowPlayingPane: View {
         .frame(maxWidth: .infinity)
         .padding(.top, Tokens.Space.l)
 
+        PlaybackOptions()
+            .padding(.horizontal, Tokens.Space.paneInset)
+            .padding(.top, Tokens.Space.l)
+
         if isSilentPlayback {
             // The transport moves but nothing is decoded. Saying so beats
             // letting it look like broken audio.
@@ -125,28 +129,33 @@ struct NowPlayingPane: View {
 
     private var upNext: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SectionLabel("Up next")
-                .padding(.bottom, 10)
+            HStack {
+                SectionLabel("Up next")
+                Spacer()
+                if !playback.upNext.isEmpty {
+                    Text("\(playback.upNext.count)")
+                        .font(Tokens.Typography.mono(10))
+                        .foregroundStyle(Tokens.Palette.textFaint)
+                }
+            }
+            .padding(.horizontal, Tokens.Space.paneInset)
+            .padding(.bottom, 10)
 
             if playback.upNext.isEmpty {
                 Text("End of queue")
                     .font(Tokens.Typography.caption)
                     .foregroundStyle(Tokens.Palette.textFaint)
                     .padding(.top, 2)
+                    .padding(.horizontal, Tokens.Space.paneInset)
             } else {
-                ScrollView {
-                    LazyVStack(spacing: Tokens.Space.xxs) {
-                        ForEach(Array(playback.upNext)) { track in
-                            QueueRow(track: track)
-                        }
-                    }
-                }
-                .scrollContentBackground(.hidden)
+                QueueList()
+                    // The List brings its own inset; the label above keeps the
+                    // pane's.
+                    .padding(.horizontal, Tokens.Space.paneInset - 5)
             }
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding(.horizontal, Tokens.Space.paneInset)
         .padding(.top, 14)
         .padding(.top, Tokens.Space.xl)
         .overlay(alignment: .top) {
@@ -266,34 +275,5 @@ private struct ModeButton: View {
         }
         .plainControl()
         .onHover { isHovering = $0 }
-    }
-}
-
-private struct QueueRow: View {
-    var track: Track
-
-    var body: some View {
-        HStack(spacing: 10) {
-            ArtworkView(artworkID: track.artworkID, cornerRadius: Tokens.Radius.thumb,
-                        stripe: 4, displaySize: 40)
-                .frame(width: 32, height: 32)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(track.title)
-                    .font(Tokens.Typography.sans(12, .semibold))
-                    .foregroundStyle(Color(hex: 0xD6D6DE))
-                    .lineLimit(1)
-                Text(track.artist)
-                    .font(Tokens.Typography.sans(10.5, .medium))
-                    .foregroundStyle(Color(hex: 0x63636D))
-                    .lineLimit(1)
-            }
-            Spacer(minLength: Tokens.Space.s)
-            Text(DurationFormat.clock(track.duration))
-                .font(Tokens.Typography.mono(10))
-                .foregroundStyle(Tokens.Palette.textFaint)
-        }
-        .padding(.horizontal, Tokens.Space.s)
-        .padding(.vertical, 6)
-        .hoverHighlight(hoverColor: Tokens.Palette.navHover)
     }
 }
