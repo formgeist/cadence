@@ -85,6 +85,7 @@ private struct TabButton: View {
                 }
         }
         .plainControl()
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 }
 
@@ -101,6 +102,7 @@ private struct GridZoomControl: View {
                     .frame(width: 9, height: 9)
             }
             .plainControl()
+            .accessibilityLabel("Smaller album covers")
 
             GeometryReader { geometry in
                 let width = geometry.size.width
@@ -121,6 +123,11 @@ private struct GridZoomControl: View {
                 )
             }
             .frame(width: 96, height: 14)
+            .accessibilityRepresentation {
+                Slider(value: $zoom, in: 0...1, step: 0.1)
+                    .accessibilityLabel("Album cover size")
+                    .accessibilityValue("\(Int((zoom * 100).rounded())) percent")
+            }
 
             Button { zoom = min(1, zoom + 0.25) } label: {
                 RoundedRectangle(cornerRadius: 3)
@@ -128,6 +135,7 @@ private struct GridZoomControl: View {
                     .frame(width: 14, height: 14)
             }
             .plainControl()
+            .accessibilityLabel("Larger album covers")
         }
     }
 }
@@ -193,6 +201,9 @@ private struct ArtistRow: View {
             .hoverHighlight(radius: 0)
         }
         .plainControl()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(artist.name), \(artist.summary)")
+        .accessibilityAddTraits(.isButton)
     }
 }
 
@@ -271,6 +282,17 @@ private struct AlbumCard: View {
         }
         .plainControl()
         .onHover { isHovering = $0 }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(spokenLabel)
+        .accessibilityAddTraits(.isButton)
+    }
+
+    private var spokenLabel: String {
+        var parts = [album.title, album.albumArtist]
+        if let year = album.year { parts.append(String(year)) }
+        if album.hasMultipleDiscs { parts.append("\(album.discCount) discs") }
+        if album.isCompilation { parts.append("Compilation") }
+        return parts.joined(separator: ", ")
     }
 }
 
@@ -301,6 +323,9 @@ private struct PlaylistList: View {
                 .padding(.horizontal, Tokens.Space.m)
                 .padding(.vertical, 10)
                 .hoverHighlight(radius: Tokens.Radius.card)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(playlist.name), \(playlist.summary), "
+                    + DurationFormat.approximate(playlist.duration))
             }
         }
         .padding(.horizontal, Tokens.Space.xl)

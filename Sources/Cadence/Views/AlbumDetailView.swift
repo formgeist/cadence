@@ -57,10 +57,12 @@ struct AlbumDetailView: View {
                         playback.play(album)
                     }
                     CapsuleButton(title: "Shuffle") { playback.shuffle(album) }
-                    CapsuleButton(systemImage: "plus") {
+                    CapsuleButton(systemImage: "plus",
+                                  accessibilityLabel: "Add album to queue") {
                         playback.appendToQueue(orderedTracks)
                     }
-                    CapsuleButton(systemImage: "ellipsis") {}
+                    CapsuleButton(systemImage: "ellipsis",
+                                  accessibilityLabel: "More actions") {}
                 }
                 .padding(.top, 10)
             }
@@ -115,7 +117,8 @@ struct AlbumDetailView: View {
         HStack(spacing: Tokens.Space.s) {
             if let format = album.dominantFormat {
                 QualityBadge(text: format.codec.name, emphasis: .accent)
-                QualityBadge(text: format.longDescription)
+                QualityBadge(text: format.longDescription,
+                             spokenText: NowPlayingPane.spokenFormat(format))
             }
         }
         .padding(.top, 2)
@@ -160,6 +163,8 @@ struct AlbumDetailView: View {
             Text("QUALITY").frame(width: 90, alignment: .leading)
             Text("TIME").frame(width: 56, alignment: .trailing)
         }
+        // Column headings are a visual aid; each row states its own values.
+        .accessibilityHidden(true)
         .font(Tokens.Typography.mono(10, .medium))
         .tracking(1.2)
         .foregroundStyle(Tokens.Palette.textMuted)
@@ -226,5 +231,24 @@ private struct TrackRow: View {
         }
         .plainControl()
         .onHover { isHovering = $0 }
+        // One stop per track, reading as a sentence, instead of four stops
+        // reading "01", a title, "16/44.1", "4:12".
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(spokenLabel)
+        .accessibilityAddTraits(isCurrent ? [.isButton, .isSelected] : .isButton)
+        .accessibilityHint("Plays this track")
+    }
+
+    private var spokenLabel: String {
+        var parts: [String] = []
+        if let number = track.trackNumber { parts.append("Track \(number)") }
+        parts.append(track.title)
+        if let subtitle = track.rowSubtitle(showingArtist: showsArtist) {
+            parts.append(subtitle)
+        }
+        parts.append(NowPlayingPane.spokenDuration(track.duration))
+        parts.append(NowPlayingPane.spokenFormat(track.format))
+        if isCurrent { parts.append("Now playing") }
+        return parts.joined(separator: ", ")
     }
 }

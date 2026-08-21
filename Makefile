@@ -6,7 +6,7 @@ TEST_FLAGS  := -Xlinker -L$(TESTING_LIB) -Xlinker -rpath -Xlinker $(TESTING_LIB)
 
 SNAPSHOT_DIR ?= Snapshots
 
-.PHONY: build test run app shots scan audio-check clean
+.PHONY: build test run app shots scan audio-check a11y bench clean
 
 build:
 	swift build
@@ -27,6 +27,15 @@ app:
 ## Answer PLAN.md §3: can a sandboxed build set the output sample rate?
 audio-check: app
 	@./build/Cadence.app/Contents/MacOS/Cadence --audio-check --switch-rates
+
+## Print the accessibility tree for each screen, flagging silent controls.
+a11y:
+	@swift run Cadence --a11y
+
+## Measure the store and scrolling against a synthetic library.
+##   make bench [TRACKS=30000]
+bench:
+	@swift run -c release Cadence --bench --tracks $(or $(TRACKS),30000) --with-artwork
 
 ## Render every screen against PreviewData for design review.
 shots:

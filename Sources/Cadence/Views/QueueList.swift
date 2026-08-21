@@ -17,6 +17,10 @@ struct QueueList: View {
         List {
             ForEach(upNext) { track in
                 QueueRow(track: track)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("\(track.title), \(track.artist), "
+                        + NowPlayingPane.spokenDuration(track.duration))
+                    .accessibilityHint("Plays this track. Drag to reorder.")
                     .listRowInsets(EdgeInsets(top: 1, leading: 0, bottom: 1, trailing: 0))
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
@@ -84,13 +88,21 @@ struct PlaybackOptions: View {
                 ModeToggle(
                     systemImage: "shuffle",
                     isOn: playback.shuffleMode.isOn,
-                    help: "Shuffle"
+                    help: "Shuffle",
+                    spokenLabel: "Shuffle",
+                    spokenValue: playback.shuffleMode.isOn ? "On" : "Off"
                 ) { playback.toggleShuffle() }
 
                 ModeToggle(
                     systemImage: playback.repeatMode == .one ? "repeat.1" : "repeat",
                     isOn: playback.repeatMode != .off,
-                    help: repeatHelp
+                    help: repeatHelp,
+                    // Without an explicit label the SF Symbol's own name leaks
+                    // through: "repeat.1" was being announced as "Repeat 1".
+                    spokenLabel: "Repeat",
+                    // The label already says "Repeat"; the value should not
+                    // repeat the word back.
+                    spokenValue: repeatValue
                 ) { playback.cycleRepeat() }
 
                 Spacer()
@@ -129,9 +141,20 @@ struct PlaybackOptions: View {
                 }
                 .plainControl()
                 .help(playback.isMuted ? "Unmute" : "Mute")
+                // The speaker symbol announces itself as "Volume High"
+                // otherwise, which describes the icon rather than the action.
+                .accessibilityLabel(playback.isMuted ? "Unmute" : "Mute")
 
                 VolumeSlider(value: $playback.volume)
             }
+        }
+    }
+
+    private var repeatValue: String {
+        switch playback.repeatMode {
+        case .off: "Off"
+        case .all: "Whole queue"
+        case .one: "This track"
         }
     }
 
@@ -155,6 +178,8 @@ private struct ModeToggle: View {
     var systemImage: String
     var isOn: Bool
     var help: String
+    var spokenLabel: String
+    var spokenValue: String
     var action: () -> Void
 
     @State private var isHovering = false
@@ -175,6 +200,9 @@ private struct ModeToggle: View {
         .plainControl()
         .onHover { isHovering = $0 }
         .help(help)
+        .accessibilityLabel(spokenLabel)
+        .accessibilityValue(spokenValue)
+        .accessibilityAddTraits(isOn ? .isSelected : [])
     }
 }
 
@@ -209,5 +237,13 @@ private struct VolumeSlider: View {
             )
         }
         .frame(height: 14)
+        // Same reason as the scrubber: a custom-drawn control needs to be
+        // represented as a real Slider or it reaches assistive technology with
+        // no role at all.
+        .accessibilityRepresentation {
+            Slider(value: $value, in: 0...1, step: 0.05)
+                .accessibilityLabel("Volume")
+                .accessibilityValue("\(Int((value * 100).rounded())) percent")
+        }
     }
 }

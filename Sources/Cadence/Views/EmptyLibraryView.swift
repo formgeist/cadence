@@ -20,6 +20,7 @@ struct EmptyLibraryView: View {
                     .font(.system(size: 30, weight: .ultraLight))
                     .foregroundStyle(Tokens.Palette.accent)
             }
+            .accessibilityHidden(true)
 
             VStack(spacing: Tokens.Space.s) {
                 Text("No music yet")
@@ -77,11 +78,13 @@ struct ImportProgressBar: View {
                     .frame(maxHeight: .infinity)
                 }
                 .frame(height: 12)
+                .accessibilityHidden(true)
 
                 Text(summary(progress))
                     .font(Tokens.Typography.mono(10.5))
                     .foregroundStyle(Tokens.Palette.textTertiary)
                     .monospacedDigit()
+                    .accessibilityLabel("Imported \(progress.processed) of \(progress.found)")
                     // A filename column that resizes with every file makes the
                     // whole strip twitch.
                     .frame(width: 190, alignment: .trailing)

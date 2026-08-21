@@ -65,6 +65,7 @@ private struct NavigationChevron: View {
         .plainControl()
         .disabled(!isEnabled)
         .onHover { isHovering = $0 }
+        .accessibilityLabel(direction == .backward ? "Back" : "Forward")
     }
 }
 
@@ -82,6 +83,7 @@ struct SearchField: View {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(Color(hex: 0x7A7A85))
+                    .accessibilityHidden(true)
 
                 TextField("Search artists, albums, tracks", text: $model.searchText)
                     .textFieldStyle(.plain)
@@ -89,6 +91,7 @@ struct SearchField: View {
                     .foregroundStyle(Color(hex: 0xF0F0F5))
                     .focused($isFocused)
                     .onSubmit { isFocused = false }
+                    .accessibilityLabel("Search library")
 
                 if !model.searchText.isEmpty {
                     Button {
@@ -100,6 +103,7 @@ struct SearchField: View {
                             .foregroundStyle(Color(hex: 0x7A7A85))
                     }
                     .plainControl()
+                    .accessibilityLabel("Clear search")
                 }
             }
             .padding(.horizontal, 14)

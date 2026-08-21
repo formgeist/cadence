@@ -57,7 +57,10 @@ struct ImmersiveView: View {
                 caption: "ALBUM ARTWORK\n1400 × 1400",
                 captionSize: 11,
                 stripe: 10,
-                displaySize: 600
+                displaySize: 600,
+                accessibilityLabel: playback.currentTrack.map {
+                    "Artwork for \($0.albumTitle)"
+                }
             )
             .frame(width: Tokens.Layout.immersiveArt, height: Tokens.Layout.immersiveArt)
             .shadow(color: .black.opacity(0.72), radius: 55, y: 30)
@@ -96,6 +99,7 @@ struct ImmersiveView: View {
                 .font(Tokens.Typography.sans(13, .medium))
                 .foregroundStyle(Color(hex: 0x6F6F7A))
         }
+        .accessibilityElement(children: .combine)
         .frame(maxWidth: 400, alignment: .leading)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
         .padding(.leading, 56)
@@ -121,7 +125,11 @@ struct ImmersiveView: View {
             TransportControls(size: .immersive)
 
             VStack(spacing: 7) {
-                ScrubBar(fraction: playback.progress.fraction, height: 4) { fraction in
+                ScrubBar(
+                    fraction: playback.progress.fraction,
+                    height: 4,
+                    accessibilityValue: NowPlayingPane.spokenPosition(playback.progress)
+                ) { fraction in
                     playback.seek(toFraction: fraction)
                 }
                 HStack {
@@ -132,6 +140,7 @@ struct ImmersiveView: View {
                 .font(Tokens.Typography.mono(10.5))
                 .foregroundStyle(Color(hex: 0x6A6A74))
                 .monospacedDigit()
+                .accessibilityHidden(true)
             }
             .frame(width: 420)
         }

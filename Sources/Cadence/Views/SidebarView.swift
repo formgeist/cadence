@@ -46,6 +46,8 @@ struct SidebarView: View {
                     .font(Tokens.Typography.mono(10.5))
                     .foregroundStyle(Color(hex: 0x7D7D88))
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Local library: \(model.librarySummary)")
             .padding(.horizontal, Tokens.Space.xl)
             .padding(.vertical, Tokens.Space.l)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -97,6 +99,7 @@ private struct NavigationRow: View {
         }
         .plainControl()
         .onHover { isHovering = $0 }
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 }
 
@@ -123,5 +126,7 @@ private struct PlaylistRow: View {
         }
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Playlist: \(playlist.name)")
     }
 }
