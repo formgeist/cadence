@@ -39,6 +39,7 @@ enum A11yHarness {
                 .environment(container.playback)
                 .environment(container.importer)
                 .environment(container.artworkLoader)
+                .environment(container.textEntry)
                 .environment(\.isSilentPlayback, container.isSilentPlayback)
                 .preferredColorScheme(.dark)
 

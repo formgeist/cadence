@@ -315,7 +315,6 @@ struct TransportControls: View {
             }
             .plainControl()
             .accessibilityLabel(playback.isPlaying ? "Pause" : "Play")
-            .keyboardShortcut(.space, modifiers: [])
 
             TransportButton(systemImage: "forward.fill", size: sideSize,
                             label: "Next track") {

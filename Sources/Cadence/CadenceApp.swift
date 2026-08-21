@@ -21,6 +21,9 @@ final class AppContainer {
     let model: AppModel
     let importer: LibraryImporter
     let artworkLoader: ArtworkLoader
+    /// Whether a text field has the keyboard, so the menu bar can get out of
+    /// its way — see `TextEntryMonitor`.
+    let textEntry = TextEntryMonitor()
     /// Held for the process lifetime: access must stay open for playback, not
     /// just for the import that first granted it.
     let folders: SecurityScopedFolders
@@ -140,6 +143,7 @@ struct CadenceApp: App {
                 .environment(container.playback)
                 .environment(container.importer)
                 .environment(container.artworkLoader)
+                .environment(container.textEntry)
                 .environment(\.isSilentPlayback, container.isSilentPlayback)
                 .frame(minWidth: Tokens.Layout.minWindow.width,
                        minHeight: Tokens.Layout.minWindow.height)
@@ -203,10 +207,18 @@ struct CadenceCommands: Commands {
         }
 
         CommandMenu("Playback") {
+            // The app's only owner of bare Space. A menu key equivalent is
+            // dispatched before the key window's responder chain sees the
+            // event, so this item would otherwise eat every space typed into
+            // the search field or the playlist name sheet. Disabled — not
+            // unbound — while one of them has the keyboard: a disabled item
+            // does not claim its key equivalent, and the keystroke carries on
+            // down to the field.
             Button(container.playback.isPlaying ? "Pause" : "Play") {
                 container.playback.togglePlayPause()
             }
             .keyboardShortcut(.space, modifiers: [])
+            .disabled(container.textEntry.isEditing)
 
             Button("Next Track") { container.playback.next() }
                 .keyboardShortcut(.rightArrow, modifiers: .command)
