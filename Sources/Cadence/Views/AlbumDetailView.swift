@@ -243,7 +243,9 @@ private struct TrackRow: View {
                 if case .active(let point) = phase { pointer = point }
             }
             // The whole row drags, not just the title.
-            .draggable(TrackSelection([track.id])) { dragPreview }
+            .draggable(TrackSelection([track.id])) {
+                TrackDragPreview.track(track).anchored(in: rowSize, at: pointer)
+            }
             .onTapGesture(count: 2, perform: onPlay)
             .onTapGesture(perform: onSelect)
             .onHover { isHovering = $0 }
@@ -257,32 +259,6 @@ private struct TrackRow: View {
             // VoiceOver has no double click. Activating the row plays it,
             // which is what the hint promises.
             .accessibilityAction(.default, onPlay)
-    }
-
-    /// The chip, carried inside a transparent stand-in the exact size of the
-    /// row.
-    ///
-    /// macOS lifts a drag preview from the *source view's* bounds, so a
-    /// preview smaller than the row gets flown in from wherever the row sits —
-    /// which on a full-width row means the middle of the window. Matching the
-    /// row's size means the preview starts exactly over the row and never
-    /// travels; the chip inside it is then free to sit wherever the pointer
-    /// was. Transparent everywhere else, so only the chip is visible.
-    private var dragPreview: some View {
-        TrackDragPreview.track(track)
-            .fixedSize()
-            // Clamped so a drag begun at the far right edge does not push the
-            // chip out past the stand-in, where it would be cut off. 200pt is
-            // the chip at its widest — a 150pt title plus glyph and padding.
-            .offset(x: min(max(0, pointer.x - 14), max(0, rowSize.width - 200)))
-            // Leading, not topLeading: the chip is centred vertically and only
-            // its horizontal position follows the pointer. A row is barely
-            // taller than the chip, so there is nothing to follow vertically —
-            // and an offset that tried would push the chip through the bottom
-            // of the stand-in, which clips it.
-            .frame(width: max(rowSize.width, 1),
-                   height: max(rowSize.height, TrackDragPreview.height),
-                   alignment: .leading)
     }
 
     private var row: some View {

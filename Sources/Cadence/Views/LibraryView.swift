@@ -312,6 +312,10 @@ struct AlbumCard: View {
     /// tell a record from its remaster.
     var subtitle: Subtitle = .artist
     @State private var isHovering = false
+    /// Where the pointer last was inside this card, and how big the card is —
+    /// between them they place the drag chip. See `anchored(in:at:)`.
+    @State private var pointer: CGPoint = .zero
+    @State private var cardSize: CGSize = .zero
 
     enum Subtitle { case artist, year }
 
@@ -350,9 +354,21 @@ struct AlbumCard: View {
         }
         .plainControl()
         .onHover { isHovering = $0 }
-        // A whole record onto a playlist row, in album order.
+        .background {
+            GeometryReader { geometry in
+                Color.clear
+                    .onAppear { cardSize = geometry.size }
+                    .onChange(of: geometry.size) { _, new in cardSize = new }
+            }
+        }
+        .onContinuousHover { phase in
+            if case .active(let point) = phase { pointer = point }
+        }
+        // A whole record onto a playlist row, in album order. Anchored the
+        // same way the track rows are, or the chip slides in from the middle
+        // of the cover to reach the pointer.
         .draggable(TrackSelection(album.discs.flatMap(\.tracks))) {
-            TrackDragPreview.album(album).fixedSize()
+            TrackDragPreview.album(album).anchored(in: cardSize, at: pointer)
         }
         .contextMenu {
             Button("Play") { playback.play(album) }

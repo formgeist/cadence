@@ -89,6 +89,34 @@ struct TrackDragPreview: View {
     /// render as a flat edge rather than a lift. The border separates it.
     static let height: CGFloat = 28
 
+    /// Places the chip inside a transparent stand-in the size of the view being
+    /// dragged, with the chip itself sitting where the pointer is.
+    ///
+    /// macOS lifts a drag preview from the source view's bounds. When the
+    /// preview is a different size it gets flown in from wherever the source
+    /// sits — which on an album card is a visible slide from the middle of the
+    /// cover into the pointer, and on a full-width row is a slide from the
+    /// middle of the window. Matching the source's size means the preview
+    /// starts exactly over it and never travels.
+    ///
+    /// Both offsets are clamped inside the stand-in, since anything outside it
+    /// is cut off: a drag begun on a row's time column, or low on a cover,
+    /// puts the chip at the edge rather than through it.
+    func anchored(in size: CGSize, at pointer: CGPoint) -> some View {
+        fixedSize()
+            .offset(x: min(max(0, pointer.x - 14), max(0, size.width - Self.width)),
+                    y: min(max(0, pointer.y - Self.height / 2),
+                           max(0, size.height - Self.height)))
+            .frame(width: max(size.width, 1),
+                   height: max(size.height, Self.height),
+                   alignment: .topLeading)
+    }
+
+    /// The chip at its widest — 190pt of text plus glyph, spacing and padding.
+    /// Only used to keep the clamps off the trailing edge; a shorter title
+    /// simply leaves more room.
+    static let width: CGFloat = 231
+
     /// One track on its way to a playlist.
     static func track(_ track: Track) -> TrackDragPreview {
         TrackDragPreview(systemImage: "music.note",
