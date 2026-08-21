@@ -10,14 +10,18 @@ struct LibraryView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            ScrollView {
-                switch model.tab {
-                case .artists: ArtistsList()
-                case .albums: AlbumGrid()
-                case .playlists: PlaylistList()
-                }
+            switch model.tab {
+            case .albums:
+                // Brings its own scroll view: the column count depends on the
+                // width, which needs a GeometryReader outside the scrolling.
+                AlbumGrid()
+            case .artists:
+                ScrollView { ArtistsList() }
+                    .scrollContentBackground(.hidden)
+            case .playlists:
+                ScrollView { PlaylistList() }
+                    .scrollContentBackground(.hidden)
             }
-            .scrollContentBackground(.hidden)
         }
         .background(Tokens.Palette.surface)
     }
@@ -198,18 +202,39 @@ private struct AlbumGrid: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        LazyVGrid(
-            columns: [GridItem(.adaptive(minimum: model.albumColumnWidth),
-                               spacing: Tokens.Space.xl)],
-            alignment: .leading,
-            spacing: Tokens.Space.xxl
-        ) {
-            ForEach(model.albums) { album in
-                AlbumCard(album: album)
+        // The column count is computed rather than left to
+        // `GridItem(.adaptive(minimum:))`. Adaptive columns cost a full layout
+        // pass over every item to decide how many fit, which stops LazyVGrid
+        // being lazy at all: at 2,500 albums a single scrolled frame took 1.6
+        // seconds. Fixed columns keep it to the rows on screen.
+        GeometryReader { geometry in
+            let available = geometry.size.width - Tokens.Space.contentInset * 2
+            let columns = Self.columnCount(for: available,
+                                           minimum: model.albumColumnWidth)
+            ScrollView {
+                LazyVGrid(
+                    columns: Array(repeating: GridItem(.flexible(),
+                                                       spacing: Tokens.Space.xl),
+                                   count: columns),
+                    alignment: .leading,
+                    spacing: Tokens.Space.xxl
+                ) {
+                    ForEach(model.albums) { album in
+                        AlbumCard(album: album)
+                    }
+                }
+                .padding(.horizontal, Tokens.Space.contentInset)
+                .padding(.vertical, Tokens.Space.xxl)
             }
+            .scrollContentBackground(.hidden)
         }
-        .padding(.horizontal, Tokens.Space.contentInset)
-        .padding(.vertical, Tokens.Space.xxl)
+    }
+
+    /// How many cards of at least `minimum` points fit, never fewer than one.
+    static func columnCount(for width: CGFloat, minimum: CGFloat) -> Int {
+        guard width > 0, minimum > 0 else { return 1 }
+        let spacing = Tokens.Space.xl
+        return max(1, Int((width + spacing) / (minimum + spacing)))
     }
 }
 
