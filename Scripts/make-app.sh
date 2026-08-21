@@ -19,6 +19,7 @@ CONFIG="${CONFIG:-debug}"
 APP="${APP:-build/Cadence.app}"
 BUNDLE_ID="${BUNDLE_ID:-com.formgeist.cadence}"
 VERSION="${VERSION:-0.1.0}"
+ICONSET="${ICONSET:-Icon/AppIcon.iconset}"
 # Ad-hoc by default. Set SIGN_IDENTITY to a Developer ID for distribution.
 SIGN_IDENTITY="${SIGN_IDENTITY:--}"
 
@@ -51,6 +52,17 @@ done
 install_name_tool -add_rpath "@executable_path/../Frameworks" \
     "$APP/Contents/MacOS/Cadence" 2>/dev/null || true
 
+# The icon. An asset catalog would need actool, which is Xcode's; .icns is the
+# format that predates it and iconutil ships with Command Line Tools, so the
+# .iconset in Icon/ stays the source and the .icns is a build product.
+if [ -d "$ICONSET" ]; then
+    iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
+    ICON_KEY='<key>CFBundleIconFile</key>              <string>AppIcon</string>'
+else
+    echo "No iconset at $ICONSET — bundling without an icon." >&2
+    ICON_KEY=''
+fi
+
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -60,6 +72,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleDisplayName</key>           <string>Cadence</string>
     <key>CFBundleIdentifier</key>            <string>$BUNDLE_ID</string>
     <key>CFBundleExecutable</key>            <string>Cadence</string>
+    $ICON_KEY
     <key>CFBundlePackageType</key>           <string>APPL</string>
     <key>CFBundleShortVersionString</key>    <string>$VERSION</string>
     <key>CFBundleVersion</key>               <string>$VERSION</string>

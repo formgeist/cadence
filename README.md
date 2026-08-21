@@ -205,12 +205,30 @@ Expected filenames: `Manrope-Regular`, `Manrope-Medium`, `Manrope-SemiBold`,
 `Manrope-Bold`, `Manrope-ExtraBold`, `IBMPlexMono-Regular`,
 `IBMPlexMono-Medium`.
 
+## App icon
+
+A red grooved disc on a black squircle. The source is the `.iconset` in
+[`Icon/`](Icon/README.md) — ten PNGs from 16 to 1024 — and `make app` runs
+`iconutil` over it, writing `AppIcon.icns` into the bundle and pointing
+`CFBundleIconFile` at it.
+
+`.icns` rather than an asset catalog for the same reason there is no
+`.xcodeproj`: catalogs are compiled by `actool`, which is Xcode's, while
+`iconutil` ships with Command Line Tools. Nothing is lost at this stage —
+catalogs matter for App Store submission and for the macOS 26 appearance
+variants, neither of which is in reach yet.
+
+The icon only appears in the bundled app. `make run` launches the SwiftPM
+executable, which has no bundle and so takes the generic placeholder in the
+Dock; check the icon with `make app` and Finder.
+
 ## Bundling without Xcode
 
 There is no Xcode on this machine and therefore no `.xcodeproj` — but an `.app`
 is a directory with a known shape, and [`Scripts/make-app.sh`](Scripts/make-app.sh)
-assembles one: Info.plist, the resource bundles, the ten decoder frameworks,
-and an ad-hoc signature with the sandbox entitlements from PLAN.md §5.
+assembles one: Info.plist, the resource bundles, the icon, the ten decoder
+frameworks, and an ad-hoc signature with the sandbox entitlements from
+PLAN.md §5.
 
 That matters more than convenience. A real bundle identity is what Now Playing,
 media keys, the app sandbox, security-scoped bookmarks and window restoration
