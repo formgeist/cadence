@@ -221,12 +221,29 @@ private struct TrackRow: View {
     var onPlay: () -> Void
 
     @State private var isHovering = false
+    /// Where the pointer last was inside this row, in the row's own
+    /// coordinates. Read at drag start to decide where the chip appears; the
+    /// pointer is by definition over the row when the drag begins.
+    @State private var pointer: CGPoint = .zero
+    @State private var rowSize: CGSize = .zero
 
     var body: some View {
         row
             .padding(.horizontal, 10)
             .padding(.vertical, 9)
             .hoverHighlight(isActive: isCurrent || isSelected)
+            .background {
+                GeometryReader { geometry in
+                    Color.clear
+                        .onAppear { rowSize = geometry.size }
+                        .onChange(of: geometry.size) { _, new in rowSize = new }
+                }
+            }
+            .onContinuousHover { phase in
+                if case .active(let point) = phase { pointer = point }
+            }
+            // The whole row drags, not just the title.
+            .draggable(TrackSelection([track.id])) { dragPreview }
             .onTapGesture(count: 2, perform: onPlay)
             .onTapGesture(perform: onSelect)
             .onHover { isHovering = $0 }
@@ -240,6 +257,27 @@ private struct TrackRow: View {
             // VoiceOver has no double click. Activating the row plays it,
             // which is what the hint promises.
             .accessibilityAction(.default, onPlay)
+    }
+
+    /// The chip, carried inside a transparent stand-in the exact size of the
+    /// row.
+    ///
+    /// macOS lifts a drag preview from the *source view's* bounds, so a
+    /// preview smaller than the row gets flown in from wherever the row sits —
+    /// which on a full-width row means the middle of the window. Matching the
+    /// row's size means the preview starts exactly over the row and never
+    /// travels; the chip inside it is then free to sit wherever the pointer
+    /// was. Transparent everywhere else, so only the chip is visible.
+    private var dragPreview: some View {
+        TrackDragPreview.track(track)
+            .fixedSize()
+            // Clamped so a drag begun at the far right edge does not push the
+            // chip out past the stand-in, where it would be cut off. 200pt is
+            // the chip at its widest — a 150pt title plus glyph and padding.
+            .offset(x: min(max(0, pointer.x - 14), max(0, rowSize.width - 200)),
+                    y: pointer.y - 15)
+            .frame(width: rowSize.width, height: rowSize.height,
+                   alignment: .topLeading)
     }
 
     private var row: some View {
@@ -271,18 +309,6 @@ private struct TrackRow: View {
                     .foregroundStyle(isCurrent
                                      ? Tokens.Palette.accent : Color(hex: 0xE6E6EC))
                     .lineLimit(1)
-                    // The drag starts from the title, not the whole row. macOS
-                    // lifts the preview from the *source view's* bounds and
-                    // flies it to the pointer, so a full-width row throws the
-                    // chip out into the middle of the window before it catches
-                    // up. A title is a few hundred points wide at most, and is
-                    // what you reach for anyway.
-                    // `.fixedSize` because the preview is offered the source's
-                    // width, and a short title would otherwise clip the chip
-                    // to a few characters of itself.
-                    .draggable(TrackSelection([track.id])) {
-                        TrackDragPreview.track(track).fixedSize()
-                    }
                 if let subtitle = track.rowSubtitle(showingArtist: showsArtist) {
                     Text(subtitle)
                         .font(Tokens.Typography.sans(11, .medium))
