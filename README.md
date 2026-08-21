@@ -7,8 +7,8 @@ gapless playback, and an interface that isn't a reskin of iTunes.
 the artwork, builds a searchable SQLite library, and decodes it through
 SFBAudioEngine with gapless transitions.
 
-The build plan and open questions live in `PLAN.md`, which is kept
-locally and deliberately not tracked in this repo.
+Remaining work is tracked as [issues](https://github.com/formgeist/cadence/issues),
+grouped into the Phase 6 (Depth) and Phase 7 (Release) milestones.
 
 ```bash
 make run                          # launch the app
@@ -59,9 +59,9 @@ reference — a harness that only did that would report a gap the app does not
 have, and would have missed the artwork crash above.
 
 Diagnostics need the unsandboxed build (`swift run`), since the bundled app can
-only reach folders you granted through the picker. A restart is the bug PLAN.md §7 warns about; engine-driven
-is what gapless looks like from the outside. Whether the seam is *audible*
-still needs headphones.
+only reach folders you granted through the picker. A restart means the handshake
+failed; engine-driven is what gapless looks like from the outside. Whether the
+seam is *audible* still needs headphones.
 
 ## System integration
 
@@ -93,8 +93,8 @@ destination changed.
 
 Pressing play afterwards hands the file to the engine again and seeks back,
 rather than calling `resume()` on a graph that is no longer connected to
-anything. That call appears to succeed and produces silence, which is the
-"silently stall" PLAN.md §6 rules out.
+anything. That call appears to succeed and produces silence, which is the silent
+stall that losing a device must never produce.
 
 ## Accessibility
 
@@ -128,8 +128,9 @@ sample rates are spelled out, because "5:38" read aloud is ambiguous and
 make bench
 ```
 
-Generates a synthetic library and measures the store and scrolling. Answers
-PLAN.md §3's last question, though not the question as asked: the design uses
+Generates a synthetic library and measures the store and scrolling. This
+settles the list-performance question, though not as it was posed — it asked
+whether SwiftUI `Table` stays smooth at library size, and the design uses
 `LazyVGrid` and `LazyVStack`, never `Table`.
 
 At 30,000 tracks the artists list holds the display's frame rate. The album grid
@@ -145,11 +146,11 @@ shadow looks like a 1.6-second frame.
 
 Folders are remembered as **app-scoped bookmarks**, not paths. Without them the
 music folder becomes unreadable on the second launch of a sandboxed build and
-there is no workaround — PLAN.md §5.
+there is no workaround.
 
-`SecurityScopedFolders` also handles the half of §7 that is easier to get
-wrong: every `startAccessingSecurityScopedResource()` must be paired with a
-stop, because leaked scopes eventually exhaust the kernel's limit and file
+`SecurityScopedFolders` also handles the half that is easier to get wrong:
+every `startAccessingSecurityScopedResource()` must be paired with a stop,
+because leaked scopes eventually exhaust the kernel's limit and file
 access starts failing in ways that look like corruption. Access is therefore
 handed out as a token whose lifetime *is* the access — there is no unpaired
 call to forget. Bookmarks that go stale are re-made in place, so a folder that
@@ -274,8 +275,7 @@ Dock; check the icon with `make app` and Finder.
 There is no Xcode on this machine and therefore no `.xcodeproj` — but an `.app`
 is a directory with a known shape, and [`Scripts/make-app.sh`](Scripts/make-app.sh)
 assembles one: Info.plist, the resource bundles, the icon, the ten decoder
-frameworks, and an ad-hoc signature with the sandbox entitlements from
-PLAN.md §5.
+frameworks, and an ad-hoc signature with the sandbox entitlements.
 
 That matters more than convenience. A real bundle identity is what Now Playing,
 media keys, the app sandbox, security-scoped bookmarks and window restoration
@@ -294,9 +294,9 @@ swift-testing is an explicit package dependency scoped to the test target, and
 
 ## Bit-perfect output
 
-PLAN.md §3 calls the sandbox question the one that could reshape the release
-plan: if a sandboxed build cannot set `kAudioDevicePropertyNominalSampleRate`,
-the choice is direct distribution or the App Store without bit-perfect output.
+The sandbox question is the one that could reshape the release plan: if a
+sandboxed build cannot set `kAudioDevicePropertyNominalSampleRate`, the choice
+is direct distribution or the App Store without bit-perfect output.
 
 **It can.** A sandboxed, signed build switches the output device rate and it
 takes effect:
@@ -330,7 +330,7 @@ SFBAudioEngine pulls in three LGPL components — lame, mpg123 and musepack — 
 they arrive as **dynamic** frameworks, which is what makes them compatible with
 an MIT app. Two things follow at phase 7: embed them as frameworks rather than
 merging them into the binary, and ship their licence texts. Statically linking
-them would be the case PLAN.md §8 rules out.
+them would forfeit that compatibility.
 
 Bundled fonts are licensed separately under the SIL Open Font License —
 [Manrope](Sources/Cadence/Resources/OFL-Manrope.txt) and
