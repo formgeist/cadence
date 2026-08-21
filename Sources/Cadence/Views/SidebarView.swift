@@ -26,17 +26,34 @@ struct SidebarView: View {
             }
             .padding(.horizontal, 10)
 
-            SectionLabel("Playlists")
-                .padding(.horizontal, 18)
-                .padding(.top, Tokens.Space.xxl)
-                .padding(.bottom, 6)
-
-            VStack(spacing: 1) {
-                ForEach(model.playlists) { playlist in
-                    PlaylistRow(playlist: playlist)
+            HStack(spacing: Tokens.Space.s) {
+                SectionLabel("Playlists")
+                Spacer(minLength: 0)
+                IconButton(systemImage: "plus", label: "New playlist") {
+                    model.isCreatingPlaylist = true
                 }
             }
-            .padding(.horizontal, 10)
+            .padding(.leading, 18)
+            // The button's own 20pt box carries the rest of the inset, so the
+            // glyph lines up with the rows' hover wash rather than the text.
+            .padding(.trailing, 12)
+            .padding(.top, Tokens.Space.xl)
+            .padding(.bottom, 6)
+
+            if model.playlists.isEmpty {
+                Text("Nothing yet")
+                    .font(Tokens.Typography.sans(11.5, .medium))
+                    .foregroundStyle(Color(hex: 0x55555F))
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 2)
+            } else {
+                VStack(spacing: 1) {
+                    ForEach(model.playlists) { playlist in
+                        PlaylistRow(playlist: playlist)
+                    }
+                }
+                .padding(.horizontal, 10)
+            }
 
             Spacer(minLength: Tokens.Space.l)
 
@@ -62,10 +79,14 @@ struct SidebarView: View {
         }
     }
 
-    /// An album screen keeps its parent tab lit, so the sidebar never goes
-    /// blank when you drill in.
+    /// An artist screen keeps Artists lit, so the sidebar does not go blank
+    /// the moment you drill in.
     private func isSelected(_ tab: AppModel.Tab) -> Bool {
-        model.screen == .library && model.tab == tab
+        switch model.screen {
+        case .library: model.tab == tab
+        case .artist: tab == .artists
+        case .album: false
+        }
     }
 }
 

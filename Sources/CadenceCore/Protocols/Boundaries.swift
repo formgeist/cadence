@@ -112,6 +112,11 @@ public protocol LibraryStore: Sendable {
     func artists() async throws -> [Artist]
     func albums(byArtist name: String) async throws -> [Album]
     func playlists() async throws -> [Playlist]
+    /// Creates an empty playlist and returns it, so the caller can select the
+    /// row it just made without guessing which of several same-named
+    /// playlists is the new one.
+    @discardableResult
+    func createPlaylist(named name: String) async throws -> Playlist
     func tracks(matching query: String) async throws -> [Track]
     func upsert(_ tracks: [Track]) async throws
     /// Total bytes on disk, for the sidebar footer.

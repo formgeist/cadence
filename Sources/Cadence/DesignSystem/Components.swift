@@ -330,6 +330,79 @@ extension View {
     func plainControl() -> some View { buttonStyle(PlainControlStyle()) }
 }
 
+/// One glyph, a hover wash, and a name for VoiceOver. The sidebar's add
+/// button and anything else too small to carry a label.
+struct IconButton: View {
+    var systemImage: String
+    /// Required: a glyph alone says nothing aloud, and it doubles as the
+    /// tooltip.
+    var label: String
+    var glyphSize: CGFloat = 11
+    var side: CGFloat = 20
+    var action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: glyphSize, weight: .semibold))
+                .foregroundStyle(isHovering
+                                 ? Color(hex: 0xEDEDF2) : Color(hex: 0x6E6E78))
+                .frame(width: side, height: side)
+                .background {
+                    RoundedRectangle(cornerRadius: Tokens.Radius.control,
+                                     style: .continuous)
+                        .fill(isHovering ? Tokens.Palette.navHover : .clear)
+                }
+        }
+        .plainControl()
+        .onHover { isHovering = $0 }
+        .accessibilityLabel(label)
+        .help(label)
+    }
+}
+
+/// A screen with nothing on it yet: the ring mark, what is missing, and the
+/// one action that fixes it. Shared so an empty library and an empty playlist
+/// shelf do not drift into two different apologies.
+struct EmptyState<Action: View>: View {
+    var systemImage: String
+    var title: String
+    var message: String
+    @ViewBuilder var action: Action
+
+    var body: some View {
+        VStack(spacing: Tokens.Space.l) {
+            ZStack {
+                Circle()
+                    .strokeBorder(Tokens.Palette.accent.opacity(0.25), lineWidth: 1)
+                    .frame(width: 88, height: 88)
+                Image(systemName: systemImage)
+                    .font(.system(size: 30, weight: .ultraLight))
+                    .foregroundStyle(Tokens.Palette.accent)
+            }
+            .accessibilityHidden(true)
+
+            VStack(spacing: Tokens.Space.s) {
+                Text(title)
+                    .font(Tokens.Typography.sans(22, .heavy))
+                    .tracking(-0.4)
+                    .foregroundStyle(Tokens.Palette.textPrimary)
+
+                Text(message)
+                    .font(Tokens.Typography.caption)
+                    .foregroundStyle(Tokens.Palette.textTertiary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(3)
+            }
+
+            action
+                .padding(.top, Tokens.Space.xs)
+        }
+    }
+}
+
 /// The accent-filled Play pill and its outlined siblings on the album header.
 struct CapsuleButton: View {
     enum Kind { case filled, outlined }

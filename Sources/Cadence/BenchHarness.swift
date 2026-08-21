@@ -9,7 +9,7 @@ import CadenceLibrary
 ///
 /// The plan asks whether SwiftUI `Table` stays smooth at library size. The
 /// design uses `LazyVStack` and `LazyVGrid` instead, so the question stands but
-/// against different views: does the artists list, the album grid, or an album
+/// against different views: does the artists grid, the album grid, or an album
 /// of thousands of rows stay responsive once the library is large?
 ///
 /// Store timings are straightforward. Scrolling is measured on a real, visible
@@ -79,7 +79,7 @@ enum BenchHarness {
         print("")
         let loader = ArtworkLoader(store: options.withArtwork ? artworkStore : nil)
         try await measureScrolling(model: model, tab: .artists,
-                                   label: "Artists list", loader: loader)
+                                   label: "Artists grid", loader: loader)
         try await measureScrolling(model: model, tab: .albums,
                                    label: "Albums grid", loader: loader)
 

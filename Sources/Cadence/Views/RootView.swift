@@ -7,7 +7,9 @@ struct RootView: View {
     @Environment(LibraryImporter.self) private var importer
 
     var body: some View {
-        ZStack {
+        @Bindable var model = model
+
+        return ZStack {
             VStack(spacing: 0) {
                 TitleBarView()
                 ImportProgressBar()
@@ -25,9 +27,15 @@ struct RootView: View {
             }
         }
         .background(Tokens.Palette.surface)
+        // The header *is* the title bar — see `WindowChrome`. Without this
+        // SwiftUI insets the whole window by the title bar's height and the
+        // header lands in a second band below the traffic lights, which is
+        // issue #15 exactly.
+        .ignoresSafeArea(.container, edges: .top)
         .animation(.easeInOut(duration: 0.2), value: model.isImmersive)
         .animation(.easeOut(duration: 0.2), value: importer.isImporting)
         .animation(.easeOut(duration: 0.2), value: playback.notice)
+        .animation(.easeOut(duration: 0.2), value: model.actionError)
         .task {
             await model.load()
             // A library that already has folders rescans on launch, so files
@@ -37,6 +45,11 @@ struct RootView: View {
             }
         }
         .overlay(alignment: .bottom) { errorBanner }
+        .sheet(isPresented: $model.isCreatingPlaylist) {
+            // A sheet is its own window; the model has to be handed across.
+            NewPlaylistSheet()
+                .environment(model)
+        }
     }
 
     @ViewBuilder
@@ -57,16 +70,22 @@ struct RootView: View {
             if let album = model.album(for: key) {
                 AlbumDetailView(album: album)
             } else {
-                missingAlbum
+                missing("That album is no longer in your library")
+            }
+        case .artist(let name):
+            if let artist = model.artist(named: name) {
+                ArtistDetailView(artist: artist)
+            } else {
+                missing("That artist is no longer in your library")
             }
         }
     }
 
-    /// An album can vanish under you — a rescan drops the folder, the file
+    /// A record can vanish under you — a rescan drops the folder, the file
     /// moves. Better a stated dead end than an empty pane.
-    private var missingAlbum: some View {
+    private func missing(_ message: String) -> some View {
         VStack(spacing: Tokens.Space.m) {
-            Text("That album is no longer in your library")
+            Text(message)
                 .font(Tokens.Typography.sans(14, .semibold))
                 .foregroundStyle(Tokens.Palette.textSecondary)
             Button("Back to library") { model.show(.library) }
@@ -82,7 +101,13 @@ struct RootView: View {
     /// ways a file goes missing under a player that assumed it wouldn't.
     @ViewBuilder
     private var errorBanner: some View {
-        if let notice = playback.notice {
+        if let failure = model.actionError {
+            Banner(text: failure,
+                   icon: "exclamationmark.triangle.fill",
+                   tint: Tokens.Palette.accent) {
+                model.actionError = nil
+            }
+        } else if let notice = playback.notice {
             Banner(text: notice, icon: "headphones", tint: Tokens.Palette.textSecondary) {
                 playback.clearNotice()
             }

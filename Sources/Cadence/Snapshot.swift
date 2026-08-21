@@ -20,7 +20,19 @@ enum Snapshot {
     struct Shot {
         var name: String
         var size: CGSize
+        /// Stands in for the preview library, for the states that are defined
+        /// by what the library does *not* have.
+        var store: (@Sendable () -> any LibraryStore)?
         var configure: (AppContainer) -> Void
+
+        init(name: String, size: CGSize,
+             store: (@Sendable () -> any LibraryStore)? = nil,
+             configure: @escaping (AppContainer) -> Void) {
+            self.name = name
+            self.size = size
+            self.store = store
+            self.configure = configure
+        }
     }
 
     static let shots: [Shot] = [
@@ -80,6 +92,23 @@ enum Snapshot {
             container.playback.stop()
         },
 
+        // Every album an artist has, which is what an artist row opens now.
+        Shot(name: "13-artist", size: Tokens.Layout.defaultWindow) { container in
+            container.model.show(.artist("Vera Lindqvist"))
+        },
+
+        // Nothing imported yet. The first screen anyone sees.
+        Shot(name: "14-empty-library", size: Tokens.Layout.defaultWindow,
+             store: { PreviewData.emptyStore() }) { container in
+            container.playback.stop()
+        },
+
+        // A library with records but no playlists, which is most of them.
+        Shot(name: "15-playlists-empty", size: Tokens.Layout.defaultWindow,
+             store: { PreviewData.store(playlists: []) }) { container in
+            container.model.tab = .playlists
+        },
+
         // The smallest window the layout has to survive.
         Shot(name: "12-minimum-window", size: Tokens.Layout.minWindow) { container in
             container.model.tab = .albums
@@ -115,7 +144,7 @@ enum Snapshot {
         var retained: [NSWindow] = []
 
         for shot in shots {
-            let container = AppContainer(mode: .preview)
+            let container = AppContainer(mode: .preview, store: shot.store?())
             await container.model.load()
             container.playback.play(PreviewData.slowHours[2], in: PreviewData.slowHours)
             container.playback.seek(to: 88)

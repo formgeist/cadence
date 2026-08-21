@@ -14,13 +14,16 @@ struct LibraryView: View {
             case .albums:
                 // Brings its own scroll view: the column count depends on the
                 // width, which needs a GeometryReader outside the scrolling.
-                AlbumGrid()
+                AlbumGrid(albums: model.albums)
             case .artists:
-                ScrollView { ArtistsList() }
-                    .scrollContentBackground(.hidden)
+                ArtistGrid()
             case .playlists:
-                ScrollView { PlaylistList() }
-                    .scrollContentBackground(.hidden)
+                if model.playlists.isEmpty {
+                    PlaylistsEmptyState()
+                } else {
+                    ScrollView { PlaylistList() }
+                        .scrollContentBackground(.hidden)
+                }
             }
         }
         .background(Tokens.Palette.surface)
@@ -142,65 +145,101 @@ private struct GridZoomControl: View {
 
 // MARK: - Artists
 
-private struct ArtistsList: View {
+/// A grid, not a list. The format column the list carried is gone with it:
+/// every file in the library is lossless, so "FLAC" on every row was a column
+/// that never varied — see issue #17.
+private struct ArtistGrid: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        LazyVStack(alignment: .leading, spacing: 0, pinnedViews: []) {
-            ForEach(model.artistSections) { section in
-                HStack(spacing: 14) {
-                    Text(section.letter)
-                        .font(Tokens.Typography.mono(12, .medium))
-                        .tracking(1.2)
-                        .foregroundStyle(Tokens.Palette.accent)
-                    Rectangle().fill(Tokens.Palette.separator).frame(height: 1)
+        // Fixed columns for the same reason `AlbumGrid` uses them: adaptive
+        // ones lay out every item before drawing any.
+        GeometryReader { geometry in
+            let available = geometry.size.width - Tokens.Space.contentInset * 2
+            let columns = GridMetrics.columnCount(
+                for: available, minimum: Tokens.Layout.artistColumnWidth)
+            ScrollView {
+                LazyVGrid(
+                    columns: Array(repeating: GridItem(.flexible(),
+                                                       spacing: Tokens.Space.xl),
+                                   count: columns),
+                    alignment: .leading,
+                    spacing: Tokens.Space.xxl,
+                    pinnedViews: []
+                ) {
+                    ForEach(model.artistSections) { section in
+                        // The alphabet rails survive the move to a grid: a
+                        // section header in a LazyVGrid spans the full width,
+                        // so it still reads as a shelf divider.
+                        Section {
+                            ForEach(section.artists) { artist in
+                                ArtistCard(artist: artist)
+                            }
+                        } header: {
+                            LetterRail(letter: section.letter)
+                        }
+                    }
                 }
                 .padding(.horizontal, Tokens.Space.contentInset)
-                .padding(.top, Tokens.Space.xl)
-                .padding(.bottom, Tokens.Space.s)
-
-                ForEach(section.artists) { artist in
-                    ArtistRow(artist: artist)
-                }
+                .padding(.bottom, 40)
             }
+            .scrollContentBackground(.hidden)
         }
-        .padding(.top, Tokens.Space.s)
-        .padding(.bottom, 40)
     }
 }
 
-private struct ArtistRow: View {
-    @Environment(AppModel.self) private var model
-    var artist: Artist
+private struct LetterRail: View {
+    var letter: String
 
     var body: some View {
-        Button {
-            if let album = model.albums.first(where: { $0.albumArtist == artist.name }) {
-                model.show(.album(album.key))
-            }
-        } label: {
-            HStack(spacing: 14) {
-                ArtworkView(artworkID: nil, isCircular: true, displaySize: 48)
-                    .frame(width: 44, height: 44)
-                VStack(alignment: .leading, spacing: 3) {
+        HStack(spacing: 14) {
+            Text(letter)
+                .font(Tokens.Typography.mono(12, .medium))
+                .tracking(1.2)
+                .foregroundStyle(Tokens.Palette.accent)
+            Rectangle().fill(Tokens.Palette.separator).frame(height: 1)
+        }
+        .padding(.top, Tokens.Space.xl)
+        .padding(.bottom, Tokens.Space.xs)
+        .background(Tokens.Palette.surface)
+    }
+}
+
+private struct ArtistCard: View {
+    @Environment(AppModel.self) private var model
+    var artist: Artist
+    @State private var isHovering = false
+
+    var body: some View {
+        // The artist screen, not the first album that happens to match — an
+        // artist with ten records had nine of them unreachable from here.
+        Button { model.show(.artist(artist.name)) } label: {
+            VStack(spacing: 11) {
+                ArtworkView(artworkID: model.artworkID(forArtist: artist.name),
+                            isCircular: true,
+                            displaySize: 200)
+                    .aspectRatio(1, contentMode: .fit)
+                    .shadow(color: .black.opacity(0.4), radius: 12, y: 6)
+
+                VStack(spacing: 3) {
                     Text(artist.name)
-                        .font(Tokens.Typography.rowTitle)
-                        .foregroundStyle(Color(hex: 0xEAEAEF))
-                        .lineLimit(1)
+                        // Two lines, then truncation: holding the second line
+                        // open put a visible gap under every one-line name.
+                        .font(Tokens.Typography.cardTitle)
+                        .foregroundStyle(Color(hex: 0xEBEBF0))
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
                     Text(artist.summary)
                         .font(Tokens.Typography.caption)
                         .foregroundStyle(Tokens.Palette.textTertiary)
+                        .lineLimit(1)
                 }
-                Spacer(minLength: Tokens.Space.l)
-                Text(artist.formatSummary)
-                    .font(Tokens.Typography.mono(11))
-                    .foregroundStyle(Tokens.Palette.textFaint)
+                .frame(maxWidth: .infinity)
             }
-            .padding(.horizontal, Tokens.Space.contentInset)
-            .padding(.vertical, 9)
-            .hoverHighlight(radius: 0)
+            .opacity(isHovering ? 0.86 : 1)
         }
         .plainControl()
+        .onHover { isHovering = $0 }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(artist.name), \(artist.summary)")
         .accessibilityAddTraits(.isButton)
@@ -209,8 +248,23 @@ private struct ArtistRow: View {
 
 // MARK: - Albums
 
-private struct AlbumGrid: View {
+/// How many cards of at least `minimum` points fit across `width`, never fewer
+/// than one. Shared by both grids so they wrap at the same rhythm.
+enum GridMetrics {
+    static func columnCount(for width: CGFloat, minimum: CGFloat,
+                            spacing: CGFloat = Tokens.Space.xl) -> Int {
+        guard width > 0, minimum > 0 else { return 1 }
+        return max(1, Int((width + spacing) / (minimum + spacing)))
+    }
+}
+
+/// The album grid, optionally under a header that scrolls away with it — the
+/// artist screen puts its name and counts there.
+struct AlbumGrid<Header: View>: View {
     @Environment(AppModel.self) private var model
+    var albums: [Album]
+    var subtitle: AlbumCard.Subtitle = .artist
+    @ViewBuilder var header: Header
 
     var body: some View {
         // The column count is computed rather than left to
@@ -220,9 +274,10 @@ private struct AlbumGrid: View {
         // seconds. Fixed columns keep it to the rows on screen.
         GeometryReader { geometry in
             let available = geometry.size.width - Tokens.Space.contentInset * 2
-            let columns = Self.columnCount(for: available,
-                                           minimum: model.albumColumnWidth)
+            let columns = GridMetrics.columnCount(for: available,
+                                                  minimum: model.albumColumnWidth)
             ScrollView {
+                header
                 LazyVGrid(
                     columns: Array(repeating: GridItem(.flexible(),
                                                        spacing: Tokens.Space.xl),
@@ -230,8 +285,8 @@ private struct AlbumGrid: View {
                     alignment: .leading,
                     spacing: Tokens.Space.xxl
                 ) {
-                    ForEach(model.albums) { album in
-                        AlbumCard(album: album)
+                    ForEach(albums) { album in
+                        AlbumCard(album: album, subtitle: subtitle)
                     }
                 }
                 .padding(.horizontal, Tokens.Space.contentInset)
@@ -240,19 +295,31 @@ private struct AlbumGrid: View {
             .scrollContentBackground(.hidden)
         }
     }
+}
 
-    /// How many cards of at least `minimum` points fit, never fewer than one.
-    static func columnCount(for width: CGFloat, minimum: CGFloat) -> Int {
-        guard width > 0, minimum > 0 else { return 1 }
-        let spacing = Tokens.Space.xl
-        return max(1, Int((width + spacing) / (minimum + spacing)))
+extension AlbumGrid where Header == EmptyView {
+    init(albums: [Album]) {
+        self.init(albums: albums, subtitle: .artist, header: { EmptyView() })
     }
 }
 
-private struct AlbumCard: View {
+struct AlbumCard: View {
     @Environment(AppModel.self) private var model
     var album: Album
+    /// What the second line says. The library grid names the artist; an
+    /// artist's own page already knows who they are, and needs the year to
+    /// tell a record from its remaster.
+    var subtitle: Subtitle = .artist
     @State private var isHovering = false
+
+    enum Subtitle { case artist, year }
+
+    private var subtitleText: String {
+        switch subtitle {
+        case .artist: album.albumArtist
+        case .year: album.year.map(String.init) ?? "Year unknown"
+        }
+    }
 
     var body: some View {
         Button { model.show(.album(album.key)) } label: {
@@ -272,7 +339,7 @@ private struct AlbumCard: View {
                         // rather than pushing the grid rows out of alignment.
                         .lineLimit(2, reservesSpace: true)
                         .multilineTextAlignment(.leading)
-                    Text(album.albumArtist)
+                    Text(subtitleText)
                         .font(Tokens.Typography.caption)
                         .foregroundStyle(Tokens.Palette.textTertiary)
                         .lineLimit(1)
@@ -297,6 +364,26 @@ private struct AlbumCard: View {
 }
 
 // MARK: - Playlists
+
+/// A library can have no playlists for a long time — the shelf should say so
+/// and offer the one thing to do about it, rather than showing an empty pane.
+private struct PlaylistsEmptyState: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        EmptyState(
+            systemImage: "list.bullet",
+            title: "No playlists yet",
+            message: "A playlist is your own running order.\nMake one, then drop tracks into it as you go."
+        ) {
+            CapsuleButton(title: "New Playlist", systemImage: "plus", kind: .filled) {
+                model.isCreatingPlaylist = true
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Tokens.Palette.surface)
+    }
+}
 
 private struct PlaylistList: View {
     @Environment(AppModel.self) private var model

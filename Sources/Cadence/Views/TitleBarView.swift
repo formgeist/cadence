@@ -163,7 +163,7 @@ private struct SearchResultsPopover: View {
                                 ? "1 album" : "\(artist.albumCount) albums",
                             trailing: artist.formats.first ?? "",
                             isRound: true,
-                            action: { openFirstAlbum(byArtist: artist.name) })
+                            action: { open(artist) })
                     })
                 }
                 if !results.albums.isEmpty {
@@ -269,9 +269,10 @@ private struct SearchResultsPopover: View {
         onPick()
     }
 
-    private func openFirstAlbum(byArtist name: String) {
-        guard let album = model.albums.first(where: { $0.albumArtist == name }) else { return }
-        open(album)
+    private func open(_ artist: Artist) {
+        model.show(.artist(artist.name))
+        model.endSearch()
+        onPick()
     }
 
     private func play(_ track: Track) {
