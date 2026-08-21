@@ -12,7 +12,7 @@ locally and deliberately not tracked in this repo.
 
 ```bash
 make run                          # launch the app
-make test                         # 127 tests
+make test                         # 131 tests
 make app                          # assemble a signed, sandboxed Cadence.app
 make audio-check                  # can a sandboxed build go bit-perfect?
 make shots                        # render every screen to Snapshots/
@@ -48,10 +48,51 @@ swift run Cadence --fonts                          # verify bundled faces
 ```
 
 `--play` starts near the end of the first track and reports whether frames are
-rendering and whether the move to the second track was engine-driven or a
-controller restart. A restart is the bug PLAN.md §7 warns about; engine-driven
+rendering, whether the move to the second track was engine-driven or a
+controller restart, and what was published to Now Playing.
+
+It prefers the library's copy of each track, which carries the artworkID the
+scanner assigned. Reading the file directly gives correct tags but no artwork
+reference — a harness that only did that would report a gap the app does not
+have, and would have missed the artwork crash above.
+
+Diagnostics need the unsandboxed build (`swift run`), since the bundled app can
+only reach folders you granted through the picker. A restart is the bug PLAN.md §7 warns about; engine-driven
 is what gapless looks like from the outside. Whether the seam is *audible*
 still needs headphones.
+
+## System integration
+
+`NowPlayingCoordinator` publishes to `MPNowPlayingInfoCenter` and accepts
+`MPRemoteCommandCenter` commands, which is what makes the media keys, Control
+Center, the Now Playing widget and the AirPods stem work. It observes the
+controller rather than being called by it, so nothing about system integration
+leaks into playback.
+
+All of it needs a real bundle identity — run `make app`, not `make run`.
+
+Two things worth knowing:
+
+- The artwork request handler is `nonisolated` and closes over `Data`, not an
+  `NSImage`. MediaPlayer invokes it on its own queue while serialising the Now
+  Playing dictionary, so a handler formed in a main-actor context carries an
+  isolation check that fails there and traps the process. Every track with cover
+  art crashed the app until this was fixed.
+- Elapsed time is not republished on a timer. The system extrapolates from the
+  playback rate and the last known position, and republishing every tick makes
+  the Control Center scrubber stutter.
+
+### When the output device goes away
+
+Unplugging headphones mid-track **pauses** and keeps the position, rather than
+continuing out of the speakers. The engine reports the loss as its own event
+rather than an error, because the track is still perfectly good — only the
+destination changed.
+
+Pressing play afterwards hands the file to the engine again and seeks back,
+rather than calling `resume()` on a graph that is no longer connected to
+anything. That call appears to succeed and produces silence, which is the
+"silently stall" PLAN.md §6 rules out.
 
 ## Folder access
 

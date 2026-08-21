@@ -15,6 +15,10 @@ public enum EngineEvent: Sendable, Equatable {
     /// follows; it does not drive this.
     case advancedToNext(URL)
     case finished
+    /// The output device went away — headphones unplugged, an interface
+    /// disconnected. Distinct from `failed` because the track is still
+    /// perfectly good; only the destination changed.
+    case outputDeviceLost
     case failed(PlaybackError)
 }
 

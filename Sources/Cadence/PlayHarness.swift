@@ -2,6 +2,7 @@ import Foundation
 import CadenceCore
 import CadenceLibrary
 import CadenceAudio
+import MediaPlayer
 
 /// `Cadence --play <file-or-folder>` — drives real playback and reports what
 /// happened, without a window.
@@ -57,9 +58,18 @@ enum PlayHarness {
         }
         files = Array(files.prefix(2))
 
-        let tracks = files.compactMap { url -> Track? in
+        // Prefer the library's copy of each track: it carries the artworkID
+        // the scanner assigned, which is what Now Playing needs. Reading the
+        // file directly gives correct tags but no artwork reference, so a
+        // harness that only did that would report a gap the app does not have.
+        var tracks = files.compactMap { url -> Track? in
             guard let reader = router.reader(for: url) else { return nil }
             return try? reader.readTrack(at: url)
+        }
+        if let stored = try? await storedTracks(for: files), !stored.isEmpty {
+            tracks = files.compactMap { url in
+                stored[url] ?? tracks.first { $0.url == url }
+            }
         }
         guard let first = tracks.first else {
             print("Could not read metadata for \(files[0].lastPathComponent)")
@@ -73,6 +83,15 @@ enum PlayHarness {
         print("")
 
         let controller = PlaybackController(engine: SFBPlayerEngine())
+
+        // Attached so the same run exercises phase 5's system integration.
+        // There is no public way to read Now Playing back from another
+        // process, so this confirms what Cadence publishes — not what
+        // Control Center renders. Pressing a media key tests that.
+        let artwork = try? DiskArtworkStore(root: try DiskArtworkStore.defaultURL())
+        let nowPlaying = NowPlayingCoordinator(playback: controller, artwork: artwork)
+        defer { _ = nowPlaying }
+
         controller.play(first, in: tracks)
 
         // Start near the end so the transition to track two happens inside the
@@ -119,6 +138,7 @@ enum PlayHarness {
                 return 1
             }
         }
+        reportNowPlaying()
         controller.stop()
 
         let advanced = zip(positions, positions.dropFirst()).contains { $0 < $1 }
@@ -129,6 +149,37 @@ enum PlayHarness {
             gapless handoff:     \(sawSecondTrack && !restarted ? "engine-driven" : (sawSecondTrack ? "controller restarted it" : "not observed"))
             """)
         return advanced ? 0 : 1
+    }
+
+    /// Looks the files up in whichever library the app would open.
+    private static func storedTracks(for files: [URL]) async throws -> [URL: Track] {
+        let store = try SQLiteLibraryStore(url: try AppContainer.libraryURL())
+        let wanted = Set(files)
+        return try await store.allTracks()
+            .filter { wanted.contains($0.url) }
+            .reduce(into: [:]) { $0[$1.url] = $1 }
+    }
+
+    private static func reportNowPlaying() {
+        let info = MPNowPlayingInfoCenter.default().nowPlayingInfo
+        let state = MPNowPlayingInfoCenter.default().playbackState
+        let commands = MPRemoteCommandCenter.shared()
+
+        func text(_ key: String) -> String { info?[key] as? String ?? "—" }
+
+        print("")
+        print("Now Playing")
+        print("  title:     \(text(MPMediaItemPropertyTitle))")
+        print("  artist:    \(text(MPMediaItemPropertyArtist))")
+        print("  album:     \(text(MPMediaItemPropertyAlbumTitle))")
+        let duration = info?[MPMediaItemPropertyPlaybackDuration] as? Double ?? 0
+        print("  duration:  \(DurationFormat.clock(duration))")
+        print("  artwork:   \(info?[MPMediaItemPropertyArtwork] != nil ? "attached" : "none")")
+        print("  state:     \(state == .playing ? "playing" : "paused/stopped")")
+        print("  commands:  play/pause \(commands.togglePlayPauseCommand.isEnabled)"
+            + ", next \(commands.nextTrackCommand.isEnabled)"
+            + ", previous \(commands.previousTrackCommand.isEnabled)"
+            + ", scrub \(commands.changePlaybackPositionCommand.isEnabled)")
     }
 
     private static func describe(_ state: PlaybackState) -> String {

@@ -237,14 +237,21 @@ extension SFBPlayerEngine: AudioPlayer.Delegate {
         }
     }
 
-    /// Headphones unplugged, or the output device disappeared. PLAN.md §6
-    /// phase 5 is explicit that this must not crash or silently stall.
+    /// Headphones unplugged, or the interface disconnected. PLAN.md §6 phase 5
+    /// is explicit that this must not crash or silently stall.
+    ///
+    /// SFB rebuilds its processing graph for the new device. What it cannot do
+    /// is decide whether playback should continue somewhere else — so if the
+    /// engine did not come back up, the controller is told and pauses.
     nonisolated public func audioPlayer(
         _ audioPlayer: AudioPlayer, audioEngineConfigurationChange userInfo: [AnyHashable: Any]?
     ) {
         Task { @MainActor [weak self] in
-            guard let self, !self.player.engineIsRunning else { return }
-            self.eventSink.yield(.failed(.outputDeviceLost))
+            guard let self else { return }
+            // Give the graph a moment to come back before calling it lost.
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !self.player.isPlaying else { return }
+            self.eventSink.yield(.outputDeviceLost)
         }
     }
 }

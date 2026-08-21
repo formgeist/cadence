@@ -401,6 +401,80 @@ struct QueueEditingTests {
 }
 
 @MainActor
+@Suite("Output device loss")
+struct DeviceLossTests {
+
+    @Test("Losing the device pauses rather than carrying on elsewhere")
+    func pausesOnDeviceLoss() async {
+        let engine = SpyEngine()
+        let controller = PlaybackController(engine: engine)
+        let track = makeTrack("A", seconds: 200)
+
+        controller.play(track, in: [track])
+        await engine.emit(.started(track.url))
+        controller.seek(to: 42)
+        await engine.emit(.outputDeviceLost)
+
+        // Audio jumping from headphones to speakers is the thing not to do.
+        #expect(!controller.isPlaying)
+        #expect(controller.currentTrack?.id == track.id)
+        #expect(controller.notice != nil)
+    }
+
+    @Test("The position is kept, so resuming picks up where it stopped")
+    func keepsPosition() async {
+        let engine = SpyEngine()
+        let controller = PlaybackController(engine: engine)
+        let track = makeTrack("A", seconds: 200)
+
+        controller.play(track, in: [track])
+        await engine.emit(.started(track.url))
+        controller.seek(to: 42)
+        await engine.emit(.outputDeviceLost)
+
+        let playCountBefore = engine.played.count
+        controller.togglePlayPause()
+
+        // Resuming a graph that is no longer connected does nothing at all —
+        // the "silently stall" PLAN.md §6 rules out. The track is handed to the
+        // engine again instead.
+        #expect(engine.played.count == playCountBefore + 1)
+        // And specifically NOT resume(), which is the call that would appear to
+        // work and produce silence.
+        #expect(engine.resumeCount == 0)
+
+        await engine.emit(.started(track.url))
+        #expect(engine.seeks.contains(42))
+        #expect(controller.notice == nil)
+    }
+
+    @Test("Device loss is not an error state — the track is still good")
+    func notAnError() async {
+        let engine = SpyEngine()
+        let controller = PlaybackController(engine: engine)
+        let track = makeTrack("A")
+
+        controller.play(track, in: [track])
+        await engine.emit(.started(track.url))
+        await engine.emit(.outputDeviceLost)
+
+        #expect(controller.lastError == nil)
+    }
+
+    @Test("A notice can be dismissed")
+    func dismissNotice() async {
+        let engine = SpyEngine()
+        let controller = PlaybackController(engine: engine)
+        let track = makeTrack("A")
+
+        controller.play(track, in: [track])
+        await engine.emit(.outputDeviceLost)
+        controller.clearNotice()
+        #expect(controller.notice == nil)
+    }
+}
+
+@MainActor
 @Suite("Mute")
 struct MuteTests {
 
@@ -517,3 +591,4 @@ struct MockEngineTests {
 extension SpyEngine {
     func clearSeeks() { seeks.removeAll() }
 }
+

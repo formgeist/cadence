@@ -3,6 +3,7 @@ import AppKit
 import CadenceCore
 import CadenceLibrary
 import CadenceAudio
+import MediaPlayer
 
 /// The composition root. Everything the app depends on is built here and handed
 /// down through the environment, so no view ever reaches for a concrete type —
@@ -23,6 +24,10 @@ final class AppContainer {
     /// Held for the process lifetime: access must stay open for playback, not
     /// just for the import that first granted it.
     let folders: SecurityScopedFolders
+
+    /// Publishes to Control Center and takes the media keys. Held for the
+    /// process lifetime; releasing it would hand the keys back.
+    private(set) var nowPlaying: NowPlayingCoordinator?
 
     /// True while playback is the mock clock rather than a decoder. The
     /// interface says so rather than pretending, because a transport that
@@ -81,6 +86,7 @@ final class AppContainer {
                         store: store, artwork: artwork, router: Self.metadataRouter),
                     bookmarks: scoped)
                 artworkLoader = ArtworkLoader(store: artwork)
+                nowPlaying = NowPlayingCoordinator(playback: playback, artwork: artwork)
             } catch {
                 model = AppModel(store: PreviewData.store())
                 model.storeFailure = error.localizedDescription
@@ -95,6 +101,28 @@ final class AppContainer {
             artworkLoader = ArtworkLoader(store: nil)
         }
     }
+}
+
+/// Wraps a closure as a menu item target, since NSMenuItem wants a selector.
+@MainActor
+final class DockAction: NSObject {
+    private let handler: () -> Void
+    private static var retained: [DockAction] = []
+
+    private init(handler: @escaping () -> Void) { self.handler = handler }
+
+    static func item(_ title: String, handler: @escaping () -> Void) -> NSMenuItem {
+        let action = DockAction(handler: handler)
+        // The menu does not own its targets, so they have to be kept alive.
+        retained.append(action)
+        if retained.count > 12 { retained.removeFirst(retained.count - 12) }
+
+        let item = NSMenuItem(title: title, action: #selector(fire), keyEquivalent: "")
+        item.target = action
+        return item
+    }
+
+    @objc private func fire() { handler() }
 }
 
 @main
@@ -159,6 +187,17 @@ struct CadenceCommands: Commands {
 
             Divider()
 
+            Button("Volume Up") { container.playback.volume = min(1, container.playback.volume + 0.05) }
+                .keyboardShortcut(.upArrow, modifiers: [.command, .option])
+            Button("Volume Down") { container.playback.volume = max(0, container.playback.volume - 0.05) }
+                .keyboardShortcut(.downArrow, modifiers: [.command, .option])
+            Button(container.playback.isMuted ? "Unmute" : "Mute") {
+                container.playback.isMuted.toggle()
+            }
+            .keyboardShortcut("m", modifiers: [.command, .control])
+
+            Divider()
+
             Button("Shuffle") { container.playback.toggleShuffle() }
                 .keyboardShortcut("s", modifiers: [.command, .shift])
 
@@ -177,14 +216,56 @@ struct CadenceCommands: Commands {
             }
         }
 
-        CommandGroup(after: .windowArrangement) {
+        CommandGroup(replacing: .toolbar) {
+            Button("Artists") { container.model.show(.library); container.model.tab = .artists }
+                .keyboardShortcut("1", modifiers: .command)
+            Button("Albums") { container.model.show(.library); container.model.tab = .albums }
+                .keyboardShortcut("2", modifiers: .command)
+            Button("Playlists") { container.model.show(.library); container.model.tab = .playlists }
+                .keyboardShortcut("3", modifiers: .command)
+
+            Divider()
+
             Button("Full-Screen Artwork") { container.model.isImmersive.toggle() }
                 .keyboardShortcut("f", modifiers: [.command, .control])
+                .disabled(container.playback.currentTrack == nil)
+
+            Button("Back") { container.model.goBack() }
+                .keyboardShortcut("[", modifiers: .command)
+                .disabled(!container.model.canGoBack)
         }
     }
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+
+    /// Set by the app so the dock menu can drive playback. Main-actor
+    /// isolated: AppKit only ever asks for the dock menu on the main thread.
+    @MainActor static weak var playback: PlaybackController?
+
+    /// Play/pause, next and previous without bringing the window forward.
+    @MainActor
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        guard let playback = AppDelegate.playback, playback.currentTrack != nil else {
+            return nil
+        }
+        let menu = NSMenu()
+
+        if let track = playback.currentTrack {
+            let heading = NSMenuItem(title: "\(track.title) — \(track.artist)",
+                                     action: nil, keyEquivalent: "")
+            heading.isEnabled = false
+            menu.addItem(heading)
+            menu.addItem(.separator())
+        }
+
+        menu.addItem(DockAction.item(
+            playback.isPlaying ? "Pause" : "Play") { playback.togglePlayPause() })
+        menu.addItem(DockAction.item("Next") { playback.next() })
+        menu.addItem(DockAction.item("Previous") { playback.previous() })
+        return menu
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // An SPM executable is not an app bundle, so it launches as an
         // accessory process with no Dock icon and no key window. Both of these
@@ -297,6 +378,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+
+        // Window position and size across launches. SwiftUI has no API for
+        // this on a WindowGroup, so the frame is autosaved on the NSWindow
+        // once it exists.
+        DispatchQueue.main.async {
+            for window in NSApp.windows where window.isVisible {
+                window.setFrameAutosaveName("CadenceMainWindow")
+                window.isRestorable = true
+            }
+        }
 
         if !FontLoader.warmUp() {
             // Not fatal — Tokens.Typography falls back to the system face.

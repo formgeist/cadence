@@ -56,6 +56,17 @@ public final class PlaybackController {
         return nil
     }
 
+    /// A passing message for the interface — not an error state. Cleared by the
+    /// next thing the user does.
+    public private(set) var notice: String?
+
+    public func clearNotice() { notice = nil }
+
+    /// Set when the output device disappeared and the engine has to be handed
+    /// the file again before it can play. Resuming a dead graph silently does
+    /// nothing, which is exactly the "silently stall" PLAN.md §6 rules out.
+    private var needsReloadAtPosition: TimeInterval?
+
     // MARK: Private
 
     private let engine: any PlayerEngine
@@ -197,13 +208,14 @@ public final class PlaybackController {
         prepareNextIfNeeded()
     }
 
-    private func start(at index: Int) {
+    private func start(at index: Int, resumingAt position: TimeInterval? = nil) {
         guard queue.indices.contains(index) else { return }
         currentIndex = index
         let track = queue[index]
         state = .loading(track.id)
-        progress = PlaybackProgress(elapsed: 0, duration: track.duration)
+        progress = PlaybackProgress(elapsed: position ?? 0, duration: track.duration)
         preparedNext = nil
+        pendingSeek = position
 
         do {
             try engine.play(url: track.url, duration: track.duration, gain: gain(for: track))
@@ -214,9 +226,23 @@ public final class PlaybackController {
         }
     }
 
+    /// Applied once the engine reports the track started; seeking before that
+    /// lands on a file the engine has not opened yet.
+    private var pendingSeek: TimeInterval?
+
     // MARK: - Transport
 
     public func togglePlayPause() {
+        // The device came back, or the user picked another one. Start the track
+        // again where it left off rather than resuming an engine that is no
+        // longer connected to anything.
+        if let position = needsReloadAtPosition, let index = currentIndex {
+            needsReloadAtPosition = nil
+            notice = nil
+            start(at: index, resumingAt: position)
+            return
+        }
+
         switch state {
         case .playing: engine.pause()
         case .paused: engine.resume()
@@ -266,6 +292,8 @@ public final class PlaybackController {
         progress = .zero
         currentIndex = nil
         preparedNext = nil
+        needsReloadAtPosition = nil
+        pendingSeek = nil
     }
 
     public func toggleShuffle() { shuffleMode = shuffleMode.toggled }
@@ -366,6 +394,10 @@ public final class PlaybackController {
                 state = .playing(track.id)
                 progress.duration = track.duration
             }
+            if let position = pendingSeek {
+                pendingSeek = nil
+                seek(to: position)
+            }
             prepareNextIfNeeded()
 
         case .resumed:
@@ -401,6 +433,14 @@ public final class PlaybackController {
             } else {
                 stop()
             }
+
+        case .outputDeviceLost:
+            // Pause rather than carry on: audio suddenly leaving headphones for
+            // the speakers is the behaviour every Mac user expects not to
+            // happen. The position is kept so play resumes where it stopped.
+            needsReloadAtPosition = progress.elapsed
+            if let track = currentTrack { state = .paused(track.id) }
+            notice = "Output device changed. Playback paused."
 
         case .failed(let error):
             state = .failed(error)

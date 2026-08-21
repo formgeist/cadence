@@ -27,6 +27,7 @@ struct RootView: View {
         .background(Tokens.Palette.surface)
         .animation(.easeInOut(duration: 0.2), value: model.isImmersive)
         .animation(.easeOut(duration: 0.2), value: importer.isImporting)
+        .animation(.easeOut(duration: 0.2), value: playback.notice)
         .task {
             await model.load()
             // A library that already has folders rescans on launch, so files
@@ -81,28 +82,55 @@ struct RootView: View {
     /// ways a file goes missing under a player that assumed it wouldn't.
     @ViewBuilder
     private var errorBanner: some View {
-        if let error = playback.lastError {
-            HStack(spacing: Tokens.Space.m) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(Tokens.Palette.accent)
-                Text(error.message)
-                    .font(Tokens.Typography.caption)
-                    .foregroundStyle(Tokens.Palette.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+        if let notice = playback.notice {
+            Banner(text: notice, icon: "headphones", tint: Tokens.Palette.textSecondary) {
+                playback.clearNotice()
             }
-            .padding(.horizontal, Tokens.Space.l)
-            .padding(.vertical, Tokens.Space.m)
-            .background {
-                RoundedRectangle(cornerRadius: Tokens.Radius.popover, style: .continuous)
-                    .fill(Tokens.Palette.popover)
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: Tokens.Radius.popover, style: .continuous)
-                    .strokeBorder(Tokens.Palette.accentEdge, lineWidth: 1)
-            }
-            .shadow(color: .black.opacity(0.5), radius: 20, y: 8)
-            .padding(.bottom, 28)
-            .transition(.move(edge: .bottom).combined(with: .opacity))
+        } else if let error = playback.lastError {
+            Banner(text: error.message,
+                   icon: "exclamationmark.triangle.fill",
+                   tint: Tokens.Palette.accent)
         }
+    }
+}
+
+/// The one transient message surface. Errors and notices differ only in tint,
+/// so they share a shape rather than drifting apart.
+private struct Banner: View {
+    var text: String
+    var icon: String
+    var tint: Color
+    var onDismiss: (() -> Void)?
+
+    var body: some View {
+        HStack(spacing: Tokens.Space.m) {
+            Image(systemName: icon)
+                .foregroundStyle(tint)
+            Text(text)
+                .font(Tokens.Typography.caption)
+                .foregroundStyle(Tokens.Palette.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if let onDismiss {
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(Tokens.Palette.textMuted)
+                }
+                .plainControl()
+            }
+        }
+        .padding(.horizontal, Tokens.Space.l)
+        .padding(.vertical, Tokens.Space.m)
+        .background {
+            RoundedRectangle(cornerRadius: Tokens.Radius.popover, style: .continuous)
+                .fill(Tokens.Palette.popover)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: Tokens.Radius.popover, style: .continuous)
+                .strokeBorder(tint.opacity(0.4), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.5), radius: 20, y: 8)
+        .padding(.bottom, 28)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 }
