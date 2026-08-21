@@ -185,9 +185,9 @@ struct NowPlayingPane: View {
     /// here, under the queue it happened to, until playback starts again.
     @ViewBuilder
     private var skippedSummary: some View {
-        if !playback.skipped.isEmpty {
-            let skipped = playback.skipped
+        let skipped = playback.skipped
 
+        if !skipped.isEmpty {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
@@ -223,7 +223,6 @@ struct NowPlayingPane: View {
             }
             .padding(.horizontal, Tokens.Space.paneInset)
             .padding(.top, Tokens.Space.m)
-            .accessibilityElement(children: .combine)
         }
     }
 

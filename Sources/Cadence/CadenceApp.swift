@@ -23,7 +23,7 @@ final class AppContainer {
     let artworkLoader: ArtworkLoader
     /// Whether a text field has the keyboard, so the menu bar can get out of
     /// its way — see `TextEntryMonitor`.
-    let textEntry = TextEntryMonitor()
+    let textEntry: TextEntryMonitor
     /// Held for the process lifetime: access must stay open for playback, not
     /// just for the import that first granted it.
     let folders: SecurityScopedFolders
@@ -64,6 +64,8 @@ final class AppContainer {
     /// library that is empty — or has no playlists — without a second
     /// composition root.
     init(mode: Mode = .live, store previewStore: (any LibraryStore)? = nil) {
+        textEntry = TextEntryMonitor()
+
         // The line PLAN.md §4 was written around: swapping the engine touches
         // nothing above this point. Preview mode keeps the mock so snapshots
         // and design review never open an audio device.
