@@ -160,6 +160,32 @@ struct SQLiteLibraryStoreTests {
             #expect(fetched.duration == 200)
         }
     }
+
+    @Test("A created playlist is empty, named, and comes back in order")
+    func createPlaylist() async throws {
+        try await withStore { store in
+            let first = try await store.createPlaylist(named: "Late Desk")
+            let second = try await store.createPlaylist(named: "Headphones Only")
+
+            #expect(first.trackIDs.isEmpty)
+            #expect(first.duration == 0)
+
+            let fetched = try await store.playlists()
+            #expect(fetched.map(\.name) == ["Late Desk", "Headphones Only"])
+            #expect(fetched.map(\.id) == [first.id, second.id])
+        }
+    }
+
+    @Test("Two playlists may share a name and stay separate rows")
+    func duplicateNames() async throws {
+        try await withStore { store in
+            let first = try await store.createPlaylist(named: "Untitled")
+            let second = try await store.createPlaylist(named: "Untitled")
+
+            #expect(first.id != second.id)
+            #expect(try await store.playlists().count == 2)
+        }
+    }
 }
 
 /// Search is the part PLAN.md §1 calls out as unfinished: `upsert` wrote the

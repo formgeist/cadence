@@ -102,6 +102,10 @@ enum Tokens {
         static let trafficLightInset: CGFloat = 78
         static let searchFieldMaxWidth: CGFloat = 420
         static let albumHeaderArt: CGFloat = 248
+        static let artistHeaderArt: CGFloat = 156
+        /// Narrower than an album card: an artist card carries a name and two
+        /// counts, not a title that wraps.
+        static let artistColumnWidth: CGFloat = 152
         static let immersiveArt: CGFloat = 540
         static let minWindow = CGSize(width: 1_060, height: 660)
         static let defaultWindow = CGSize(width: 1_280, height: 820)

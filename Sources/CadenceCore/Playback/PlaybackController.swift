@@ -130,11 +130,15 @@ public final class PlaybackController {
     /// button. Leaves the user's own shuffle setting flipped, because that is
     /// what the button visibly did.
     public func shuffle(_ album: Album) {
-        let ordered = album.discs.flatMap(\.tracks)
-        guard !ordered.isEmpty else { return }
+        shuffle(album.discs.flatMap(\.tracks))
+    }
+
+    /// The same, over any run of tracks — an artist's whole discography, say.
+    public func shuffle(_ tracks: [Track]) {
+        guard !tracks.isEmpty else { return }
         shuffleMode = .on
-        orderedQueue = ordered
-        queue = ordered.shuffled()
+        orderedQueue = tracks
+        queue = tracks.shuffled()
         start(at: 0)
     }
 

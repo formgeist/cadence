@@ -13,6 +13,9 @@ final class AppModel {
     enum Screen: Hashable {
         case library
         case album(Album.Key)
+        /// Everything one artist has, by name — the same identity `Artist`
+        /// uses, since an artist is not a row in a table here.
+        case artist(String)
     }
 
     enum Tab: String, CaseIterable, Identifiable {
@@ -84,11 +87,18 @@ final class AppModel {
     private(set) var playlists: [Playlist] = []
     private(set) var allTracks: [Track] = []
     private(set) var librarySize: Int64 = 0
+    /// One cover per artist, chosen once at load. Asking for it per card meant
+    /// scanning every album in the library on each row the grid drew.
+    private var artistArtwork: [String: Artwork.ID] = [:]
     private(set) var isLoading = true
     private(set) var loadError: String?
     /// Set when the real database could not be opened and the preview library
     /// is standing in.
     var storeFailure: String?
+    /// The last write that failed under the user's hand — creating a playlist,
+    /// so far. Shown in the banner and dismissible, because a silent no-op
+    /// looks like the button is broken.
+    var actionError: String?
 
     /// A freshly installed app with nothing imported yet. Distinct from a
     /// library that is still loading, which should not flash an empty state.
@@ -109,6 +119,10 @@ final class AppModel {
             artists = try await store.artists()
             playlists = try await store.playlists()
             librarySize = try await store.librarySize()
+            artistArtwork = albums.reduce(into: [:]) { result, album in
+                guard let artworkID = album.artworkID else { return }
+                result[album.albumArtist] = result[album.albumArtist] ?? artworkID
+            }
         } catch {
             loadError = error.localizedDescription
         }
@@ -118,9 +132,63 @@ final class AppModel {
         albums.first { $0.key == key }
     }
 
+    /// An artist has no picture of their own; the first cover they released
+    /// stands in, which is what every other music app does too.
+    func artworkID(forArtist name: String) -> Artwork.ID? {
+        artistArtwork[name]
+    }
+
+    func artist(named name: String) -> Artist? {
+        artists.first { $0.name == name }
+    }
+
+    /// Every album credited to one artist, oldest first. The store has the
+    /// same query, but the whole library is already in memory and the artist
+    /// screen should not wait on a round trip to draw.
+    func albums(byArtist name: String) -> [Album] {
+        albums
+            .filter { $0.albumArtist == name }
+            .sorted {
+                ($0.year ?? 0, $0.title.localizedLowercase)
+                    < ($1.year ?? 0, $1.title.localizedLowercase)
+            }
+    }
+
     var currentAlbum: Album? {
         guard case .album(let key) = screen else { return nil }
         return album(for: key)
+    }
+
+    // MARK: Playlists
+
+    /// Drives the new-playlist sheet, which both the sidebar button and the
+    /// empty state open.
+    var isCreatingPlaylist = false
+
+    /// `New Playlist`, then `New Playlist 2` — what the sheet opens with.
+    /// Duplicate names are allowed; suggesting one is just rude.
+    var suggestedPlaylistName: String {
+        let base = "New Playlist"
+        let taken = Set(playlists.map(\.name))
+        guard taken.contains(base) else { return base }
+        var suffix = 2
+        while taken.contains("\(base) \(suffix)") { suffix += 1 }
+        return "\(base) \(suffix)"
+    }
+
+    /// Creates the playlist, reloads, and shows it. An empty name falls back
+    /// to the suggestion rather than making a playlist called nothing.
+    func createPlaylist(named name: String) async {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let chosen = trimmed.isEmpty ? suggestedPlaylistName : trimmed
+        do {
+            try await store.createPlaylist(named: chosen)
+            playlists = try await store.playlists()
+            show(.library)
+            tab = .playlists
+        } catch {
+            actionError = "Could not create “\(chosen)”: \(error.localizedDescription)"
+        }
     }
 
     // MARK: Derived counts

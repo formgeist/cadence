@@ -57,7 +57,10 @@ final class AppContainer {
         return try SQLiteLibraryStore.defaultURL()
     }
 
-    init(mode: Mode = .live) {
+    /// `store` stands in for the preview library, so a snapshot can render a
+    /// library that is empty — or has no playlists — without a second
+    /// composition root.
+    init(mode: Mode = .live, store previewStore: (any LibraryStore)? = nil) {
         // The line PLAN.md §4 was written around: swapping the engine touches
         // nothing above this point. Preview mode keeps the mock so snapshots
         // and design review never open an audio device.
@@ -96,7 +99,7 @@ final class AppContainer {
 
         case .preview:
             folders = SecurityScopedFolders(defaultsKey: "CadencePreviewBookmarks")
-            model = AppModel(store: PreviewData.store())
+            model = AppModel(store: previewStore ?? PreviewData.store())
             importer = LibraryImporter(scanner: nil, bookmarks: folders)
             artworkLoader = ArtworkLoader(store: nil)
         }
@@ -141,6 +144,7 @@ struct CadenceApp: App {
                 .frame(minWidth: Tokens.Layout.minWindow.width,
                        minHeight: Tokens.Layout.minWindow.height)
                 .preferredColorScheme(.dark)
+                .background(WindowChromeConfigurator())
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(Tokens.Layout.defaultWindow)

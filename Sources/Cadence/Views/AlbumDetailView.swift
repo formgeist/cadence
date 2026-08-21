@@ -7,6 +7,10 @@ struct AlbumDetailView: View {
 
     var album: Album
 
+    /// The row a single click put under the cursor. Playback needs a second
+    /// click, so something has to show what the first one did.
+    @State private var selectedTrackID: Track.ID?
+
     private var orderedTracks: [Track] { album.discs.flatMap(\.tracks) }
 
     var body: some View {
@@ -144,10 +148,14 @@ struct AlbumDetailView: View {
                     TrackRow(
                         track: track,
                         isCurrent: playback.currentTrack?.id == track.id,
-                        showsArtist: album.showsTrackArtists
-                    ) {
-                        playback.play(track, in: orderedTracks)
-                    }
+                        isSelected: selectedTrackID == track.id,
+                        showsArtist: album.showsTrackArtists,
+                        onSelect: { selectedTrackID = track.id },
+                        onPlay: {
+                            selectedTrackID = track.id
+                            playback.play(track, in: orderedTracks)
+                        }
+                    )
                 }
             }
         }
@@ -176,67 +184,90 @@ struct AlbumDetailView: View {
     }
 }
 
+/// A track row plays on double click, not on the first one: single-clicking a
+/// list to move around it should not restart the music — issue #16. The play
+/// glyph that replaces the track number on hover is a real button, so one
+/// deliberate click still works.
 private struct TrackRow: View {
     var track: Track
     var isCurrent: Bool
+    var isSelected: Bool
     /// On a single-artist album, repeating the album artist under every title
     /// is noise. On a compilation it is the most useful column on the screen.
     var showsArtist: Bool
-    var action: () -> Void
+    var onSelect: () -> Void
+    var onPlay: () -> Void
 
     @State private var isHovering = false
 
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: Tokens.Space.l) {
-                Group {
-                    if isHovering {
-                        Image(systemName: "play.fill").font(.system(size: 9))
-                    } else {
-                        Text(track.trackNumber.map { String(format: "%02d", $0) } ?? "–")
-                            .font(Tokens.Typography.mono(11.5))
-                    }
-                }
-                .foregroundStyle(isCurrent ? Tokens.Palette.accent : Color(hex: 0x5C5C66))
-                .frame(width: 28, alignment: .leading)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(track.title)
-                        .font(Tokens.Typography.trackTitle)
-                        .foregroundStyle(isCurrent
-                                         ? Tokens.Palette.accent : Color(hex: 0xE6E6EC))
-                        .lineLimit(1)
-                    if let subtitle = track.rowSubtitle(showingArtist: showsArtist) {
-                        Text(subtitle)
-                            .font(Tokens.Typography.sans(11, .medium))
-                            .foregroundStyle(Color(hex: 0x6A6A74))
-                            .lineLimit(1)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                Text(track.format.shortDescription)
-                    .font(Tokens.Typography.mono(10.5))
-                    .foregroundStyle(Tokens.Palette.textMuted)
-                    .frame(width: 90, alignment: .leading)
-
-                Text(DurationFormat.clock(track.duration))
-                    .font(Tokens.Typography.mono(11.5))
-                    .foregroundStyle(Color(hex: 0x7A7A84))
-                    .frame(width: 56, alignment: .trailing)
-            }
+        row
             .padding(.horizontal, 10)
             .padding(.vertical, 9)
-            .hoverHighlight(isActive: isCurrent)
+            .hoverHighlight(isActive: isCurrent || isSelected)
+            .onTapGesture(count: 2, perform: onPlay)
+            .onTapGesture(perform: onSelect)
+            .onHover { isHovering = $0 }
+            // One stop per track, reading as a sentence, instead of four stops
+            // reading "01", a title, "16/44.1", "4:12".
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(spokenLabel)
+            .accessibilityAddTraits(isCurrent || isSelected
+                                    ? [.isButton, .isSelected] : .isButton)
+            .accessibilityHint("Plays this track")
+            // VoiceOver has no double click. Activating the row plays it,
+            // which is what the hint promises.
+            .accessibilityAction(.default, onPlay)
+    }
+
+    private var row: some View {
+        HStack(spacing: Tokens.Space.l) {
+            Group {
+                if isHovering {
+                    // A deliberate single click still plays, so the double
+                    // click is the safeguard and not the only way in.
+                    Button(action: onPlay) {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 9))
+                            .frame(width: 28, height: 18, alignment: .leading)
+                            .contentShape(Rectangle())
+                    }
+                    .plainControl()
+                    // The row already says all of this, and says it better.
+                    .accessibilityHidden(true)
+                } else {
+                    Text(track.trackNumber.map { String(format: "%02d", $0) } ?? "–")
+                        .font(Tokens.Typography.mono(11.5))
+                }
+            }
+            .foregroundStyle(isCurrent ? Tokens.Palette.accent : Color(hex: 0x5C5C66))
+            .frame(width: 28, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(track.title)
+                    .font(Tokens.Typography.trackTitle)
+                    .foregroundStyle(isCurrent
+                                     ? Tokens.Palette.accent : Color(hex: 0xE6E6EC))
+                    .lineLimit(1)
+                if let subtitle = track.rowSubtitle(showingArtist: showsArtist) {
+                    Text(subtitle)
+                        .font(Tokens.Typography.sans(11, .medium))
+                        .foregroundStyle(Color(hex: 0x6A6A74))
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(track.format.shortDescription)
+                .font(Tokens.Typography.mono(10.5))
+                .foregroundStyle(Tokens.Palette.textMuted)
+                .frame(width: 90, alignment: .leading)
+
+            Text(DurationFormat.clock(track.duration))
+                .font(Tokens.Typography.mono(11.5))
+                .foregroundStyle(Color(hex: 0x7A7A84))
+                .frame(width: 56, alignment: .trailing)
         }
-        .plainControl()
-        .onHover { isHovering = $0 }
-        // One stop per track, reading as a sentence, instead of four stops
-        // reading "01", a title, "16/44.1", "4:12".
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(spokenLabel)
-        .accessibilityAddTraits(isCurrent ? [.isButton, .isSelected] : .isButton)
-        .accessibilityHint("Plays this track")
     }
 
     private var spokenLabel: String {

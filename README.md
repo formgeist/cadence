@@ -133,7 +133,7 @@ settles the list-performance question, though not as it was posed — it asked
 whether SwiftUI `Table` stays smooth at library size, and the design uses
 `LazyVGrid` and `LazyVStack`, never `Table`.
 
-At 30,000 tracks the artists list holds the display's frame rate. The album grid
+At 30,000 tracks the artists grid holds the display's frame rate. The album grid
 runs ~20 ms per frame with artwork and ~29 ms without, so a hard scroll through
 2,500 albums sits between 30 and 60 fps. No `NSCollectionView` bridge needed.
 
@@ -217,7 +217,7 @@ three lines at 46pt.
 
 ## Design review
 
-`make shots` renders twelve states — every screen, plus each awkward case above
+`make shots` renders sixteen states — every screen, plus each awkward case above
 — to PNGs without opening a window:
 
 ```bash
@@ -237,7 +237,9 @@ tokens, never literals.
 
 | | Canvas | App | Why |
 |---|---|---|---|
-| Traffic lights | three painted circles | reserved space | `.hiddenTitleBar` supplies real ones |
+| Traffic lights | three painted circles | reserved space | the window supplies real ones; the header is the title bar, so `WindowChrome` runs the content under it and re-centres the lights against the search field |
+| Track row | click plays | double click plays, single click selects | a click while reading down a track list should not restart the music |
+| Artist row | — | opens the artist's whole discography | one album per artist left the rest unreachable |
 | Library header | sticky, blurred | fixed above the scroll view | same appearance, no blurred layer pinned over a fast list |
 | Track subtitle | artist under every title | only on compilations, composer for classical | redundant on a single-artist album, essential on a compilation |
 | Album metadata | one line | wraps to two | a box set adds "3 discs" and overflowed |

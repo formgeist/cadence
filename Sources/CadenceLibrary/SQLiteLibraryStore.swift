@@ -117,6 +117,24 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
         }
     }
 
+    /// A new, empty playlist at the end of the sidebar's order.
+    ///
+    /// Names are not unique — two playlists may legitimately share one — so
+    /// the row is identified by its id, which is why the created value is
+    /// returned rather than left for the caller to find again by name.
+    @discardableResult
+    public func createPlaylist(named name: String) async throws -> Playlist {
+        let playlist = Playlist(name: name, trackIDs: [], duration: 0)
+        try await pool.write { db in
+            let position = try Int.fetchOne(
+                db, sql: "SELECT IFNULL(MAX(position), -1) + 1 FROM playlist") ?? 0
+            try db.execute(
+                sql: "INSERT INTO playlist (id, name, position) VALUES (?, ?, ?)",
+                arguments: [playlist.id.uuidString, name, position])
+        }
+        return playlist
+    }
+
     public func librarySize() async throws -> Int64 {
         try await pool.read { db in
             try Int64.fetchOne(db, sql: "SELECT IFNULL(SUM(fileSize), 0) FROM track") ?? 0

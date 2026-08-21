@@ -136,7 +136,7 @@ public final class MockPlayerEngine: PlayerEngine {
 /// exists. Search is a naive substring match — the real store uses FTS5.
 public actor InMemoryLibraryStore: LibraryStore {
     private let tracks: [Track]
-    private let storedPlaylists: [Playlist]
+    private var storedPlaylists: [Playlist]
 
     public init(tracks: [Track], playlists: [Playlist] = []) {
         self.tracks = tracks
@@ -177,6 +177,13 @@ public actor InMemoryLibraryStore: LibraryStore {
     }
 
     public func playlists() async throws -> [Playlist] { storedPlaylists }
+
+    @discardableResult
+    public func createPlaylist(named name: String) async throws -> Playlist {
+        let playlist = Playlist(name: name, trackIDs: [], duration: 0)
+        storedPlaylists.append(playlist)
+        return playlist
+    }
 
     public func tracks(matching query: String) async throws -> [Track] {
         let needle = query.trimmingCharacters(in: .whitespaces).lowercased()
@@ -443,8 +450,14 @@ public enum PreviewData {
         Playlist(name: "24/96 Showcase", trackIDs: Array(tracks.prefix(12).map(\.id)), duration: 3_480),
     ]
 
-    public static func store() -> InMemoryLibraryStore {
+    public static func store(playlists: [Playlist] = PreviewData.playlists)
+        -> InMemoryLibraryStore {
         InMemoryLibraryStore(tracks: tracks, playlists: playlists)
+    }
+
+    /// A library with nothing in it — what a fresh install shows.
+    public static func emptyStore() -> InMemoryLibraryStore {
+        InMemoryLibraryStore(tracks: [], playlists: [])
     }
 
     public static func album(_ title: String) -> Album? {
