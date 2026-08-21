@@ -31,12 +31,15 @@ struct TitleBarView: View {
         }
         .padding(.horizontal, Tokens.Space.l)
         .frame(height: Tokens.Layout.titleBarHeight)
-        .background(Tokens.Palette.chrome)
-        .overlay(alignment: .bottom) {
+        // The hairline is a *background*, not an overlay: the search
+        // suggestions start three points above the header's bottom edge, and
+        // an overlay would draw this line straight across their top corners.
+        .background(alignment: .bottom) {
             Rectangle()
                 .fill(Color(hex: 0x1F1F24))
                 .frame(height: 1)
         }
+        .background(Tokens.Palette.chrome)
     }
 }
 
@@ -73,7 +76,12 @@ private struct NavigationChevron: View {
 
 struct SearchField: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.rendersSearchFocused) private var rendersFocused
     @FocusState private var isFocused: Bool
+
+    /// What the field *looks* like: focused for real, or drawn that way for a
+    /// snapshot.
+    private var isActive: Bool { isFocused || rendersFocused }
 
     var body: some View {
         @Bindable var model = model
@@ -110,19 +118,19 @@ struct SearchField: View {
             .frame(height: 30)
             .background {
                 RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous)
-                    .fill(isFocused
+                    .fill(isActive
                           ? Tokens.Palette.fieldFocusBackground
                           : Tokens.Palette.fieldBackground)
             }
             .overlay {
                 RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous)
-                    .strokeBorder(isFocused
+                    .strokeBorder(isActive
                                   ? Tokens.Palette.fieldFocusBorder
                                   : Tokens.Palette.fieldBorder, lineWidth: 1)
             }
         }
         .overlay(alignment: .top) {
-            if isFocused, !model.searchText.isEmpty {
+            if isActive, !model.searchText.isEmpty {
                 SearchResultsPopover(onPick: { isFocused = false })
                     .offset(y: 38)
             }

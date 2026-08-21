@@ -11,7 +11,11 @@ struct RootView: View {
 
         return ZStack {
             VStack(spacing: 0) {
+                // The search suggestions hang out of the header's bounds, and
+                // a VStack paints its children in order — so without this the
+                // library draws straight over them (issue #21).
                 TitleBarView()
+                    .zIndex(50)
                 ImportProgressBar()
                 HStack(spacing: 0) {
                     SidebarView()

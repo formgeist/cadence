@@ -64,3 +64,20 @@ extension EnvironmentValues {
         set { self[SilentPlaybackKey.self] = newValue }
     }
 }
+
+// MARK: - Rendered search focus
+
+private struct SearchFocusRenderKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// Draws the search field as though it held keyboard focus, suggestions
+    /// and all. Focus belongs to the key window, and the snapshot harness
+    /// renders into an off-screen window that never becomes one — without
+    /// this, the one state that can hide behind the library cannot be shot.
+    var rendersSearchFocused: Bool {
+        get { self[SearchFocusRenderKey.self] }
+        set { self[SearchFocusRenderKey.self] = newValue }
+    }
+}
