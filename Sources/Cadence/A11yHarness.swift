@@ -78,13 +78,14 @@ enum A11yHarness {
     }
 
     private enum Screen: CaseIterable {
-        case artists, artist, album, immersive
+        case artists, artist, album, playlist, immersive
 
         var title: String {
             switch self {
             case .artists: "Library — Artists"
             case .artist: "Artist detail"
             case .album: "Album detail"
+            case .playlist: "Playlist detail"
             case .immersive: "Immersive"
             }
         }
@@ -105,6 +106,11 @@ enum A11yHarness {
                     $0.title == "Sound of the Slow Hours" && $0.year == 2023
                 }) {
                     container.model.show(.album(album.key))
+                }
+            case .playlist:
+                container.model.isImmersive = false
+                if let playlist = container.model.playlists.first {
+                    container.model.show(.playlist(playlist.id))
                 }
             case .immersive:
                 container.model.isImmersive = true

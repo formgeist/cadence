@@ -114,6 +114,22 @@ enum Snapshot {
             container.model.tab = .playlists
         },
 
+        // A playlist, open: the screen issue #1 was about not having.
+        Shot(name: "17-playlist", size: Tokens.Layout.defaultWindow) { container in
+            guard let playlist = container.model.playlists.first else { return }
+            container.model.show(.playlist(playlist.id))
+        },
+
+        // A playlist you have just made and not filled. Reachable in one click
+        // from the sidebar's plus, so it is not a rare state.
+        Shot(name: "18-playlist-empty", size: Tokens.Layout.defaultWindow,
+             store: { PreviewData.store(playlists: [
+                 Playlist(name: "Late Desk", trackIDs: [], duration: 0),
+             ]) }) { container in
+            guard let playlist = container.model.playlists.first else { return }
+            container.model.show(.playlist(playlist.id))
+        },
+
         // The smallest window the layout has to survive.
         Shot(name: "12-minimum-window", size: Tokens.Layout.minWindow) { container in
             container.model.tab = .albums

@@ -61,12 +61,25 @@ struct AlbumDetailView: View {
                         playback.play(album)
                     }
                     CapsuleButton(title: "Shuffle") { playback.shuffle(album) }
-                    CapsuleButton(systemImage: "plus",
-                                  accessibilityLabel: "Add album to queue") {
-                        playback.appendToQueue(orderedTracks)
+                    // A menu, not a button: the queue was the only thing an
+                    // album could be added to, and a playlist is the other
+                    // obvious answer to the same plus.
+                    Menu {
+                        Button("Add to Queue") { playback.appendToQueue(orderedTracks) }
+                        Divider()
+                        AddToPlaylistMenu(model: model, tracks: orderedTracks)
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 13, weight: .bold))
+                            .frame(width: 38, height: 38)
+                            .overlay { Capsule().strokeBorder(Color(hex: 0x32323B),
+                                                              lineWidth: 1) }
                     }
-                    CapsuleButton(systemImage: "ellipsis",
-                                  accessibilityLabel: "More actions") {}
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .foregroundStyle(Color(hex: 0xCACAD3))
+                    .accessibilityLabel("Add album to queue or a playlist")
                 }
                 .padding(.top, 10)
             }
@@ -156,6 +169,18 @@ struct AlbumDetailView: View {
                             playback.play(track, in: orderedTracks)
                         }
                     )
+                    // Onto a playlist row in the sidebar. One track at a time:
+                    // the album screen has no multiple selection to drag.
+                    .draggable(TrackSelection([track.id]))
+                    .contextMenu {
+                        Button("Play") {
+                            selectedTrackID = track.id
+                            playback.play(track, in: orderedTracks)
+                        }
+                        Button("Add to Queue") { playback.appendToQueue([track]) }
+                        Divider()
+                        AddToPlaylistMenu(model: model, tracks: [track])
+                    }
                 }
             }
         }

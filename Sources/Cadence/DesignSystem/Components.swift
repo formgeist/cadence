@@ -415,6 +415,10 @@ struct CapsuleButton: View {
     var action: () -> Void
 
     @State private var isHovering = false
+    /// The button draws itself, so `.disabled` has no effect on how it looks
+    /// unless it is read back. An empty playlist's Play pill rendered at full
+    /// accent while doing nothing, which reads as a broken button.
+    @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
         Button(action: action) {
@@ -431,22 +435,24 @@ struct CapsuleButton: View {
             }
             .foregroundStyle(kind == .filled
                              ? .white
-                             : (isHovering ? .white : Color(hex: 0xCACAD3)))
+                             : (isHovering && isEnabled ? .white : Color(hex: 0xCACAD3)))
             .frame(height: 38)
             .padding(.horizontal, title == nil ? 0 : (kind == .filled ? 20 : 18))
             .frame(width: title == nil ? 38 : nil)
             .background {
                 Capsule().fill(kind == .filled
-                               ? (isHovering ? Tokens.Palette.accentHover : Tokens.Palette.accent)
+                               ? (isHovering && isEnabled
+                                  ? Tokens.Palette.accentHover : Tokens.Palette.accent)
                                : .clear)
             }
             .overlay {
                 if kind == .outlined {
                     Capsule().strokeBorder(
-                        isHovering ? Color(hex: 0x4A4A55) : Color(hex: 0x32323B),
+                        isHovering && isEnabled ? Color(hex: 0x4A4A55) : Color(hex: 0x32323B),
                         lineWidth: 1)
                 }
             }
+            .opacity(isEnabled ? 1 : 0.4)
         }
         .plainControl()
         .onHover { isHovering = $0 }

@@ -30,7 +30,7 @@ struct SidebarView: View {
                 SectionLabel("Playlists")
                 Spacer(minLength: 0)
                 IconButton(systemImage: "plus", label: "New playlist") {
-                    model.isCreatingPlaylist = true
+                    model.naming = .create(seed: [])
                 }
             }
             .padding(.leading, 18)
@@ -49,7 +49,8 @@ struct SidebarView: View {
             } else {
                 VStack(spacing: 1) {
                     ForEach(model.playlists) { playlist in
-                        PlaylistRow(playlist: playlist)
+                        PlaylistRow(playlist: playlist,
+                                    isSelected: model.screen == .playlist(playlist.id))
                     }
                 }
                 .padding(.horizontal, 10)
@@ -80,12 +81,13 @@ struct SidebarView: View {
     }
 
     /// An artist screen keeps Artists lit, so the sidebar does not go blank
-    /// the moment you drill in.
+    /// the moment you drill in. A playlist screen does not light the Playlists
+    /// row: the playlist's own row below is lit instead, and it says more.
     private func isSelected(_ tab: AppModel.Tab) -> Bool {
         switch model.screen {
         case .library: model.tab == tab
         case .artist: tab == .artists
-        case .album: false
+        case .album, .playlist: false
         }
     }
 }
@@ -124,30 +126,70 @@ private struct NavigationRow: View {
     }
 }
 
+/// A playlist in the sidebar: the way in, and the place tracks are dropped.
 private struct PlaylistRow: View {
+    @Environment(AppModel.self) private var model
+    @Environment(PlaybackController.self) private var playback
     var playlist: Playlist
+    var isSelected: Bool
+
     @State private var isHovering = false
+    /// Highlighted while a drag hovers, so the row you are about to drop on is
+    /// unambiguous in a stack of five that look alike.
+    @State private var isTargeted = false
+
+    private var isLit: Bool { isSelected || isHovering || isTargeted }
 
     var body: some View {
-        HStack(spacing: 10) {
-            ArtworkView(artworkID: nil, cornerRadius: Tokens.Radius.thumb,
-                        stripe: 4, displaySize: 32)
-                .frame(width: 18, height: 18)
-            Text(playlist.name)
-                .font(Tokens.Typography.sans(12.5, .medium))
-                .lineLimit(1)
-            Spacer(minLength: 0)
+        Button { model.show(.playlist(playlist.id)) } label: {
+            HStack(spacing: 10) {
+                ArtworkView(artworkID: artworkID, cornerRadius: Tokens.Radius.thumb,
+                            stripe: 4, displaySize: 32)
+                    .frame(width: 18, height: 18)
+                Text(playlist.name)
+                    .font(Tokens.Typography.sans(12.5, .medium))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(isLit ? Color(hex: 0xEDEDF2) : Color(hex: 0x90909B))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background {
+                RoundedRectangle(cornerRadius: Tokens.Radius.row, style: .continuous)
+                    .fill(background)
+            }
+            .overlay {
+                if isTargeted {
+                    RoundedRectangle(cornerRadius: Tokens.Radius.row, style: .continuous)
+                        .strokeBorder(Tokens.Palette.accent, lineWidth: 1)
+                }
+            }
+            .contentShape(Rectangle())
         }
-        .foregroundStyle(isHovering ? Color(hex: 0xEDEDF2) : Color(hex: 0x90909B))
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background {
-            RoundedRectangle(cornerRadius: Tokens.Radius.row, style: .continuous)
-                .fill(isHovering ? Tokens.Palette.navHover : .clear)
-        }
-        .contentShape(Rectangle())
+        .plainControl()
         .onHover { isHovering = $0 }
+        .dropDestination(for: TrackSelection.self) { selections, _ in
+            let ids = selections.flatMap(\.trackIDs)
+            guard !ids.isEmpty else { return false }
+            Task { await model.addTracks(ids, to: playlist.id) }
+            return true
+        } isTargeted: { isTargeted = $0 }
+        .contextMenu {
+            PlaylistActionButtons(model: model, playback: playback, playlist: playlist)
+        }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Playlist: \(playlist.name)")
+        .accessibilityLabel("Playlist: \(playlist.name), \(playlist.summary)")
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+    }
+
+    private var background: Color {
+        if isSelected { return Tokens.Palette.navActive }
+        return isHovering || isTargeted ? Tokens.Palette.navHover : .clear
+    }
+
+    /// The first cover in the playlist, so a full one is recognisable at a
+    /// glance rather than being one of five identical placeholders.
+    private var artworkID: Artwork.ID? {
+        model.tracks(in: playlist).compactMap(\.artworkID).first
     }
 }

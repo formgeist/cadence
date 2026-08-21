@@ -160,6 +160,11 @@ struct CadenceCommands: Commands {
 
     var body: some Commands {
         CommandGroup(after: .newItem) {
+            Button("New Playlist…") {
+                container.model.naming = .create(seed: [])
+            }
+            .keyboardShortcut("n", modifiers: .command)
+
             Button("Add Music Folder…") {
                 guard let folder = container.importer.chooseFolder() else { return }
                 container.importer.importFolders([folder]) {

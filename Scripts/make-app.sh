@@ -80,6 +80,23 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>NSHighResolutionCapable</key>       <true/>
     <key>NSSupportsAutomaticTermination</key><true/>
     <key>LSApplicationCategoryType</key>     <string>public.app-category.music</string>
+
+    <!-- The drag type for tracks moving onto a playlist. Declared so the
+         identifier UTType(exportedAs:) forms in PlaylistActions.swift is a
+         real one rather than a type the system invents per launch. Spelled
+         out rather than built from $BUNDLE_ID: the Swift side is a literal,
+         and an overridden bundle id must not silently split the two. -->
+    <key>UTExportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key>   <string>com.formgeist.cadence.track-ids</string>
+            <key>UTTypeDescription</key>  <string>Cadence Tracks</string>
+            <key>UTTypeConformsTo</key>
+            <array><string>public.data</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict/>
+        </dict>
+    </array>
 </dict>
 </plist>
 PLIST
@@ -111,8 +128,11 @@ fi
 for framework in "$APP/Contents/Frameworks"/*.framework; do
     codesign --force --sign "$SIGN_IDENTITY" --timestamp=none "$framework" 2>/dev/null
 done
+# Guarded expansion: bash 3.2 is what macOS ships, and there an empty array
+# expanded as "${a[@]}" under `set -u` is an unbound variable rather than
+# nothing at all — which is why SANDBOX=0 could not build.
 codesign --force --sign "$SIGN_IDENTITY" --timestamp=none \
-    "${ENTITLEMENT_ARGS[@]}" "$APP"
+    ${ENTITLEMENT_ARGS[@]+"${ENTITLEMENT_ARGS[@]}"} "$APP"
 
 codesign --verify --deep --strict "$APP" && echo "signature OK"
 echo "$APP ready"

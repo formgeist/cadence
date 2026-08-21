@@ -40,6 +40,7 @@ struct RootView: View {
         .animation(.easeOut(duration: 0.2), value: importer.isImporting)
         .animation(.easeOut(duration: 0.2), value: playback.notice)
         .animation(.easeOut(duration: 0.2), value: model.actionError)
+        .animation(.easeOut(duration: 0.2), value: model.notice)
         .task {
             await model.load()
             // A library that already has folders rescans on launch, so files
@@ -49,11 +50,32 @@ struct RootView: View {
             }
         }
         .overlay(alignment: .bottom) { errorBanner }
-        .sheet(isPresented: $model.isCreatingPlaylist) {
+        .sheet(item: $model.naming) { naming in
             // A sheet is its own window; the model has to be handed across.
-            NewPlaylistSheet()
+            PlaylistNameSheet(naming: naming)
                 .environment(model)
         }
+        .confirmationDialog(
+            deletionPrompt,
+            isPresented: Binding(get: { model.playlistPendingDeletion != nil },
+                                 set: { if !$0 { model.playlistPendingDeletion = nil } }),
+            presenting: model.playlistPendingDeletion
+        ) { playlist in
+            Button("Delete Playlist", role: .destructive) {
+                model.playlistPendingDeletion = nil
+                Task { await model.deletePlaylist(playlist) }
+            }
+            Button("Cancel", role: .cancel) { model.playlistPendingDeletion = nil }
+        } message: { _ in
+            // Worth saying plainly: people expect deleting a playlist to be
+            // the dangerous kind of delete.
+            Text("The tracks stay in your library.")
+        }
+    }
+
+    private var deletionPrompt: String {
+        guard let playlist = model.playlistPendingDeletion else { return "Delete playlist?" }
+        return "Delete “\(playlist.name)”?"
     }
 
     @ViewBuilder
@@ -81,6 +103,12 @@ struct RootView: View {
                 ArtistDetailView(artist: artist)
             } else {
                 missing("That artist is no longer in your library")
+            }
+        case .playlist(let id):
+            if let playlist = model.playlist(id: id) {
+                PlaylistDetailView(playlist: playlist)
+            } else {
+                missing("That playlist has been deleted")
             }
         }
     }
@@ -110,6 +138,11 @@ struct RootView: View {
                    icon: "exclamationmark.triangle.fill",
                    tint: Tokens.Palette.accent) {
                 model.actionError = nil
+            }
+        } else if let added = model.notice {
+            Banner(text: added, icon: "checkmark.circle.fill",
+                   tint: Tokens.Palette.accent) {
+                model.notice = nil
             }
         } else if let notice = playback.notice {
             Banner(text: notice, icon: "headphones", tint: Tokens.Palette.textSecondary) {
