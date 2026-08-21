@@ -298,14 +298,14 @@ struct QueueEditingTests {
     ])
     func move(offsets: [Int], destination: Int, expected: [String]) {
         var items = ["A", "B", "C", "D"]
-        PlaybackController.move(&items, fromOffsets: IndexSet(offsets), toOffset: destination)
+        Ordering.move(&items, fromOffsets: IndexSet(offsets), toOffset: destination)
         #expect(items == expected)
     }
 
     @Test("Out-of-range offsets are ignored rather than trapping")
     func moveOutOfRange() {
         var items = ["A", "B"]
-        PlaybackController.move(&items, fromOffsets: IndexSet([5]), toOffset: 0)
+        Ordering.move(&items, fromOffsets: IndexSet([5]), toOffset: 0)
         #expect(items == ["A", "B"])
     }
 

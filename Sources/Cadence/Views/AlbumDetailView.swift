@@ -61,12 +61,25 @@ struct AlbumDetailView: View {
                         playback.play(album)
                     }
                     CapsuleButton(title: "Shuffle") { playback.shuffle(album) }
-                    CapsuleButton(systemImage: "plus",
-                                  accessibilityLabel: "Add album to queue") {
-                        playback.appendToQueue(orderedTracks)
+                    // A menu, not a button: the queue was the only thing an
+                    // album could be added to, and a playlist is the other
+                    // obvious answer to the same plus.
+                    Menu {
+                        Button("Add to Queue") { playback.appendToQueue(orderedTracks) }
+                        Divider()
+                        AddToPlaylistMenu(model: model, tracks: orderedTracks)
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 13, weight: .bold))
+                            .frame(width: 38, height: 38)
+                            .overlay { Capsule().strokeBorder(Color(hex: 0x32323B),
+                                                              lineWidth: 1) }
                     }
-                    CapsuleButton(systemImage: "ellipsis",
-                                  accessibilityLabel: "More actions") {}
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .foregroundStyle(Color(hex: 0xCACAD3))
+                    .accessibilityLabel("Add album to queue or a playlist")
                 }
                 .padding(.top, 10)
             }
@@ -156,6 +169,15 @@ struct AlbumDetailView: View {
                             playback.play(track, in: orderedTracks)
                         }
                     )
+                    .contextMenu {
+                        Button("Play") {
+                            selectedTrackID = track.id
+                            playback.play(track, in: orderedTracks)
+                        }
+                        Button("Add to Queue") { playback.appendToQueue([track]) }
+                        Divider()
+                        AddToPlaylistMenu(model: model, tracks: [track])
+                    }
                 }
             }
         }
@@ -199,12 +221,31 @@ private struct TrackRow: View {
     var onPlay: () -> Void
 
     @State private var isHovering = false
+    /// Where the pointer last was inside this row, in the row's own
+    /// coordinates. Read at drag start to decide where the chip appears; the
+    /// pointer is by definition over the row when the drag begins.
+    @State private var pointer: CGPoint = .zero
+    @State private var rowSize: CGSize = .zero
 
     var body: some View {
         row
             .padding(.horizontal, 10)
             .padding(.vertical, 9)
             .hoverHighlight(isActive: isCurrent || isSelected)
+            .background {
+                GeometryReader { geometry in
+                    Color.clear
+                        .onAppear { rowSize = geometry.size }
+                        .onChange(of: geometry.size) { _, new in rowSize = new }
+                }
+            }
+            .onContinuousHover { phase in
+                if case .active(let point) = phase { pointer = point }
+            }
+            // The whole row drags, not just the title.
+            .draggable(TrackSelection([track.id])) {
+                TrackDragPreview.track(track).anchored(in: rowSize, at: pointer)
+            }
             .onTapGesture(count: 2, perform: onPlay)
             .onTapGesture(perform: onSelect)
             .onHover { isHovering = $0 }

@@ -117,6 +117,19 @@ public protocol LibraryStore: Sendable {
     /// playlists is the new one.
     @discardableResult
     func createPlaylist(named name: String) async throws -> Playlist
+    /// Appends to the end of one playlist. Ids with no track behind them are
+    /// skipped rather than failing the batch — dragging a stale selection in
+    /// should add what still exists.
+    func addTracks(_ trackIDs: [Track.ID], to playlistID: Playlist.ID) async throws
+    /// Offsets into the playlist's own order, the way `onDelete` hands them
+    /// over. By offset rather than by track id because a playlist may hold the
+    /// same track twice, and then an id names two rows.
+    func removeTracks(atOffsets offsets: IndexSet, from playlistID: Playlist.ID) async throws
+    /// Offsets and destination are SwiftUI's `onMove` semantics.
+    func moveTracks(fromOffsets source: IndexSet, toOffset destination: Int,
+                    in playlistID: Playlist.ID) async throws
+    func renamePlaylist(_ id: Playlist.ID, to name: String) async throws
+    func deletePlaylist(_ id: Playlist.ID) async throws
     func tracks(matching query: String) async throws -> [Track]
     func upsert(_ tracks: [Track]) async throws
     /// Total bytes on disk, for the sidebar footer.

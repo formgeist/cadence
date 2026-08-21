@@ -160,6 +160,18 @@ struct CadenceCommands: Commands {
 
     var body: some Commands {
         CommandGroup(after: .newItem) {
+            // ⇧⌘N rather than Music.app's ⌘N: a WindowGroup gives SwiftUI a
+            // free New Window on ⌘N, and it wins the binding, so a New
+            // Playlist item claiming it is a menu entry that silently does
+            // something else. Taking ⌘N means dropping New Window with
+            // `CommandGroup(replacing: .newItem)` — worth doing, since both
+            // windows share one AppModel and mirror each other, but that is a
+            // decision about the app rather than about playlists.
+            Button("New Playlist…") {
+                container.model.naming = .create(seed: [])
+            }
+            .keyboardShortcut("n", modifiers: [.command, .shift])
+
             Button("Add Music Folder…") {
                 guard let folder = container.importer.chooseFolder() else { return }
                 container.importer.importFolders([folder]) {

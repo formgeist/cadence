@@ -12,7 +12,7 @@ grouped into the Phase 6 (Depth) and Phase 7 (Release) milestones.
 
 ```bash
 make run                          # launch the app
-make test                         # 131 tests
+make test                         # 147 tests
 make app                          # assemble a signed, sandboxed Cadence.app
 make audio-check                  # can a sandboxed build go bit-perfect?
 make a11y                         # print the accessibility tree
@@ -195,6 +195,33 @@ a test:
 - `Kid A (1)` / `Kid A (2)` with matching `DISCNUMBER` — one album, two discs,
   not two albums
 - Missing or zero `STREAMINFO` values — no division by zero, no NaN durations
+
+## Playlists
+
+A playlist is rows in `playlistItem`, ordered by `position` and addressed by
+row id rather than track id — the same track may sit in a playlist twice, and
+then a track id names two rows. Removing and reordering therefore take
+*offsets*, which is also the shape `onDelete` and `onMove` hand over.
+
+Names are deliberately not unique, so every operation addresses a playlist by
+id. `replacePlaylists` still exists for import, where rewriting the whole set
+in one transaction is the right thing; nothing the interface does goes through
+it, because editing one playlist should not rewrite the others.
+
+Tracks get in three ways: the Add to Playlist submenu on album cards, album
+track rows and playlist rows; the album header's `+`; and dragging either onto
+a playlist row in the sidebar or on the Playlists shelf. Creating a playlist
+from one of those menus seeds it with the tracks the menu was opened on.
+
+Two things worth knowing:
+
+- Rows in the playlist screen are not `.draggable`. `onMove` brings its own
+  drag, and a row carrying both hands the reorder gesture to the wrong one —
+  you go to move a track up two places and start dragging it at the sidebar
+  instead. Sending a track elsewhere is the context menu's job.
+- Deleting a track from the library removes it from every playlist, because
+  `playlistItem.trackID` cascades. That is what lets the playlist screen treat
+  a row offset and a stored position as the same number.
 
 ## Building UI before the audio layer works
 

@@ -135,6 +135,73 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
         return playlist
     }
 
+    /// Appends to one playlist, leaving every other one alone.
+    ///
+    /// The insert is `SELECT`-driven so an id whose file has left the library
+    /// adds nothing instead of failing the whole batch — a stale selection
+    /// dragged in should contribute what still exists.
+    public func addTracks(_ trackIDs: [Track.ID], to playlistID: Playlist.ID) async throws {
+        guard !trackIDs.isEmpty else { return }
+        try await pool.write { db in
+            var position = try Int.fetchOne(db, sql: """
+                SELECT IFNULL(MAX(position), -1) + 1 FROM playlistItem WHERE playlistID = ?
+                """, arguments: [playlistID.uuidString]) ?? 0
+
+            for trackID in trackIDs {
+                try db.execute(sql: """
+                    INSERT INTO playlistItem (playlistID, trackID, position)
+                    SELECT ?, id, ? FROM track WHERE id = ?
+                    """, arguments: [playlistID.uuidString, position, trackID.uuidString])
+                // Nothing inserted means no such track; leaving the position
+                // unspent keeps the run contiguous.
+                if db.changesCount > 0 { position += 1 }
+            }
+        }
+    }
+
+    public func removeTracks(
+        atOffsets offsets: IndexSet, from playlistID: Playlist.ID
+    ) async throws {
+        guard !offsets.isEmpty else { return }
+        try await pool.write { db in
+            let rowIDs = try Self.itemRowIDs(of: playlistID, in: db)
+            let doomed = offsets.compactMap { rowIDs.indices.contains($0) ? rowIDs[$0] : nil }
+            guard !doomed.isEmpty else { return }
+
+            try db.execute(
+                sql: "DELETE FROM playlistItem WHERE rowid IN (\(Self.placeholders(doomed.count)))",
+                arguments: StatementArguments(doomed))
+            try Self.renumber(rowIDs.filter { !doomed.contains($0) }, in: db)
+        }
+    }
+
+    public func moveTracks(
+        fromOffsets source: IndexSet, toOffset destination: Int, in playlistID: Playlist.ID
+    ) async throws {
+        guard !source.isEmpty else { return }
+        try await pool.write { db in
+            // Row ids, not track ids: a playlist may hold the same track twice,
+            // and reordering has to move one of them without touching the other.
+            var rowIDs = try Self.itemRowIDs(of: playlistID, in: db)
+            Ordering.move(&rowIDs, fromOffsets: source, toOffset: destination)
+            try Self.renumber(rowIDs, in: db)
+        }
+    }
+
+    public func renamePlaylist(_ id: Playlist.ID, to name: String) async throws {
+        try await pool.write { db in
+            try db.execute(sql: "UPDATE playlist SET name = ? WHERE id = ?",
+                           arguments: [name, id.uuidString])
+        }
+    }
+
+    /// The items go with it: `playlistItem.playlistID` cascades.
+    public func deletePlaylist(_ id: Playlist.ID) async throws {
+        try await pool.write { db in
+            try db.execute(sql: "DELETE FROM playlist WHERE id = ?", arguments: [id.uuidString])
+        }
+    }
+
     public func librarySize() async throws -> Int64 {
         try await pool.read { db in
             try Int64.fetchOne(db, sql: "SELECT IFNULL(SUM(fileSize), 0) FROM track") ?? 0
@@ -282,6 +349,25 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
                 rowID, record.id, record.title, record.artist,
                 record.albumArtist, record.albumTitle, record.composer ?? "",
             ])
+    }
+
+    /// One playlist's items in playing order, by row id — the handle every
+    /// per-item edit needs. A track id would not do: the same track may sit in
+    /// a playlist twice, and then an id names two rows.
+    private static func itemRowIDs(of playlistID: Playlist.ID, in db: Database) throws -> [Int64] {
+        try Int64.fetchAll(db, sql: """
+            SELECT rowid FROM playlistItem WHERE playlistID = ? ORDER BY position
+            """, arguments: [playlistID.uuidString])
+    }
+
+    /// Writes 0…n-1 over the given order. Positions are only ever read back
+    /// sorted, so gaps would do no harm — but a contiguous run is what the
+    /// next append counts from.
+    private static func renumber(_ rowIDs: [Int64], in db: Database) throws {
+        for (position, rowID) in rowIDs.enumerated() {
+            try db.execute(sql: "UPDATE playlistItem SET position = ? WHERE rowid = ?",
+                           arguments: [position, rowID])
+        }
     }
 
     private static func placeholders(_ count: Int) -> String {

@@ -305,12 +305,17 @@ extension AlbumGrid where Header == EmptyView {
 
 struct AlbumCard: View {
     @Environment(AppModel.self) private var model
+    @Environment(PlaybackController.self) private var playback
     var album: Album
     /// What the second line says. The library grid names the artist; an
     /// artist's own page already knows who they are, and needs the year to
     /// tell a record from its remaster.
     var subtitle: Subtitle = .artist
     @State private var isHovering = false
+    /// Where the pointer last was inside this card, and how big the card is —
+    /// between them they place the drag chip. See `anchored(in:at:)`.
+    @State private var pointer: CGPoint = .zero
+    @State private var cardSize: CGSize = .zero
 
     enum Subtitle { case artist, year }
 
@@ -349,6 +354,29 @@ struct AlbumCard: View {
         }
         .plainControl()
         .onHover { isHovering = $0 }
+        .background {
+            GeometryReader { geometry in
+                Color.clear
+                    .onAppear { cardSize = geometry.size }
+                    .onChange(of: geometry.size) { _, new in cardSize = new }
+            }
+        }
+        .onContinuousHover { phase in
+            if case .active(let point) = phase { pointer = point }
+        }
+        // A whole record onto a playlist row, in album order. Anchored the
+        // same way the track rows are, or the chip slides in from the middle
+        // of the cover to reach the pointer.
+        .draggable(TrackSelection(album.discs.flatMap(\.tracks))) {
+            TrackDragPreview.album(album).anchored(in: cardSize, at: pointer)
+        }
+        .contextMenu {
+            Button("Play") { playback.play(album) }
+            Button("Shuffle") { playback.shuffle(album) }
+            Button("Add to Queue") { playback.appendToQueue(album.discs.flatMap(\.tracks)) }
+            Divider()
+            AddToPlaylistMenu(model: model, tracks: album.discs.flatMap(\.tracks))
+        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(spokenLabel)
         .accessibilityAddTraits(.isButton)
@@ -377,7 +405,7 @@ private struct PlaylistsEmptyState: View {
             message: "A playlist is your own running order.\nMake one, then drop tracks into it as you go."
         ) {
             CapsuleButton(title: "New Playlist", systemImage: "plus", kind: .filled) {
-                model.isCreatingPlaylist = true
+                model.naming = .create(seed: [])
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -391,32 +419,64 @@ private struct PlaylistList: View {
     var body: some View {
         LazyVStack(spacing: Tokens.Space.xxs) {
             ForEach(model.playlists) { playlist in
-                HStack(spacing: Tokens.Space.l) {
-                    ArtworkView(artworkID: nil, cornerRadius: 5, displaySize: 64)
-                        .frame(width: 56, height: 56)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(playlist.name)
-                            .font(Tokens.Typography.sans(14, .bold))
-                            .foregroundStyle(Color(hex: 0xEAEAEF))
-                        Text(playlist.summary)
-                            .font(Tokens.Typography.caption)
-                            .foregroundStyle(Tokens.Palette.textTertiary)
-                    }
-                    Spacer(minLength: Tokens.Space.l)
-                    Text(DurationFormat.approximate(playlist.duration))
-                        .font(Tokens.Typography.mono(11))
-                        .foregroundStyle(Tokens.Palette.textFaint)
-                }
-                .padding(.horizontal, Tokens.Space.m)
-                .padding(.vertical, 10)
-                .hoverHighlight(radius: Tokens.Radius.card)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("\(playlist.name), \(playlist.summary), "
-                    + DurationFormat.approximate(playlist.duration))
+                PlaylistShelfRow(playlist: playlist)
             }
         }
         .padding(.horizontal, Tokens.Space.xl)
         .padding(.top, Tokens.Space.xl)
         .padding(.bottom, 44)
+    }
+}
+
+private struct PlaylistShelfRow: View {
+    @Environment(AppModel.self) private var model
+    @Environment(PlaybackController.self) private var playback
+    var playlist: Playlist
+
+    @State private var isTargeted = false
+
+    var body: some View {
+        // Opening it is what clicking a playlist has to do; that it did
+        // nothing here was half of issue #1.
+        Button { model.show(.playlist(playlist.id)) } label: {
+            HStack(spacing: Tokens.Space.l) {
+                ArtworkView(artworkID: artworkID, cornerRadius: 5, displaySize: 64)
+                    .frame(width: 56, height: 56)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(playlist.name)
+                        .font(Tokens.Typography.sans(14, .bold))
+                        .foregroundStyle(Color(hex: 0xEAEAEF))
+                    Text(playlist.summary)
+                        .font(Tokens.Typography.caption)
+                        .foregroundStyle(Tokens.Palette.textTertiary)
+                }
+                Spacer(minLength: Tokens.Space.l)
+                Text(DurationFormat.approximate(playlist.duration))
+                    .font(Tokens.Typography.mono(11))
+                    .foregroundStyle(Tokens.Palette.textFaint)
+            }
+            .padding(.horizontal, Tokens.Space.m)
+            .padding(.vertical, 10)
+            .hoverHighlight(isActive: isTargeted, radius: Tokens.Radius.card)
+            .contentShape(Rectangle())
+        }
+        .plainControl()
+        .dropDestination(for: TrackSelection.self) { selections, _ in
+            let ids = selections.flatMap(\.trackIDs)
+            guard !ids.isEmpty else { return false }
+            Task { await model.addTracks(ids, to: playlist.id) }
+            return true
+        } isTargeted: { isTargeted = $0 }
+        .contextMenu {
+            PlaylistActionButtons(model: model, playback: playback, playlist: playlist)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(playlist.name), \(playlist.summary), "
+            + DurationFormat.approximate(playlist.duration))
+        .accessibilityAddTraits(.isButton)
+    }
+
+    private var artworkID: Artwork.ID? {
+        model.tracks(in: playlist).compactMap(\.artworkID).first
     }
 }
