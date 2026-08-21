@@ -84,6 +84,23 @@ public enum ReplayGainMode: String, CaseIterable, Sendable {
     }
 }
 
+/// A track the queue moved past because the engine could not open it, and why.
+///
+/// Top level rather than nested in `PlaybackController` so it carries no actor
+/// isolation of its own: the controller is `@MainActor`, and a record of what
+/// went wrong should be free to travel to a log or a report that is not.
+public struct SkippedTrack: Identifiable, Hashable, Sendable {
+    public let track: Track
+    public let reason: PlaybackError
+
+    public init(track: Track, reason: PlaybackError) {
+        self.track = track
+        self.reason = reason
+    }
+
+    public var id: Track.ID { track.id }
+}
+
 public enum PlaybackError: Error, Hashable, Sendable {
     case fileMissing(URL)
     case bookmarkStale(URL)
@@ -104,5 +121,42 @@ public enum PlaybackError: Error, Hashable, Sendable {
         case .engine(let detail):
             detail
         }
+    }
+
+    /// One clause, for a message that has already named the track — a skip
+    /// notice reads "Skipped “Bitches Brew” — the file has moved", where
+    /// `message` would repeat the filename back at a title already on screen.
+    public var reasonPhrase: String {
+        switch self {
+        case .fileMissing:
+            "the file has moved or been deleted"
+        case .bookmarkStale:
+            "Cadence can no longer read that folder"
+        case .unsupportedFormat(let name):
+            "Cadence can't decode \(name)"
+        case .outputDeviceLost:
+            "the audio output device went away"
+        case .engine(let detail):
+            detail
+        }
+    }
+
+    /// Tells a file that is *gone* from one the decoder merely refused. The
+    /// engine only knows that the open failed; the filesystem knows why, and
+    /// the two want different words and different remedies.
+    ///
+    /// Order matters: an unreadable file inside a folder the sandbox has lost
+    /// exists but cannot be opened, and reporting that as a decode failure
+    /// sends the user looking for a corrupt rip that is perfectly fine.
+    public static func diagnosing(_ error: Error, at url: URL) -> PlaybackError {
+        let manager = FileManager.default
+        guard url.isFileURL else { return wrapping(error) }
+        if !manager.fileExists(atPath: url.path) { return .fileMissing(url) }
+        if !manager.isReadableFile(atPath: url.path) { return .bookmarkStale(url) }
+        return wrapping(error)
+    }
+
+    private static func wrapping(_ error: Error) -> PlaybackError {
+        error as? PlaybackError ?? .engine(error.localizedDescription)
     }
 }

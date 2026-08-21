@@ -62,6 +62,23 @@ public final class PlaybackController {
 
     public func clearNotice() { notice = nil }
 
+    /// Tracks the queue moved past because the engine could not play them.
+    ///
+    /// Separate from `notice` on purpose: a notice is gone the moment the user
+    /// dismisses it or the next one lands, and a record that quietly dropped
+    /// four tracks is barely better than one that stopped on the first. This
+    /// list survives until playback is deliberately started again, so the
+    /// interface can still answer "what did it skip?" after the fact.
+    public private(set) var skipped: [SkippedTrack] = []
+
+    /// Ids in `skipped`, for the O(1) membership the queue walk needs.
+    private var failedIDs: Set<Track.ID> = []
+
+    public func clearSkipped() {
+        skipped = []
+        failedIDs = []
+    }
+
     /// Set when the output device disappeared and the engine has to be handed
     /// the file again before it can play. Resuming a dead graph silently does
     /// nothing, which is exactly the "silently stall" PLAN.md §6 rules out.
@@ -107,6 +124,10 @@ public final class PlaybackController {
     /// Play `track` in the context of `tracks` — clicking row 3 of an album
     /// queues the whole album and starts at 3.
     public func play(_ track: Track, in tracks: [Track]) {
+        // A new record is a fresh chance for every file: the NAS may be back,
+        // and the user asked for these tracks rather than inheriting a verdict
+        // from the last queue.
+        clearSkipped()
         orderedQueue = tracks
         queue = shuffleMode.isOn ? Self.shuffled(tracks, startingWith: track) : tracks
         guard let index = queue.firstIndex(where: { $0.id == track.id }) else {
@@ -136,6 +157,7 @@ public final class PlaybackController {
     /// The same, over any run of tracks — an artist's whole discography, say.
     public func shuffle(_ tracks: [Track]) {
         guard !tracks.isEmpty else { return }
+        clearSkipped()
         shuffleMode = .on
         orderedQueue = tracks
         queue = tracks.shuffled()
@@ -177,7 +199,16 @@ public final class PlaybackController {
     /// Plays something already in the queue, without disturbing the rest of it.
     public func jump(to track: Track) {
         guard let index = queue.firstIndex(where: { $0.id == track.id }) else { return }
+        // Picking a track by hand overrides an earlier skip. Clearing only this
+        // one keeps the rest of the record intact, so a queue that dropped four
+        // files still says so after the user retries one of them.
+        forget(track.id)
         start(at: index)
+    }
+
+    private func forget(_ id: Track.ID) {
+        guard failedIDs.remove(id) != nil else { return }
+        skipped.removeAll { $0.id == id }
     }
 
     /// The track after the current one may have changed; withdraw whatever the
@@ -196,21 +227,39 @@ public final class PlaybackController {
         prepareNextIfNeeded()
     }
 
+    /// Loops rather than recurses on failure. A queue of thirty thousand tracks
+    /// on an unmounted volume fails thirty thousand times in a row, and a
+    /// recursive skip would take the stack out before it reached the end.
     private func start(at index: Int, resumingAt position: TimeInterval? = nil) {
-        guard queue.indices.contains(index) else { return }
-        currentIndex = index
-        let track = queue[index]
-        state = .loading(track.id)
-        progress = PlaybackProgress(elapsed: position ?? 0, duration: track.duration)
-        preparedNext = nil
-        pendingSeek = position
+        var index = index
+        var position = position
 
-        do {
-            try engine.play(url: track.url, duration: track.duration, gain: gain(for: track))
-        } catch let error as PlaybackError {
-            state = .failed(error)
-        } catch {
-            state = .failed(.engine(error.localizedDescription))
+        while queue.indices.contains(index) {
+            let track = queue[index]
+            currentIndex = index
+            state = .loading(track.id)
+            progress = PlaybackProgress(elapsed: position ?? 0, duration: track.duration)
+            preparedNext = nil
+            pendingSeek = position
+
+            do {
+                try engine.play(url: track.url, duration: track.duration,
+                                gain: gain(for: track))
+                return
+            } catch {
+                // A file that will not open is the ordinary failure for a
+                // library that mirrors the filesystem, not an exceptional one.
+                // Move on rather than stopping the record here.
+                note(skip: track, reason: PlaybackError.diagnosing(error, at: track.url))
+                guard let next = indexAfter(index) else {
+                    stopAfterFailures()
+                    return
+                }
+                index = next
+                // Only the track the user actually asked to resume gets its
+                // position back; the one we fell through to starts at the top.
+                position = nil
+            }
         }
     }
 
@@ -236,7 +285,12 @@ public final class PlaybackController {
         case .paused: engine.resume()
         case .idle, .failed:
             // Nothing loaded — start the queue from the top if there is one.
-            if currentIndex == nil, !queue.isEmpty { start(at: 0) }
+            // Pressing Play after a queue died is a deliberate retry, so the
+            // earlier verdicts go with it; the volume may well be back.
+            if currentIndex == nil, !queue.isEmpty {
+                clearSkipped()
+                start(at: 0)
+            }
         case .loading:
             break
         }
@@ -290,11 +344,61 @@ public final class PlaybackController {
     // MARK: - Queue order
 
     private func indexAfter(_ index: Int?) -> Int? {
-        guard let index else { return queue.isEmpty ? nil : 0 }
-        if repeatMode == .one { return index }
-        let next = index + 1
-        if queue.indices.contains(next) { return next }
-        return repeatMode == .all && !queue.isEmpty ? 0 : nil
+        guard let index else { return nextPlayableIndex(after: -1, wrapping: false) }
+        // Repeat One holds on the current track — unless the engine has already
+        // refused that track, in which case holding on it is a spin the user
+        // can only break by hand. A dead file under Repeat One moves on and
+        // then stops, rather than looping over a failure forever.
+        if repeatMode == .one, queue.indices.contains(index),
+           !failedIDs.contains(queue[index].id) {
+            return index
+        }
+        return nextPlayableIndex(after: index, wrapping: repeatMode == .all)
+    }
+
+    /// The first index after `index` whose track has not already failed.
+    /// `wrapping` returns to the top of the queue once, for Repeat All.
+    ///
+    /// Stepping over known-bad tracks is what stops a queue of dead files from
+    /// spinning: every walk is bounded by `queue.count`, and each failure
+    /// shortens the next one.
+    private func nextPlayableIndex(after index: Int, wrapping: Bool) -> Int? {
+        guard !queue.isEmpty else { return nil }
+        for step in 1...queue.count {
+            let raw = index + step
+            guard raw < queue.count || wrapping else { return nil }
+            let candidate = raw % queue.count
+            if !failedIDs.contains(queue[candidate].id) { return candidate }
+        }
+        return nil
+    }
+
+    // MARK: - Failures
+
+    /// Records a track the engine could not play, and says so once. Repeated
+    /// failures on the same track — Repeat All coming round again — count once.
+    private func note(skip track: Track, reason: PlaybackError) {
+        guard failedIDs.insert(track.id).inserted else { return }
+        skipped.append(SkippedTrack(track: track, reason: reason))
+        notice = Self.skipNotice(for: skipped)
+    }
+
+    /// Every remaining track failed too. Stop, but end in `.failed` rather than
+    /// `.idle` so the reason stays on screen — an idle transport after a queue
+    /// of dead files says nothing about why nothing played.
+    private func stopAfterFailures() {
+        let reason = skipped.last?.reason ?? .engine("Nothing in the queue could be played.")
+        stop()
+        // The notice would otherwise sit in front of the error that explains
+        // the stop; `skipped` still carries the count.
+        notice = nil
+        state = .failed(reason)
+    }
+
+    private static func skipNotice(for skipped: [SkippedTrack]) -> String {
+        guard let last = skipped.last else { return "" }
+        let line = "Skipped “\(last.track.title)” — \(last.reason.reasonPhrase)"
+        return skipped.count > 1 ? "\(line) (\(skipped.count) skipped)" : line
     }
 
     /// Keeps the current track in place and shuffles everything around it, so
@@ -341,13 +445,36 @@ public final class PlaybackController {
     /// Called the moment a track *starts*, not near its end. SFB then performs
     /// the transition itself and reports it; getting this backwards produces a
     /// gap. See PLAN.md §7.
+    ///
+    /// A prepared track that cannot be opened used to throw into a `try?` and
+    /// vanish. Nothing was playing from it yet, so no event ever followed, and
+    /// the failure surfaced minutes later as a stall at the transition instead
+    /// of a skip now. It is recorded here and the track after it is offered
+    /// instead, so the gap never arrives.
     private func prepareNextIfNeeded() {
-        guard state.isActive, let index = indexAfter(currentIndex),
-              queue.indices.contains(index) else { return }
-        let track = queue[index]
-        guard preparedNext != track.id else { return }
-        preparedNext = track.id
-        try? engine.prepareNext(url: track.url, duration: track.duration, gain: gain(for: track))
+        guard state.isActive else { return }
+        var candidate = indexAfter(currentIndex)
+
+        while let index = candidate, queue.indices.contains(index) {
+            let track = queue[index]
+            guard preparedNext != track.id else { return }
+            do {
+                try engine.prepareNext(url: track.url, duration: track.duration,
+                                       gain: gain(for: track))
+                // Only after the engine took it: a track it refused is not
+                // prepared, and remembering it as such would suppress the
+                // retry the next handshake would otherwise make.
+                preparedNext = track.id
+                return
+            } catch {
+                // Under Repeat One the candidate *is* the playing track. It
+                // demonstrably opens, so a refusal to arm it again is the
+                // engine's business, not a track to strike off the queue.
+                guard index != currentIndex else { return }
+                note(skip: track, reason: PlaybackError.diagnosing(error, at: track.url))
+                candidate = indexAfter(index)
+            }
+        }
     }
 
     // MARK: - ReplayGain
@@ -431,8 +558,22 @@ public final class PlaybackController {
             notice = "Output device changed. Playback paused."
 
         case .failed(let error):
-            state = .failed(error)
-            progress = .zero
+            // The engine gave up on this file. The record does not: a renamed
+            // file, an unmounted NAS or one bad rip in the middle of an album
+            // is the failure a filesystem-backed library actually meets, and
+            // stopping on it leaves the user to work out which track did it.
+            guard let index = currentIndex, queue.indices.contains(index) else {
+                state = .failed(error)
+                progress = .zero
+                return
+            }
+            note(skip: queue[index],
+                 reason: PlaybackError.diagnosing(error, at: queue[index].url))
+            guard let next = indexAfter(index) else {
+                stopAfterFailures()
+                return
+            }
+            start(at: next)
         }
     }
 }

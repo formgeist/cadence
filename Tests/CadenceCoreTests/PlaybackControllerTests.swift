@@ -27,13 +27,24 @@ final class SpyEngine: PlayerEngine {
         (positions, positionSink) = AsyncStream.makeStream()
     }
 
+    /// Files the engine refuses to open, by last path component — a corrupt
+    /// rip, or one the volume no longer has. Both `play` and `prepareNext`
+    /// honour it, so the direct and the gapless path can be driven the same way.
+    var unopenable: Set<String> = []
+
     func play(url: URL, duration: TimeInterval, gain: Double) throws {
         played.append(url)
         gains.append(gain)
+        if unopenable.contains(url.lastPathComponent) {
+            throw PlaybackError.unsupportedFormat("test")
+        }
     }
 
     func prepareNext(url: URL, duration: TimeInterval, gain: Double) throws {
         prepared.append(url)
+        if unopenable.contains(url.lastPathComponent) {
+            throw PlaybackError.unsupportedFormat("test")
+        }
     }
 
     func clearNext() { clearNextCount += 1 }
@@ -280,6 +291,160 @@ struct PlaybackControllerTests {
         await engine.emit(.failed(.fileMissing(track.url)))
 
         #expect(controller.lastError == .fileMissing(track.url))
+    }
+}
+
+/// A library is a snapshot of the filesystem, so a file that will not open is
+/// the ordinary failure rather than the exceptional one. The record moves on.
+@MainActor
+@Suite("Unplayable files")
+struct PlaybackFailureTests {
+
+    @Test("A track the engine reports failed is skipped, not stopped on")
+    func failedTrackIsSkipped() async {
+        let engine = SpyEngine()
+        let controller = PlaybackController(engine: engine)
+        let tracks = [makeTrack("A"), makeTrack("B"), makeTrack("C")]
+
+        controller.play(tracks[0], in: tracks)
+        await engine.emit(.failed(.unsupportedFormat("FLAC")))
+
+        #expect(controller.currentTrack?.title == "B")
+        #expect(controller.state.isActive)
+        #expect(controller.skipped.map(\.track.title) == ["A"])
+        #expect(controller.notice?.contains("A") == true)
+    }
+
+    @Test("A track that will not open at start time falls through to the next")
+    func unopenableTrackFallsThrough() {
+        let engine = SpyEngine()
+        engine.unopenable = ["A.flac", "B.flac"]
+        let controller = PlaybackController(engine: engine)
+        let tracks = [makeTrack("A"), makeTrack("B"), makeTrack("C")]
+
+        controller.play(tracks[0], in: tracks)
+
+        #expect(controller.currentTrack?.title == "C")
+        #expect(controller.skipped.map(\.track.title) == ["A", "B"])
+        // Each was genuinely attempted, in order, rather than assumed bad.
+        #expect(engine.played.map(\.lastPathComponent) == ["A.flac", "B.flac", "C.flac"])
+    }
+
+    @Test("A queue where everything fails stops instead of spinning")
+    func allFailedStops() {
+        let engine = SpyEngine()
+        engine.unopenable = ["A.flac", "B.flac", "C.flac"]
+        let controller = PlaybackController(engine: engine)
+        let tracks = [makeTrack("A"), makeTrack("B"), makeTrack("C")]
+
+        controller.play(tracks[0], in: tracks)
+
+        #expect(controller.currentTrack == nil)
+        #expect(controller.lastError != nil)
+        #expect(controller.skipped.count == 3)
+        // Three attempts, not four: no track is tried twice.
+        #expect(engine.played.count == 3)
+    }
+
+    @Test("Repeat One does not re-enter a track the engine refused")
+    func repeatOneDoesNotSpinOnAFailure() {
+        let engine = SpyEngine()
+        engine.unopenable = ["A.flac"]
+        let controller = PlaybackController(engine: engine)
+        let tracks = [makeTrack("A"), makeTrack("B")]
+        controller.repeatMode = .one
+
+        controller.play(tracks[0], in: tracks)
+
+        #expect(controller.currentTrack?.title == "B")
+        #expect(engine.played.map(\.lastPathComponent) == ["A.flac", "B.flac"])
+    }
+
+    @Test("Repeat All wraps past a failure without revisiting it")
+    func repeatAllWrapsOnce() {
+        let engine = SpyEngine()
+        engine.unopenable = ["C.flac"]
+        let controller = PlaybackController(engine: engine)
+        let tracks = [makeTrack("A"), makeTrack("B"), makeTrack("C")]
+        controller.repeatMode = .all
+
+        controller.play(tracks[2], in: tracks)
+
+        #expect(controller.currentTrack?.title == "A")
+        #expect(engine.played.map(\.lastPathComponent) == ["C.flac", "A.flac"])
+    }
+
+    @Test("A missing file is diagnosed as missing, whatever the engine said")
+    func missingFileIsNamedAsSuch() {
+        let engine = SpyEngine()
+        engine.unopenable = ["A.flac"]
+        let controller = PlaybackController(engine: engine)
+        // makeTrack points at /music, which does not exist.
+        let track = makeTrack("A")
+
+        controller.play(track, in: [track])
+
+        #expect(controller.skipped.first?.reason == .fileMissing(track.url))
+    }
+
+    @Test("A file that is present keeps the decoder's own reason")
+    func presentFileKeepsEngineReason() throws {
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("cadence-failure-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let url = directory.appendingPathComponent("Corrupt.flac")
+        try Data("not audio".utf8).write(to: url)
+
+        let engine = SpyEngine()
+        engine.unopenable = ["Corrupt.flac"]
+        let controller = PlaybackController(engine: engine)
+        var track = makeTrack("Corrupt")
+        track.url = url
+
+        controller.play(track, in: [track])
+
+        // The bytes are there and readable, so this is the decoder's verdict
+        // and not a file that walked off.
+        #expect(controller.skipped.first?.reason == .unsupportedFormat("test"))
+    }
+
+    @Test("A prepared track that will not open is skipped rather than stalling")
+    func gaplessPreparationSkipsAheadOnFailure() async {
+        let engine = SpyEngine()
+        engine.unopenable = ["B.flac"]
+        let controller = PlaybackController(engine: engine)
+        let tracks = [makeTrack("A"), makeTrack("B"), makeTrack("C")]
+
+        controller.play(tracks[0], in: tracks)
+        // The handshake starts when the track starts, not near its end.
+        await engine.emit(.started(tracks[0].url))
+
+        #expect(controller.currentTrack?.title == "A")
+        // B was offered, refused, and C armed in its place — rather than the
+        // throw vanishing into a `try?` and surfacing as a gap later.
+        #expect(engine.prepared.map(\.lastPathComponent) == ["B.flac", "C.flac"])
+        #expect(controller.skipped.map(\.track.title) == ["B"])
+    }
+
+    @Test("The skip record outlives the notice, and a new record clears it")
+    func skipRecordPersistsUntilNextPlay() {
+        let engine = SpyEngine()
+        engine.unopenable = ["A.flac"]
+        let controller = PlaybackController(engine: engine)
+        let tracks = [makeTrack("A"), makeTrack("B")]
+
+        controller.play(tracks[0], in: tracks)
+        controller.clearNotice()
+
+        #expect(controller.notice == nil)
+        #expect(controller.skipped.count == 1)
+
+        engine.unopenable = []
+        controller.play(tracks[1], in: tracks)
+
+        #expect(controller.skipped.isEmpty)
     }
 }
 
