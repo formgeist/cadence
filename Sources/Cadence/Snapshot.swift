@@ -23,14 +23,19 @@ enum Snapshot {
         /// Stands in for the preview library, for the states that are defined
         /// by what the library does *not* have.
         var store: (@Sendable () -> any LibraryStore)?
+        /// The suggestions only appear while the field holds focus, which an
+        /// off-screen window cannot take.
+        var focusesSearchField: Bool
         var configure: (AppContainer) -> Void
 
         init(name: String, size: CGSize,
              store: (@Sendable () -> any LibraryStore)? = nil,
+             focusesSearchField: Bool = false,
              configure: @escaping (AppContainer) -> Void) {
             self.name = name
             self.size = size
             self.store = store
+            self.focusesSearchField = focusesSearchField
             self.configure = configure
         }
     }
@@ -113,6 +118,14 @@ enum Snapshot {
         Shot(name: "12-minimum-window", size: Tokens.Layout.minWindow) { container in
             container.model.tab = .albums
         },
+
+        // The suggestions drop out of the header and over the library. They
+        // spent a release painted *underneath* it — issue #21 — which is the
+        // sort of thing a shot catches and a passing build does not.
+        Shot(name: "16-search-suggestions", size: Tokens.Layout.defaultWindow,
+             focusesSearchField: true) { container in
+            container.model.searchText = "slow"
+        },
     ]
 
     private static func open(_ container: AppContainer, album title: String,
@@ -156,6 +169,7 @@ enum Snapshot {
                 .environment(container.importer)
                 .environment(container.artworkLoader)
                 .environment(\.isSilentPlayback, container.isSilentPlayback)
+                .environment(\.rendersSearchFocused, shot.focusesSearchField)
                 .preferredColorScheme(.dark)
                 .background(Tokens.Palette.surface)
 
