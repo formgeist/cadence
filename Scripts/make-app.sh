@@ -7,9 +7,9 @@
 # everything that needs a real bundle identity: Now Playing and media keys, the
 # app sandbox, security-scoped bookmarks, and window restoration.
 #
-# It also produces the layout the LGPL components require: lame, mpg123 and
-# musepack are embedded as dynamic frameworks rather than merged into the
-# binary.
+# It also produces the layout the LGPL components require — lame, mpg123,
+# libsndfile and tta are embedded as dynamic frameworks rather than merged into
+# the binary — and ships every component's licence text alongside them.
 #
 # Replace with a real Xcode target when one exists; nothing here is precious.
 
@@ -51,6 +51,18 @@ done
 # The binary looks for them on @rpath; point that at the bundle.
 install_name_tool -add_rpath "@executable_path/../Frameworks" \
     "$APP/Contents/MacOS/Cadence" 2>/dev/null || true
+
+# The licence texts. LGPL components have to ship theirs, and the BSD ones ask
+# for their notice to be reproduced in the material shipped alongside a binary,
+# which for an app is the bundle. Copied rather than fetched at build time: a
+# build that needs the network to be compliant is one that silently stops being
+# compliant offline. See Licences/README.md for what each one covers.
+mkdir -p "$APP/Contents/Resources/Licences"
+cp Licences/*.txt Licences/README.md "$APP/Contents/Resources/Licences/"
+
+# The font licences live beside the fonts they cover, not in Licences/, so they
+# stay next to what they license in the source tree. They join the rest here.
+cp Sources/Cadence/Resources/OFL-*.txt "$APP/Contents/Resources/Licences/"
 
 # The icon. An asset catalog would need actool, which is Xcode's; .icns is the
 # format that predates it and iconutil ships with Command Line Tools, so the

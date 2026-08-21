@@ -355,14 +355,23 @@ Cog is GPL, so read it for reference but never copy from it, and Chromaprint is
 LGPL, so it is off the table for static linking if phase 6 wants acoustic
 fingerprinting.
 
-SFBAudioEngine pulls in three LGPL components — lame, mpg123 and musepack — and
-they arrive as **dynamic** frameworks, which is what makes them compatible with
-an MIT app. Two things follow at phase 7: embed them as frameworks rather than
-merging them into the binary, and ship their licence texts. Statically linking
-them would forfeit that compatibility.
+SFBAudioEngine pulls in four LGPL components — **lame** (LGPL v2),
+**mpg123** and **libsndfile** (LGPL v2.1), and **tta** (LGPL v3). They arrive as
+**dynamic** frameworks, which is what makes them compatible with an MIT app;
+statically linking any of them would forfeit that. Musepack is *not* among them,
+despite a long-standing claim here that it was: only its encoder is LGPL, and
+the half Cadence uses — the `libmpcdec` decoder — is BSD. The remaining bundled
+decoders (FLAC, Ogg, Vorbis, Opus, WavPack, Musepack) are BSD, which asks that
+their notices be reproduced in what ships beside the binary.
+
+Both halves of that obligation are now met. `make-app.sh` embeds each component
+as a framework, and copies every licence text into
+`Cadence.app/Contents/Resources/Licences`. The texts and the full component
+table live in [Licences/](Licences/README.md).
 
 Bundled fonts are licensed separately under the SIL Open Font License —
 [Manrope](Sources/Cadence/Resources/OFL-Manrope.txt) and
 [IBM Plex Mono](Sources/Cadence/Resources/OFL-IBMPlexMono.txt). OFL permits
 bundling in a commercial or MIT-licensed application; it only requires that the
-fonts themselves stay under OFL and are not sold on their own.
+fonts themselves stay under OFL and are not sold on their own. Both texts ship
+in the bundle with the rest.
