@@ -270,6 +270,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // An SPM executable is not an app bundle, so it launches as an
         // accessory process with no Dock icon and no key window. Both of these
         // become unnecessary once there is a real .app target.
+        if A11yHarness.parse(CommandLine.arguments) {
+            NSApp.setActivationPolicy(.prohibited)
+            Task { @MainActor in
+                do { exit(try await A11yHarness.run()) }
+                catch {
+                    FileHandle.standardError.write(Data("a11y failed: \(error)\n".utf8))
+                    exit(1)
+                }
+            }
+            return
+        }
+
+        if let options = BenchHarness.parse(CommandLine.arguments) {
+            NSApp.setActivationPolicy(.prohibited)
+            Task { @MainActor in
+                do { exit(try await BenchHarness.run(options)) }
+                catch {
+                    FileHandle.standardError.write(Data("bench failed: \(error)\n".utf8))
+                    exit(1)
+                }
+            }
+            return
+        }
+
         if let options = PlayHarness.parse(CommandLine.arguments) {
             NSApp.setActivationPolicy(.prohibited)
             Task { @MainActor in

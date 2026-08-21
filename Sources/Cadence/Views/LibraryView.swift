@@ -10,14 +10,18 @@ struct LibraryView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            ScrollView {
-                switch model.tab {
-                case .artists: ArtistsList()
-                case .albums: AlbumGrid()
-                case .playlists: PlaylistList()
-                }
+            switch model.tab {
+            case .albums:
+                // Brings its own scroll view: the column count depends on the
+                // width, which needs a GeometryReader outside the scrolling.
+                AlbumGrid()
+            case .artists:
+                ScrollView { ArtistsList() }
+                    .scrollContentBackground(.hidden)
+            case .playlists:
+                ScrollView { PlaylistList() }
+                    .scrollContentBackground(.hidden)
             }
-            .scrollContentBackground(.hidden)
         }
         .background(Tokens.Palette.surface)
     }
@@ -81,6 +85,7 @@ private struct TabButton: View {
                 }
         }
         .plainControl()
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 }
 
@@ -97,6 +102,7 @@ private struct GridZoomControl: View {
                     .frame(width: 9, height: 9)
             }
             .plainControl()
+            .accessibilityLabel("Smaller album covers")
 
             GeometryReader { geometry in
                 let width = geometry.size.width
@@ -117,6 +123,11 @@ private struct GridZoomControl: View {
                 )
             }
             .frame(width: 96, height: 14)
+            .accessibilityRepresentation {
+                Slider(value: $zoom, in: 0...1, step: 0.1)
+                    .accessibilityLabel("Album cover size")
+                    .accessibilityValue("\(Int((zoom * 100).rounded())) percent")
+            }
 
             Button { zoom = min(1, zoom + 0.25) } label: {
                 RoundedRectangle(cornerRadius: 3)
@@ -124,6 +135,7 @@ private struct GridZoomControl: View {
                     .frame(width: 14, height: 14)
             }
             .plainControl()
+            .accessibilityLabel("Larger album covers")
         }
     }
 }
@@ -189,6 +201,9 @@ private struct ArtistRow: View {
             .hoverHighlight(radius: 0)
         }
         .plainControl()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(artist.name), \(artist.summary)")
+        .accessibilityAddTraits(.isButton)
     }
 }
 
@@ -198,18 +213,39 @@ private struct AlbumGrid: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        LazyVGrid(
-            columns: [GridItem(.adaptive(minimum: model.albumColumnWidth),
-                               spacing: Tokens.Space.xl)],
-            alignment: .leading,
-            spacing: Tokens.Space.xxl
-        ) {
-            ForEach(model.albums) { album in
-                AlbumCard(album: album)
+        // The column count is computed rather than left to
+        // `GridItem(.adaptive(minimum:))`. Adaptive columns cost a full layout
+        // pass over every item to decide how many fit, which stops LazyVGrid
+        // being lazy at all: at 2,500 albums a single scrolled frame took 1.6
+        // seconds. Fixed columns keep it to the rows on screen.
+        GeometryReader { geometry in
+            let available = geometry.size.width - Tokens.Space.contentInset * 2
+            let columns = Self.columnCount(for: available,
+                                           minimum: model.albumColumnWidth)
+            ScrollView {
+                LazyVGrid(
+                    columns: Array(repeating: GridItem(.flexible(),
+                                                       spacing: Tokens.Space.xl),
+                                   count: columns),
+                    alignment: .leading,
+                    spacing: Tokens.Space.xxl
+                ) {
+                    ForEach(model.albums) { album in
+                        AlbumCard(album: album)
+                    }
+                }
+                .padding(.horizontal, Tokens.Space.contentInset)
+                .padding(.vertical, Tokens.Space.xxl)
             }
+            .scrollContentBackground(.hidden)
         }
-        .padding(.horizontal, Tokens.Space.contentInset)
-        .padding(.vertical, Tokens.Space.xxl)
+    }
+
+    /// How many cards of at least `minimum` points fit, never fewer than one.
+    static func columnCount(for width: CGFloat, minimum: CGFloat) -> Int {
+        guard width > 0, minimum > 0 else { return 1 }
+        let spacing = Tokens.Space.xl
+        return max(1, Int((width + spacing) / (minimum + spacing)))
     }
 }
 
@@ -246,6 +282,17 @@ private struct AlbumCard: View {
         }
         .plainControl()
         .onHover { isHovering = $0 }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(spokenLabel)
+        .accessibilityAddTraits(.isButton)
+    }
+
+    private var spokenLabel: String {
+        var parts = [album.title, album.albumArtist]
+        if let year = album.year { parts.append(String(year)) }
+        if album.hasMultipleDiscs { parts.append("\(album.discCount) discs") }
+        if album.isCompilation { parts.append("Compilation") }
+        return parts.joined(separator: ", ")
     }
 }
 
@@ -276,6 +323,9 @@ private struct PlaylistList: View {
                 .padding(.horizontal, Tokens.Space.m)
                 .padding(.vertical, 10)
                 .hoverHighlight(radius: Tokens.Radius.card)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(playlist.name), \(playlist.summary), "
+                    + DurationFormat.approximate(playlist.duration))
             }
         }
         .padding(.horizontal, Tokens.Space.xl)

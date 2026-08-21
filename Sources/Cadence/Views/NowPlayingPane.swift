@@ -19,6 +19,7 @@ struct NowPlayingPane: View {
                 }
                 .plainControl()
                 .disabled(playback.currentTrack == nil)
+                .accessibilityLabel("Full-screen artwork")
             }
             .padding(.horizontal, Tokens.Space.paneInset)
             .padding(.top, Tokens.Space.xl)
@@ -50,6 +51,8 @@ struct NowPlayingPane: View {
                 .shadow(color: .black.opacity(0.5), radius: 18, y: 9)
         }
         .plainControl()
+        .accessibilityLabel("Artwork for \(track.albumTitle)")
+        .accessibilityHint("Opens full-screen artwork")
         .padding(.horizontal, Tokens.Space.paneInset)
         .padding(.top, Tokens.Space.l)
 
@@ -67,11 +70,18 @@ struct NowPlayingPane: View {
                 .foregroundStyle(Color(hex: 0x64646E))
                 .lineLimit(1)
         }
+        // Three separate stops for one fact; one is enough.
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Now playing: \(track.title), \(track.artist), \(track.albumTitle)")
         .padding(.horizontal, Tokens.Space.paneInset)
         .padding(.top, 18)
 
         VStack(spacing: 7) {
-            ScrubBar(fraction: playback.progress.fraction, height: 3) { fraction in
+            ScrubBar(
+                fraction: playback.progress.fraction,
+                height: 3,
+                accessibilityValue: Self.spokenPosition(playback.progress)
+            ) { fraction in
                 playback.seek(toFraction: fraction)
             }
             HStack {
@@ -81,6 +91,8 @@ struct NowPlayingPane: View {
             }
             .font(Tokens.Typography.mono(10.5))
             .foregroundStyle(Color(hex: 0x5E5E68))
+            // The scrubber already announces the position; these would repeat it.
+            .accessibilityHidden(true)
             // Times jitter in width as digits change; a fixed-width font plus
             // a monospaced-digit hint keeps the row from twitching.
             .monospacedDigit()
@@ -100,6 +112,8 @@ struct NowPlayingPane: View {
                     .tracking(0.8)
                     .foregroundStyle(Color(hex: 0x7C7C86))
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Format: \(Self.spokenFormat(track.format))")
             .padding(.horizontal, 9)
             .padding(.vertical, 5)
             .overlay {
@@ -164,6 +178,30 @@ struct NowPlayingPane: View {
         }
     }
 
+    /// "1 minute 28 seconds of 5 minutes 38 seconds" — a clock face read aloud
+    /// as "one twenty-eight" is ambiguous.
+    static func spokenPosition(_ progress: PlaybackProgress) -> String {
+        "\(spokenDuration(progress.elapsed)) of \(spokenDuration(progress.duration))"
+    }
+
+    static func spokenDuration(_ seconds: TimeInterval) -> String {
+        guard seconds.isFinite, seconds > 0 else { return "zero seconds" }
+        let total = Int(seconds.rounded())
+        let formatter = DateComponentsFormatter()
+        formatter.allowedUnits = total >= 3600 ? [.hour, .minute, .second] : [.minute, .second]
+        formatter.unitsStyle = .spellOut
+        return formatter.string(from: Double(total)) ?? "\(total) seconds"
+    }
+
+    /// "FLAC, 24 bit, 96 kilohertz" rather than "FLAC · 24-bit / 96 kHz", which
+    /// a screen reader turns into punctuation soup.
+    static func spokenFormat(_ format: AudioFormat) -> String {
+        var parts = [format.codec.name]
+        if let depth = format.bitDepth { parts.append("\(depth) bit") }
+        parts.append("\(format.kilohertz) kilohertz")
+        return parts.joined(separator: ", ")
+    }
+
     // MARK: Nothing playing
 
     private var idle: some View {
@@ -201,11 +239,13 @@ struct TransportControls: View {
             if size == .immersive {
                 ModeButton(
                     systemImage: "shuffle",
-                    isOn: playback.shuffleMode.isOn
+                    isOn: playback.shuffleMode.isOn,
+                    label: "Shuffle"
                 ) { playback.toggleShuffle() }
             }
 
-            TransportButton(systemImage: "backward.fill", size: sideSize) {
+            TransportButton(systemImage: "backward.fill", size: sideSize,
+                            label: "Previous track") {
                 playback.previous()
             }
 
@@ -225,15 +265,19 @@ struct TransportControls: View {
                         y: size == .compact ? 6 : 12)
             }
             .plainControl()
+            .accessibilityLabel(playback.isPlaying ? "Pause" : "Play")
+            .keyboardShortcut(.space, modifiers: [])
 
-            TransportButton(systemImage: "forward.fill", size: sideSize) {
+            TransportButton(systemImage: "forward.fill", size: sideSize,
+                            label: "Next track") {
                 playback.next()
             }
 
             if size == .immersive {
                 ModeButton(
                     systemImage: playback.repeatMode == .one ? "repeat.1" : "repeat",
-                    isOn: playback.repeatMode != .off
+                    isOn: playback.repeatMode != .off,
+                    label: "Repeat"
                 ) { playback.cycleRepeat() }
             }
         }
@@ -243,6 +287,7 @@ struct TransportControls: View {
 private struct TransportButton: View {
     var systemImage: String
     var size: CGFloat
+    var label: String
     var action: () -> Void
     @State private var isHovering = false
 
@@ -255,12 +300,14 @@ private struct TransportButton: View {
         }
         .plainControl()
         .onHover { isHovering = $0 }
+        .accessibilityLabel(label)
     }
 }
 
 private struct ModeButton: View {
     var systemImage: String
     var isOn: Bool
+    var label: String
     var action: () -> Void
     @State private var isHovering = false
 
@@ -275,5 +322,8 @@ private struct ModeButton: View {
         }
         .plainControl()
         .onHover { isHovering = $0 }
+        .accessibilityLabel(label)
+        .accessibilityValue(isOn ? "On" : "Off")
+        .accessibilityAddTraits(isOn ? .isSelected : [])
     }
 }

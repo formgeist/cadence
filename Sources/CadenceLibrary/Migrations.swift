@@ -8,6 +8,11 @@ import GRDB
 /// writes both sides explicitly. Triggers would keep them in sync for free, but
 /// they hide the write, and an import that silently fails to index is the kind
 /// of bug that only shows up as "search returns nothing".
+///
+/// Each search row is stored under the same rowid as the track it indexes. FTS5
+/// cannot index an `UNINDEXED` column, so removing a stale entry by `trackID`
+/// scans the entire search table — which made import quadratic: 30,000 tracks
+/// spent 72 of their 75 seconds deleting. By rowid it is a direct lookup.
 public enum Migrations {
 
     /// WAL so a long import doesn't block reads, and a busy timeout so a
@@ -112,6 +117,19 @@ public enum Migrations {
                 index: "playlistItem_on_playlist",
                 on: "playlistItem",
                 columns: ["playlistID", "position"])
+        }
+
+        // Existing databases indexed rows under arbitrary rowids, so the
+        // search table is rebuilt once against the new scheme.
+        migrator.registerMigration("v2-search-by-rowid") { db in
+            try db.execute(sql: "DELETE FROM trackSearch")
+            try db.execute(sql: """
+                INSERT INTO trackSearch
+                    (rowid, trackID, title, artist, albumArtist, albumTitle, composer)
+                SELECT rowid, id, title, artist, albumArtist, albumTitle,
+                       IFNULL(composer, '')
+                FROM track
+                """)
         }
 
         return migrator

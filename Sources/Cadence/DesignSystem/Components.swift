@@ -56,7 +56,6 @@ struct ArtworkView: View {
     var caption: String?
     var captionSize: CGFloat = 9.5
     var stripe: CGFloat = 5
-
     private var shape: AnyShape {
         isCircular
             ? AnyShape(Circle())
@@ -67,6 +66,10 @@ struct ArtworkView: View {
     /// a 32pt queue row never decodes the same image a 540pt immersive view
     /// needs.
     var displaySize: Int = 64
+    /// What VoiceOver should call this image, if anything. Cover art inside a
+    /// labelled row is decorative; the immersive view's artwork is the subject
+    /// of the screen and deserves saying.
+    var accessibilityLabel: String?
 
     var body: some View {
         // Color.clear takes exactly the size it is offered, and the cover is
@@ -91,6 +94,9 @@ struct ArtworkView: View {
             .overlay {
                 shape.stroke(Tokens.Palette.placeholderBorder, lineWidth: 1)
             }
+            .accessibilityHidden(accessibilityLabel == nil)
+            .accessibilityLabel(accessibilityLabel ?? "")
+            .accessibilityAddTraits(.isImage)
     }
 }
 
@@ -114,6 +120,10 @@ struct SectionLabel: View {
             .font(Tokens.Typography.mono(size, .medium))
             .tracking(Tokens.Typography.Tracking.label)
             .foregroundStyle(color)
+            // Read in sentence case: VoiceOver spells out short all-caps words
+            // letter by letter.
+            .accessibilityLabel(text)
+            .accessibilityAddTraits(.isHeader)
     }
 }
 
@@ -124,6 +134,9 @@ struct QualityBadge: View {
     var emphasis: Emphasis = .neutral
 
     enum Emphasis { case accent, neutral }
+
+    /// Spoken form, since "24/96" reads as a date and "16/44.1" as nonsense.
+    var spokenText: String?
 
     var body: some View {
         Text(text)
@@ -143,6 +156,7 @@ struct QualityBadge: View {
                                   ? Tokens.Palette.accentEdge : Tokens.Palette.borderStrong,
                                   lineWidth: 1)
             }
+            .accessibilityLabel(spokenText ?? text)
     }
 }
 
@@ -192,6 +206,9 @@ struct Wordmark: View {
                 .tracking(Tokens.Typography.Tracking.wordmark)
                 .foregroundStyle(Color(hex: 0xEDEDF2))
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Cadence")
+        .accessibilityValue(isPlaying ? "Playing" : "Not playing")
     }
 }
 
@@ -237,6 +254,11 @@ extension View {
 struct ScrubBar: View {
     var fraction: Double
     var height: CGFloat = 3
+    /// Spoken position, e.g. "1 minute 28 seconds of 5 minutes 38 seconds".
+    var accessibilityValue: String?
+    var accessibilityLabel: String = "Playback position"
+    /// Step for VoiceOver's increment and decrement, as a fraction.
+    var step: Double = 0.05
     var onScrub: (Double) -> Void
 
     @State private var isHovering = false
@@ -268,6 +290,25 @@ struct ScrubBar: View {
         // A 3px-tall bar is an unusable drag target; the row is taller than the
         // bar it draws.
         .frame(height: max(height, 12))
+        // Without this the scrubber is a bare gesture: invisible to VoiceOver
+        // and unreachable from the keyboard.
+        //
+        // `.accessibilityElement()` plus an adjustable action does expose it,
+        // but with role AXUnknown — assistive technology sees something with a
+        // name and no idea what it is. Representing it as a real Slider gives
+        // it the right role and the interaction users expect, while the drawing
+        // above stays exactly as designed.
+        .accessibilityRepresentation {
+            Slider(
+                value: Binding(get: { min(max(0, fraction), 1) },
+                               set: { onScrub($0) }),
+                in: 0...1,
+                step: step
+            )
+            .accessibilityLabel(accessibilityLabel)
+            .accessibilityValue(accessibilityValue
+                ?? "\(Int((fraction * 100).rounded())) percent")
+        }
     }
 }
 
@@ -296,6 +337,8 @@ struct CapsuleButton: View {
     var title: String?
     var systemImage: String?
     var kind: Kind = .outlined
+    /// Required when there is no title — an icon alone says nothing aloud.
+    var accessibilityLabel: String?
     var action: () -> Void
 
     @State private var isHovering = false
@@ -334,5 +377,7 @@ struct CapsuleButton: View {
         }
         .plainControl()
         .onHover { isHovering = $0 }
+        // Icon-only buttons have no text to fall back on.
+        .accessibilityLabel(accessibilityLabel ?? title ?? "Button")
     }
 }

@@ -15,6 +15,8 @@ make run                          # launch the app
 make test                         # 131 tests
 make app                          # assemble a signed, sandboxed Cadence.app
 make audio-check                  # can a sandboxed build go bit-perfect?
+make a11y                         # print the accessibility tree
+make bench                        # store and scrolling benchmarks
 make shots                        # render every screen to Snapshots/
 make scan FOLDER=~/Music/FLAC     # import a folder and print what was found
 ```
@@ -93,6 +95,51 @@ Pressing play afterwards hands the file to the engine again and seeks back,
 rather than calling `resume()` on a graph that is no longer connected to
 anything. That call appears to succeed and produces silence, which is the
 "silently stall" PLAN.md §6 rules out.
+
+## Accessibility
+
+```bash
+swift run Cadence --a11y
+```
+
+Prints the real accessibility tree for each screen — the one an assistive client
+sees, queried through `AXUIElement` — and flags any control that would announce
+nothing. Writing accessibility modifiers is easy; reading back what they
+actually produced is the only way to know. Three things it caught that looked
+fine in source:
+
+- SwiftUI's elements are not `NSView`s. Walking `subviews` finds AppKit's scroll
+  views and nothing of the app, which reported thirty unlabelled elements and
+  none of the real ones.
+- The scrubber and volume slider reached the tree with role `AXUnknown` —
+  named, but with no indication of what they were. Custom-drawn controls need
+  `.accessibilityRepresentation` to arrive as real sliders.
+- SF Symbol names leak: the mute button announced itself as "Volume High" and
+  repeat as "Repeat 1".
+
+Rows are single stops rather than four. A track reads as *"Track 2, Slow Hours,
+five minutes thirty-eight seconds, FLAC, 24 bit, 96 kilohertz"* — durations and
+sample rates are spelled out, because "5:38" read aloud is ambiguous and
+"16/44.1" is nonsense. Artwork is hidden where a row already names the album.
+
+## Performance
+
+```bash
+make bench
+```
+
+Generates a synthetic library and measures the store and scrolling. Answers
+PLAN.md §3's last question, though not the question as asked: the design uses
+`LazyVGrid` and `LazyVStack`, never `Table`.
+
+At 30,000 tracks the artists list holds the display's frame rate. The album grid
+runs ~20 ms per frame with artwork and ~29 ms without, so a hard scroll through
+2,500 albums sits between 30 and 60 fps. No `NSCollectionView` bridge needed.
+
+Scrolling is measured on a visible window with a display link. The obvious
+alternative is wrong: `cacheDisplay(in:to:)` rasterises on the CPU, where blur
+costs orders of magnitude more than on the GPU, and measured that way a drop
+shadow looks like a 1.6-second frame.
 
 ## Folder access
 

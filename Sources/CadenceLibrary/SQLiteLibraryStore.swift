@@ -185,7 +185,7 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
                 var toSave = record
                 if let existingID { toSave.id = existingID }
                 try toSave.save(db)
-                try Self.indexTrack(toSave, in: db)
+                try Self.indexTrack(toSave, in: db, isNew: existingID == nil)
             }
         }
     }
@@ -194,12 +194,13 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
         guard !urls.isEmpty else { return }
         let strings = urls.map(\.absoluteString)
         try await pool.write { db in
-            let ids = try String.fetchAll(
+            let rowIDs = try Int64.fetchAll(
                 db,
-                sql: "SELECT id FROM track WHERE url IN (\(Self.placeholders(strings.count)))",
+                sql: "SELECT rowid FROM track WHERE url IN (\(Self.placeholders(strings.count)))",
                 arguments: StatementArguments(strings))
-            for id in ids {
-                try db.execute(sql: "DELETE FROM trackSearch WHERE trackID = ?", arguments: [id])
+            for rowID in rowIDs {
+                try db.execute(sql: "DELETE FROM trackSearch WHERE rowid = ?",
+                               arguments: [rowID])
             }
             try db.execute(
                 sql: "DELETE FROM track WHERE url IN (\(Self.placeholders(strings.count)))",
@@ -241,15 +242,26 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
 
     // MARK: - Helpers
 
-    private static func indexTrack(_ record: TrackRecord, in db: Database) throws {
-        try db.execute(
-            sql: "DELETE FROM trackSearch WHERE trackID = ?", arguments: [record.id])
+    /// Indexes under the track's own rowid, so replacing an entry is a direct
+    /// lookup rather than a scan of the whole search table.
+    private static func indexTrack(
+        _ record: TrackRecord, in db: Database, isNew: Bool
+    ) throws {
+        guard let rowID = try Int64.fetchOne(
+            db, sql: "SELECT rowid FROM track WHERE url = ?",
+            arguments: [record.url]) else { return }
+
+        // A track that did not exist a moment ago has nothing stale to remove.
+        if !isNew {
+            try db.execute(
+                sql: "DELETE FROM trackSearch WHERE rowid = ?", arguments: [rowID])
+        }
         try db.execute(sql: """
             INSERT INTO trackSearch
-                (trackID, title, artist, albumArtist, albumTitle, composer)
-            VALUES (?, ?, ?, ?, ?, ?)
+                (rowid, trackID, title, artist, albumArtist, albumTitle, composer)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """, arguments: [
-                record.id, record.title, record.artist,
+                rowID, record.id, record.title, record.artist,
                 record.albumArtist, record.albumTitle, record.composer ?? "",
             ])
     }
