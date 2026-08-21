@@ -82,7 +82,7 @@ final class AppContainer {
             folders = scoped
             do {
                 let store = try SQLiteLibraryStore(url: try Self.libraryURL())
-                let artwork = try DiskArtworkStore(root: try DiskArtworkStore.defaultURL())
+                let artwork = try DiskArtworkStore.makeDefault()
                 model = AppModel(store: store)
                 importer = LibraryImporter(
                     scanner: LibraryScanner(
@@ -186,6 +186,19 @@ struct CadenceCommands: Commands {
                 }
             }
             .keyboardShortcut("r", modifiers: .command)
+            .disabled(container.importer.folders.isEmpty)
+
+            // The way back from artwork that is no longer on disk. An ordinary
+            // rescan skips every file whose size and mtime are unchanged, which
+            // after a lost cover is all of them — so it walks the library and
+            // re-reads nothing. Slow enough to be worth its own item rather
+            // than being what ⌘R does.
+            Button("Rescan Library, Re-reading Every File") {
+                container.importer.rescanAllForcingReread {
+                    Task { await container.model.load() }
+                }
+            }
+            .keyboardShortcut("r", modifiers: [.command, .option])
             .disabled(container.importer.folders.isEmpty)
         }
 

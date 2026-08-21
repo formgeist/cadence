@@ -48,10 +48,9 @@ enum ScanHarness {
 
     static func run(_ options: Options) async throws -> Int32 {
         let libraryURL = try options.libraryPath ?? SQLiteLibraryStore.defaultURL()
-        let artworkURL = try DiskArtworkStore.defaultURL()
 
         let store = try SQLiteLibraryStore(url: libraryURL)
-        let artwork = try DiskArtworkStore(root: artworkURL)
+        let artwork = try DiskArtworkStore.makeDefault()
         let scanner = LibraryScanner(store: store, artwork: artwork,
                                      router: AppContainer.metadataRouter)
 
