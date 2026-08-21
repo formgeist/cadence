@@ -274,10 +274,15 @@ private struct TrackRow: View {
             // Clamped so a drag begun at the far right edge does not push the
             // chip out past the stand-in, where it would be cut off. 200pt is
             // the chip at its widest — a 150pt title plus glyph and padding.
-            .offset(x: min(max(0, pointer.x - 14), max(0, rowSize.width - 200)),
-                    y: pointer.y - 15)
-            .frame(width: rowSize.width, height: rowSize.height,
-                   alignment: .topLeading)
+            .offset(x: min(max(0, pointer.x - 14), max(0, rowSize.width - 200)))
+            // Leading, not topLeading: the chip is centred vertically and only
+            // its horizontal position follows the pointer. A row is barely
+            // taller than the chip, so there is nothing to follow vertically —
+            // and an offset that tried would push the chip through the bottom
+            // of the stand-in, which clips it.
+            .frame(width: max(rowSize.width, 1),
+                   height: max(rowSize.height, TrackDragPreview.height),
+                   alignment: .leading)
     }
 
     private var row: some View {

@@ -45,32 +45,31 @@ struct TrackDragPreview: View {
     var detail: String
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 7) {
             Image(systemName: systemImage)
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(Tokens.Palette.accent)
-                .frame(width: 20, height: 20)
+                .frame(width: 18, height: 18)
                 .background {
                     RoundedRectangle(cornerRadius: Tokens.Radius.thumb, style: .continuous)
                         .fill(Tokens.Palette.accentDim)
                 }
 
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title)
-                    .font(Tokens.Typography.sans(11.5, .semibold))
-                    .foregroundStyle(Color(hex: 0xE6E6EC))
-                    .lineLimit(1)
-                Text(detail)
-                    .font(Tokens.Typography.sans(10, .medium))
-                    .foregroundStyle(Tokens.Palette.textMuted)
-                    .lineLimit(1)
-            }
-            // Capped rather than flexible: a long title should truncate, not
-            // grow the chip back to the width this exists to avoid.
-            .frame(maxWidth: 150, alignment: .leading)
+            // One line, not two. A drag preview is clipped to its source
+            // view's bounds, and an album track row with nothing to say on its
+            // second line is only about 34pt tall — a two-line chip had its
+            // bottom sawn off on exactly the rows that are most common.
+            (Text(title).foregroundColor(Color(hex: 0xE6E6EC))
+                + Text("  ·  ").foregroundColor(Tokens.Palette.textFaint)
+                + Text(detail).foregroundColor(Tokens.Palette.textMuted))
+                .font(Tokens.Typography.sans(11.5, .semibold))
+                .lineLimit(1)
+                // Capped rather than flexible: a long title should truncate,
+                // not grow the chip back to the width this exists to avoid.
+                .frame(maxWidth: 190, alignment: .leading)
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 6)
+        .padding(.vertical, 5)
         .background {
             RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous)
                 .fill(Tokens.Palette.popover)
@@ -79,10 +78,16 @@ struct TrackDragPreview: View {
             RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous)
                 .strokeBorder(Tokens.Palette.borderStrong, lineWidth: 1)
         }
-        // It floats over whatever is underneath, which is usually a dark grid
-        // of covers. Without a lift it reads as part of the page.
-        .shadow(color: .black.opacity(0.5), radius: 12, y: 4)
     }
+
+    /// What the chip occupies vertically: an 18pt glyph plus 5pt above and
+    /// below. Kept well under the ~34pt of the shortest album track row,
+    /// because a preview is clipped to its source view's bounds and a chip
+    /// that does not fit is one with its bottom cut off.
+    ///
+    /// No shadow, for the same reason: it would fall outside those bounds and
+    /// render as a flat edge rather than a lift. The border separates it.
+    static let height: CGFloat = 28
 
     /// One track on its way to a playlist.
     static func track(_ track: Track) -> TrackDragPreview {
