@@ -352,7 +352,7 @@ struct AlbumCard: View {
         .onHover { isHovering = $0 }
         // A whole record onto a playlist row, in album order.
         .draggable(TrackSelection(album.discs.flatMap(\.tracks))) {
-            TrackDragPreview.album(album)
+            TrackDragPreview.album(album).fixedSize()
         }
         .contextMenu {
             Button("Play") { playback.play(album) }

@@ -141,19 +141,22 @@ struct PlaylistDetailView: View {
         // A `List`, for the same reason `QueueList` is one: `onMove` is the
         // only reordering that behaves the way macOS users expect — grab
         // anywhere, autoscroll at the edges, drop where the line shows.
-        List {
+        // Selection is the List's own, not an `.onTapGesture`. A tap gesture on
+        // a row swallows the press that `onMove` needs, and reordering then
+        // silently does nothing — the row highlights and never lifts.
+        List(selection: $selectedEntry) {
             ForEach(entries) { entry in
                 PlaylistTrackRow(
                     entry: entry,
                     isCurrent: playback.currentTrack?.id == entry.track.id,
                     isSelected: selectedEntry == entry.id
                 )
+                .tag(entry.id)
                 .listRowInsets(EdgeInsets(top: 1, leading: 0, bottom: 1, trailing: 0))
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
                 .contentShape(Rectangle())
                 .onTapGesture(count: 2) { play(entry) }
-                .onTapGesture { selectedEntry = entry.id }
                 // Deliberately not `.draggable`. `onMove` brings its own drag,
                 // and a row carrying both hands the reorder gesture to the
                 // wrong one — you go to move a track up two places and instead

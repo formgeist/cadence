@@ -169,11 +169,6 @@ struct AlbumDetailView: View {
                             playback.play(track, in: orderedTracks)
                         }
                     )
-                    // Onto a playlist row in the sidebar. One track at a time:
-                    // the album screen has no multiple selection to drag.
-                    .draggable(TrackSelection([track.id])) {
-                        TrackDragPreview.track(track)
-                    }
                     .contextMenu {
                         Button("Play") {
                             selectedTrackID = track.id
@@ -276,6 +271,18 @@ private struct TrackRow: View {
                     .foregroundStyle(isCurrent
                                      ? Tokens.Palette.accent : Color(hex: 0xE6E6EC))
                     .lineLimit(1)
+                    // The drag starts from the title, not the whole row. macOS
+                    // lifts the preview from the *source view's* bounds and
+                    // flies it to the pointer, so a full-width row throws the
+                    // chip out into the middle of the window before it catches
+                    // up. A title is a few hundred points wide at most, and is
+                    // what you reach for anyway.
+                    // `.fixedSize` because the preview is offered the source's
+                    // width, and a short title would otherwise clip the chip
+                    // to a few characters of itself.
+                    .draggable(TrackSelection([track.id])) {
+                        TrackDragPreview.track(track).fixedSize()
+                    }
                 if let subtitle = track.rowSubtitle(showingArtist: showsArtist) {
                     Text(subtitle)
                         .font(Tokens.Typography.sans(11, .medium))
