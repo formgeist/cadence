@@ -8,6 +8,9 @@ import CadenceCore
 /// grab anywhere, autoscroll at the edges, drop where the insertion line shows.
 /// Reimplementing that on a stack to keep the container consistent would be
 /// worse than styling a List to match.
+///
+/// The rows compose their click gesture simultaneously rather than exclusively,
+/// which is what leaves that drag reachable at all.
 struct QueueList: View {
     @Environment(PlaybackController.self) private var playback
 
@@ -25,7 +28,16 @@ struct QueueList: View {
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                     .contentShape(Rectangle())
-                    .onTapGesture { playback.jump(to: track) }
+                    // Simultaneous, not exclusive — see `PlaylistDetailView`.
+                    // A plain `.onTapGesture` claims the mouse-down, and the
+                    // reordering drag below never sees it. Up Next has shipped
+                    // with `onMove` wired and unreachable for exactly as long
+                    // as it has had this line.
+                    //
+                    // A single click still jumps: a `TapGesture` only fires
+                    // when the press ends without travelling, so the click
+                    // that begins a reorder is not also a jump.
+                    .simultaneousGesture(TapGesture().onEnded { playback.jump(to: track) })
                     .contextMenu {
                         Button("Play Now") { playback.jump(to: track) }
                         Button("Remove from Queue") { playback.removeFromUpNext(track) }
