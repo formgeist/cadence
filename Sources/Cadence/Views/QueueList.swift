@@ -25,11 +25,7 @@ struct QueueList: View {
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                     .contentShape(Rectangle())
-                    // Simultaneous for the same reason as the playlist's rows:
-                    // an exclusive tap gesture swallows the press `onMove`
-                    // needs, and Up Next has had the same never-verified drag
-                    // since before the playlist work.
-                    .simultaneousGesture(TapGesture().onEnded { playback.jump(to: track) })
+                    .onTapGesture { playback.jump(to: track) }
                     .contextMenu {
                         Button("Play Now") { playback.jump(to: track) }
                         Button("Remove from Queue") { playback.removeFromUpNext(track) }

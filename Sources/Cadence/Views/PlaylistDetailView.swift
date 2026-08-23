@@ -141,9 +141,9 @@ struct PlaylistDetailView: View {
         // A `List`, for the same reason `QueueList` is one: `onMove` is the
         // only reordering that behaves the way macOS users expect — grab
         // anywhere, autoscroll at the edges, drop where the line shows.
-        // Selection is the List's own rather than a tap gesture, for the same
-        // reason the double click below is declared simultaneous: an exclusive
-        // gesture on a row swallows the press `onMove` needs.
+        // Selection is the List's own, not an `.onTapGesture`. A tap gesture on
+        // a row swallows the press that `onMove` needs, and reordering then
+        // silently does nothing — the row highlights and never lifts.
         List(selection: $selectedEntry) {
             ForEach(entries) { entry in
                 PlaylistTrackRow(
@@ -156,14 +156,7 @@ struct PlaylistDetailView: View {
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
                 .contentShape(Rectangle())
-                // `.simultaneousGesture`, not `.onTapGesture`. A tap gesture is
-                // exclusive: it claims the press for itself and only gives it
-                // up once it has failed, and `onMove` needs that press to start
-                // its drag. Removing the single-click tap in #24 was not enough
-                // because this one was still here, so the row still highlighted
-                // and never lifted. Declared simultaneous, the double click
-                // still plays and the press also reaches the reorder.
-                .simultaneousGesture(TapGesture(count: 2).onEnded { play(entry) })
+                .onTapGesture(count: 2) { play(entry) }
                 // Deliberately not `.draggable`. `onMove` brings its own drag,
                 // and a row carrying both hands the reorder gesture to the
                 // wrong one — you go to move a track up two places and instead
