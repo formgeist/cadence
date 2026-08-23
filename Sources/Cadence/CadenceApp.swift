@@ -21,6 +21,9 @@ final class AppContainer {
     let model: AppModel
     let importer: LibraryImporter
     let artworkLoader: ArtworkLoader
+    /// Whether a text field has the keyboard, so the menu bar can get out of
+    /// its way — see `TextEntryMonitor`.
+    let textEntry: TextEntryMonitor
     /// Held for the process lifetime: access must stay open for playback, not
     /// just for the import that first granted it.
     let folders: SecurityScopedFolders
@@ -61,6 +64,8 @@ final class AppContainer {
     /// library that is empty — or has no playlists — without a second
     /// composition root.
     init(mode: Mode = .live, store previewStore: (any LibraryStore)? = nil) {
+        textEntry = TextEntryMonitor()
+
         // The line PLAN.md §4 was written around: swapping the engine touches
         // nothing above this point. Preview mode keeps the mock so snapshots
         // and design review never open an audio device.
@@ -82,7 +87,7 @@ final class AppContainer {
             folders = scoped
             do {
                 let store = try SQLiteLibraryStore(url: try Self.libraryURL())
-                let artwork = try DiskArtworkStore(root: try DiskArtworkStore.defaultURL())
+                let artwork = try DiskArtworkStore.makeDefault()
                 model = AppModel(store: store)
                 importer = LibraryImporter(
                     scanner: LibraryScanner(
@@ -140,6 +145,7 @@ struct CadenceApp: App {
                 .environment(container.playback)
                 .environment(container.importer)
                 .environment(container.artworkLoader)
+                .environment(container.textEntry)
                 .environment(\.isSilentPlayback, container.isSilentPlayback)
                 .frame(minWidth: Tokens.Layout.minWindow.width,
                        minHeight: Tokens.Layout.minWindow.height)
@@ -187,13 +193,34 @@ struct CadenceCommands: Commands {
             }
             .keyboardShortcut("r", modifiers: .command)
             .disabled(container.importer.folders.isEmpty)
+
+            // The way back from artwork that is no longer on disk. An ordinary
+            // rescan skips every file whose size and mtime are unchanged, which
+            // after a lost cover is all of them — so it walks the library and
+            // re-reads nothing. Slow enough to be worth its own item rather
+            // than being what ⌘R does.
+            Button("Rescan Library, Re-reading Every File") {
+                container.importer.rescanAllForcingReread {
+                    Task { await container.model.load() }
+                }
+            }
+            .keyboardShortcut("r", modifiers: [.command, .option])
+            .disabled(container.importer.folders.isEmpty)
         }
 
         CommandMenu("Playback") {
+            // The app's only owner of bare Space. A menu key equivalent is
+            // dispatched before the key window's responder chain sees the
+            // event, so this item would otherwise eat every space typed into
+            // the search field or the playlist name sheet. Disabled — not
+            // unbound — while one of them has the keyboard: a disabled item
+            // does not claim its key equivalent, and the keystroke carries on
+            // down to the field.
             Button(container.playback.isPlaying ? "Pause" : "Play") {
                 container.playback.togglePlayPause()
             }
             .keyboardShortcut(.space, modifiers: [])
+            .disabled(container.textEntry.isEditing)
 
             Button("Next Track") { container.playback.next() }
                 .keyboardShortcut(.rightArrow, modifiers: .command)

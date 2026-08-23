@@ -70,7 +70,8 @@ final class LibraryImporter {
 
     /// Scans `folders` in turn. Completion runs after the library has been
     /// written, so the caller can reload from the store.
-    func importFolders(_ urls: [URL], onFinish: @escaping @MainActor () -> Void) {
+    func importFolders(_ urls: [URL], force: Bool = false,
+                       onFinish: @escaping @MainActor () -> Void) {
         guard let scanner, !urls.isEmpty, task == nil else { return }
         errorMessage = nil
         progress = LibraryScanner.Progress()
@@ -82,7 +83,7 @@ final class LibraryImporter {
 
             for url in urls {
                 do {
-                    let summary = try await scanner.scan(folder: url) { update in
+                    let summary = try await scanner.scan(folder: url, force: force) { update in
                         Task { @MainActor in self.progress = update }
                     }
                     combined.imported += summary.imported
@@ -107,6 +108,13 @@ final class LibraryImporter {
 
     func rescanAll(onFinish: @escaping @MainActor () -> Void) {
         importFolders(folders, onFinish: onFinish)
+    }
+
+    /// Re-reads every file, fingerprint or not. The way back from artwork that
+    /// is no longer on disk: an ordinary rescan skips every unchanged file and
+    /// so re-reads nothing, which is exactly the case that needs re-reading.
+    func rescanAllForcingReread(onFinish: @escaping @MainActor () -> Void) {
+        importFolders(folders, force: true, onFinish: onFinish)
     }
 
     /// Batches already committed stay committed, so a cancelled import is

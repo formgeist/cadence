@@ -98,6 +98,7 @@ struct SearchField: View {
                     .font(Tokens.Typography.sans(13.5, .medium))
                     .foregroundStyle(Color(hex: 0xF0F0F5))
                     .focused($isFocused)
+                    .textEntryFocus(isFocused)
                     .onSubmit { isFocused = false }
                     .accessibilityLabel("Search library")
 

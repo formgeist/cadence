@@ -81,9 +81,17 @@ public actor LibraryScanner {
     /// Scans `folder`, reporting progress as it goes. Cancelling the enclosing
     /// task stops it: already-committed batches stay, which is what makes a
     /// cancelled import resumable rather than wasted.
+    ///
+    /// `force` re-reads every file even when its size and mtime say nothing
+    /// changed. The fingerprint skip is what makes a rescan cheap, but it also
+    /// means a library that lost its artwork on disk can never get it back:
+    /// no file changed, so nothing is re-read, and every `artworkID` keeps
+    /// pointing at bytes that are gone. A full re-read is the way out of that,
+    /// and the only one — which is why it is a mode rather than the default.
     @discardableResult
     public func scan(
         folder: URL,
+        force: Bool = false,
         removingMissing: Bool = true,
         onProgress: (@Sendable (Progress) -> Void)? = nil
     ) async throws -> Summary {
@@ -116,7 +124,7 @@ public actor LibraryScanner {
                 for url in slice {
                     let reader = self.router.reader(for: url)
                     let fingerprint = FLACMetadataReader.fingerprint(for: url)
-                    let unchanged = fingerprint != nil && known[url] == fingerprint
+                    let unchanged = !force && fingerprint != nil && known[url] == fingerprint
                     group.addTask {
                         Self.process(url: url, unchanged: unchanged, reader: reader)
                     }

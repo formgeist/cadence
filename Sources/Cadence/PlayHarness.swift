@@ -88,7 +88,7 @@ enum PlayHarness {
         // There is no public way to read Now Playing back from another
         // process, so this confirms what Cadence publishes — not what
         // Control Center renders. Pressing a media key tests that.
-        let artwork = try? DiskArtworkStore(root: try DiskArtworkStore.defaultURL())
+        let artwork = try? DiskArtworkStore.makeDefault()
         let nowPlaying = NowPlayingCoordinator(playback: controller, artwork: artwork)
         defer { _ = nowPlaying }
 

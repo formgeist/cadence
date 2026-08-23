@@ -167,6 +167,7 @@ struct NowPlayingPane: View {
                     // pane's.
                     .padding(.horizontal, Tokens.Space.paneInset - 5)
             }
+            skippedSummary
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -175,6 +176,53 @@ struct NowPlayingPane: View {
         .overlay(alignment: .top) {
             Rectangle().fill(Color(hex: 0x1C1C21)).frame(height: 1)
                 .padding(.top, Tokens.Space.xl)
+        }
+    }
+
+    /// What the queue could not play. The banner that announced each skip is
+    /// gone by the next action, and a record that quietly dropped four tracks
+    /// is barely better than one that stopped on the first — so the count stays
+    /// here, under the queue it happened to, until playback starts again.
+    @ViewBuilder
+    private var skippedSummary: some View {
+        let skipped = playback.skipped
+
+        if !skipped.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 9))
+                        .foregroundStyle(Tokens.Palette.accent)
+                        .accessibilityHidden(true)
+                    Text(skipped.count == 1
+                         ? "1 track skipped"
+                         : "\(skipped.count) tracks skipped")
+                        .font(Tokens.Typography.sans(11, .semibold))
+                        .foregroundStyle(Tokens.Palette.textSecondary)
+                    Spacer(minLength: Tokens.Space.s)
+                    Button("Clear") { playback.clearSkipped() }
+                        .plainControl()
+                        .font(Tokens.Typography.sans(10.5, .medium))
+                        .foregroundStyle(Tokens.Palette.textMuted)
+                }
+
+                // Named, not just counted: "which one did it?" is the question
+                // a bare number leaves the user to answer by ear.
+                ForEach(skipped.prefix(3)) { skip in
+                    Text("\(skip.track.title) — \(skip.reason.reasonPhrase)")
+                        .font(Tokens.Typography.sans(10.5, .medium))
+                        .foregroundStyle(Tokens.Palette.textFaint)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                if skipped.count > 3 {
+                    Text("and \(skipped.count - 3) more")
+                        .font(Tokens.Typography.sans(10.5, .medium))
+                        .foregroundStyle(Tokens.Palette.textFaint)
+                }
+            }
+            .padding(.horizontal, Tokens.Space.paneInset)
+            .padding(.top, Tokens.Space.m)
         }
     }
 
@@ -266,7 +314,6 @@ struct TransportControls: View {
             }
             .plainControl()
             .accessibilityLabel(playback.isPlaying ? "Pause" : "Play")
-            .keyboardShortcut(.space, modifiers: [])
 
             TransportButton(systemImage: "forward.fill", size: sideSize,
                             label: "Next track") {

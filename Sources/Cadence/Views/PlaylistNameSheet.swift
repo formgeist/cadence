@@ -38,6 +38,7 @@ struct PlaylistNameSheet: View {
                 .font(Tokens.Typography.sans(13.5, .medium))
                 .foregroundStyle(Tokens.Palette.textPrimary)
                 .focused($isFocused)
+                .textEntryFocus(isFocused)
                 .onSubmit(commit)
                 .padding(.horizontal, 12)
                 .frame(height: 32)
