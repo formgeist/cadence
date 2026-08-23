@@ -141,11 +141,9 @@ struct PlaylistDetailView: View {
         // A `List`, for the same reason `QueueList` is one: `onMove` is the
         // only reordering that behaves the way macOS users expect — grab
         // anywhere, autoscroll at the edges, drop where the line shows.
-        // Selection is the List's own, not an `.onTapGesture`, and the
-        // double click below is simultaneous rather than exclusive. Any
-        // exclusive tap gesture on a row swallows the press that `onMove`
-        // needs, and reordering then silently does nothing — the row
-        // highlights and never lifts.
+        // Selection is the List's own, not an `.onTapGesture`. A tap gesture on
+        // a row swallows the press that `onMove` needs, and reordering then
+        // silently does nothing — the row highlights and never lifts.
         List(selection: $selectedEntry) {
             ForEach(entries) { entry in
                 PlaylistTrackRow(
@@ -158,22 +156,7 @@ struct PlaylistDetailView: View {
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
                 .contentShape(Rectangle())
-                // `simultaneousGesture`, not `.onTapGesture`. A plain tap
-                // gesture is exclusive: it claims the mouse-down and holds it
-                // until it resolves, and the List's reordering drag — which is
-                // the AppKit table's, not SwiftUI's — never sees the press. At
-                // `count: 2` that is the whole double-click interval, which is
-                // precisely the window the drag had to start in. Composing it
-                // simultaneously lets both recognisers watch the same press:
-                // a click without movement still plays, a click that moves
-                // becomes a reorder.
-                //
-                // This is why the rows in `AlbumDetailView` can carry
-                // `.draggable` alongside two exclusive taps and drag fine.
-                // That drag is SwiftUI's own, arbitrated against the taps
-                // inside SwiftUI; `onMove` is not, so it has to be let through
-                // rather than arbitrated with.
-                .simultaneousGesture(TapGesture(count: 2).onEnded { play(entry) })
+                .onTapGesture(count: 2) { play(entry) }
                 // Deliberately not `.draggable`. `onMove` brings its own drag,
                 // and a row carrying both hands the reorder gesture to the
                 // wrong one — you go to move a track up two places and instead

@@ -135,16 +135,22 @@ struct CadenceApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
-                .environment(container.model)
-                .environment(container.playback)
-                .environment(container.importer)
-                .environment(container.artworkLoader)
-                .environment(\.isSilentPlayback, container.isSilentPlayback)
-                .frame(minWidth: Tokens.Layout.minWindow.width,
-                       minHeight: Tokens.Layout.minWindow.height)
-                .preferredColorScheme(.dark)
-                .background(WindowChromeConfigurator())
+            // `--drag-check` opens the reorder bisection instead of the app.
+            // Temporary, and paired with issue #25; delete both together.
+            if DragHarness.isRequested {
+                DragCheckView()
+            } else {
+                RootView()
+                    .environment(container.model)
+                    .environment(container.playback)
+                    .environment(container.importer)
+                    .environment(container.artworkLoader)
+                    .environment(\.isSilentPlayback, container.isSilentPlayback)
+                    .frame(minWidth: Tokens.Layout.minWindow.width,
+                           minHeight: Tokens.Layout.minWindow.height)
+                    .preferredColorScheme(.dark)
+                    .background(WindowChromeConfigurator())
+            }
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(Tokens.Layout.defaultWindow)
