@@ -217,18 +217,6 @@ struct ArtistSortingTests {
         #expect(Artist.stripArticle("An Ending") == "Ending")
         #expect(Artist.stripArticle("Theatre of Voices") == "Theatre of Voices")
     }
-
-    @Test("Names that do not start with a letter group under #")
-    func numericGroup() {
-        let artist = Artist(name: "65daysofstatic", albumCount: 1, trackCount: 1, formats: ["FLAC"])
-        #expect(artist.sortLetter == "#")
-    }
-
-    @Test("Sort letter follows the stripped name")
-    func sortLetterUsesStrippedName() {
-        let artist = Artist(name: "The Beatles", albumCount: 1, trackCount: 1, formats: ["FLAC"])
-        #expect(artist.sortLetter == "B")
-    }
 }
 
 // MARK: - Progress

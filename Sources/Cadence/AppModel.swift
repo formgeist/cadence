@@ -350,20 +350,6 @@ final class AppModel {
         return "\(tracks) tracks · \(DurationFormat.bytes(librarySize))"
     }
 
-    /// Artists bucketed by initial, the way the design sections them.
-    var artistSections: [ArtistSection] {
-        let grouped = Dictionary(grouping: artists, by: \.sortLetter)
-        return grouped.keys.sorted().map { letter in
-            ArtistSection(letter: letter, artists: grouped[letter] ?? [])
-        }
-    }
-
-    struct ArtistSection: Identifiable {
-        var letter: String
-        var artists: [Artist]
-        var id: String { letter }
-    }
-
     // MARK: Search results
 
     struct SearchResults {
