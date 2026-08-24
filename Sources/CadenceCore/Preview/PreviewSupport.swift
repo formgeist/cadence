@@ -146,9 +146,7 @@ public actor InMemoryLibraryStore: LibraryStore {
     public func allTracks() async throws -> [Track] { tracks }
 
     public func albums() async throws -> [Album] {
-        Dictionary(grouping: tracks, by: \.albumKey)
-            .map { Album(key: $0.key, tracks: $0.value) }
-            .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        Album.grouped(from: tracks)
     }
 
     public func album(for key: Album.Key) async throws -> Album? {

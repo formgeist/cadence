@@ -124,7 +124,7 @@ final class AppModel {
         defer { isLoading = false }
         do {
             allTracks = try await store.allTracks()
-            albums = try await store.albums()
+            albums = Album.grouped(from: allTracks)
             artists = try await store.artists()
             playlists = try await store.playlists()
             librarySize = try await store.librarySize()
