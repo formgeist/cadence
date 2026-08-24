@@ -87,15 +87,32 @@ struct AlbumDetailView: View {
         }
     }
 
-    /// One concatenated `Text` rather than an HStack of them. In a stack,
-    /// SwiftUI takes the shrinkage out of the first child, so a box set with
-    /// an extra "3 discs" part truncated the album artist — the one thing on
-    /// the line you cannot lose — while empty space sat to its right.
+    /// The artist needs its own tap target, so it can no longer join the rest
+    /// in one concatenated `Text` — a `Text` built from `+` has no room for a
+    /// `Button` in the middle. `.layoutPriority(1)` takes over the job that
+    /// concatenation used to do for free: without it, an HStack takes the
+    /// shrinkage out of the first child, so a box set with an extra "3 discs"
+    /// part would truncate the album artist — the one thing on the line you
+    /// cannot lose — while empty space sat to its right.
     private var metadataLine: some View {
-        var line = Text(album.albumArtist)
-            .font(Tokens.Typography.sans(13.5, .semibold))
-            .foregroundColor(Color(hex: 0xB4B4BD))
+        HStack(alignment: .firstTextBaseline, spacing: 0) {
+            InlineLink(text: album.albumArtist, font: Tokens.Typography.sans(13.5, .semibold),
+                       color: Color(hex: 0xB4B4BD)) {
+                model.show(.artist(album.albumArtist))
+            }
+            .layoutPriority(1)
 
+            metadataSuffix
+        }
+        .lineLimit(2)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// "  ·  2020  ·  12 tracks  ·  35 min" — everything on `metadataLine`
+    /// after the artist link, still one concatenated `Text` so the separators
+    /// keep their own dim color without becoming views of their own.
+    private var metadataSuffix: some View {
+        var line = Text("")
         for part in metadataParts {
             line = line
                 + Text("  ·  ").foregroundColor(Color(hex: 0x45454E))
@@ -103,10 +120,7 @@ struct AlbumDetailView: View {
                     .font(Tokens.Typography.sans(13.5, .medium))
                     .foregroundColor(Color(hex: 0x82828D))
         }
-
         return line
-            .lineLimit(2)
-            .fixedSize(horizontal: false, vertical: true)
     }
 
     private var metadataParts: [String] {
@@ -201,6 +215,8 @@ struct AlbumDetailView: View {
 /// glyph that replaces the track number on hover is a real button, so one
 /// deliberate click still works.
 private struct TrackRow: View {
+    @Environment(AppModel.self) private var model
+
     var track: Track
     var isCurrent: Bool
     var isSelected: Bool
@@ -249,6 +265,19 @@ private struct TrackRow: View {
             // VoiceOver has no double click. Activating the row plays it,
             // which is what the hint promises.
             .accessibilityAction(.default, onPlay)
+            // `.ignore` above also swallows the artist link in `row` when it's
+            // showing — offered only when that link is actually on screen.
+            .accessibilityAction(named: "Go to artist", isAvailable: artistLinkTarget != nil) {
+                if let artistLinkTarget { model.show(.artist(artistLinkTarget)) }
+            }
+    }
+
+    /// The artist name shown as a link under the title, matching `row`'s own
+    /// composer-vs-artist choice — nil when the row shows a composer instead,
+    /// or shows no subtitle at all.
+    private var artistLinkTarget: String? {
+        guard track.composer == nil || track.composer!.isEmpty else { return nil }
+        return track.rowSubtitle(showingArtist: showsArtist) != nil ? track.artist : nil
     }
 
     private var row: some View {
@@ -280,7 +309,14 @@ private struct TrackRow: View {
                     .foregroundStyle(isCurrent
                                      ? Tokens.Palette.accent : Color(hex: 0xE6E6EC))
                     .lineLimit(1)
-                if let subtitle = track.rowSubtitle(showingArtist: showsArtist) {
+                // The composer isn't a page this app has, so only the artist
+                // half of `rowSubtitle` becomes a link.
+                if let artistLinkTarget {
+                    InlineLink(text: artistLinkTarget, font: Tokens.Typography.sans(11, .medium),
+                               color: Color(hex: 0x6A6A74)) {
+                        model.show(.artist(artistLinkTarget))
+                    }
+                } else if let subtitle = track.rowSubtitle(showingArtist: showsArtist) {
                     Text(subtitle)
                         .font(Tokens.Typography.sans(11, .medium))
                         .foregroundStyle(Color(hex: 0x6A6A74))
