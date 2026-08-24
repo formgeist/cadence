@@ -23,6 +23,14 @@ final class LibraryImporter {
     /// The folders the user has added.
     private(set) var folders: [URL] = []
 
+    /// Told when a folder is added or forgotten, so anything watching the
+    /// filesystem for it — `FolderWatchCoordinator` — can start or stop in
+    /// step. Set once by the composition root; this type stays otherwise
+    /// ignorant of FSEvents, the same way it is already ignorant of
+    /// `SecurityScopedFolders`'s internals.
+    var onFolderAdded: ((URL) -> Void)?
+    var onFolderForgotten: ((URL) -> Void)?
+
     private let scanner: LibraryScanner?
     private let bookmarks: SecurityScopedFolders
     private let defaults: UserDefaults
@@ -73,6 +81,7 @@ final class LibraryImporter {
         }
 
         if !folders.contains(url) { folders.append(url) }
+        onFolderAdded?(url)
         return url
     }
 
@@ -81,6 +90,7 @@ final class LibraryImporter {
         bookmarks.forget(url)
         lastScanned[Self.scanKey(for: url)] = nil
         defaults.set(lastScanned, forKey: Self.lastScannedKey)
+        onFolderForgotten?(url)
     }
 
     // MARK: - Importing

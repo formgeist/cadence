@@ -32,6 +32,11 @@ final class AppContainer {
     /// process lifetime; releasing it would hand the keys back.
     private(set) var nowPlaying: NowPlayingCoordinator?
 
+    /// Feeds the scanner from FSEvents instead of waiting for ⌘R — issue #5.
+    /// Held for the process lifetime, same reasoning as `nowPlaying`: an
+    /// FSEventStream that gets released stops reporting.
+    private(set) var watcher: FolderWatchCoordinator?
+
     /// True while playback is the mock clock rather than a decoder. The
     /// interface says so rather than pretending, because a transport that
     /// moves in silence otherwise looks like a bug.
@@ -95,6 +100,11 @@ final class AppContainer {
                     bookmarks: scoped)
                 artworkLoader = ArtworkLoader(store: artwork)
                 nowPlaying = NowPlayingCoordinator(playback: playback, artwork: artwork)
+
+                let coordinator = FolderWatchCoordinator(importer: importer, bookmarks: scoped)
+                watcher = coordinator
+                importer.onFolderAdded = { [weak coordinator] url in coordinator?.folderAdded(url) }
+                importer.onFolderForgotten = { [weak coordinator] url in coordinator?.folderRemoved(url) }
             } catch {
                 model = AppModel(store: PreviewData.store())
                 model.storeFailure = error.localizedDescription
