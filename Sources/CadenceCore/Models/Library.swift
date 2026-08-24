@@ -351,14 +351,6 @@ public struct Artist: Identifiable, Hashable, Sendable {
 
     public var formatSummary: String { formats.joined(separator: " · ") }
 
-    /// Grouping letter for the sectioned artists list. Anything not starting
-    /// with a letter groups under `#`.
-    public var sortLetter: String {
-        let stripped = Artist.stripArticle(name)
-        guard let first = stripped.first, first.isLetter else { return "#" }
-        return String(first).uppercased()
-    }
-
     /// `The Beatles` files under B, the way a record shop would shelve it.
     public static func stripArticle(_ name: String) -> String {
         for article in ["The ", "A ", "An "] where name.hasPrefix(article) {

@@ -159,49 +159,24 @@ private struct ArtistGrid: View {
             let columns = GridMetrics.columnCount(
                 for: available, minimum: Tokens.Layout.artistColumnWidth)
             ScrollView {
+                // Flat and alphabetical, not shelved by initial — see issue #51.
                 LazyVGrid(
                     columns: Array(repeating: GridItem(.flexible(),
                                                        spacing: Tokens.Space.xl),
                                    count: columns),
                     alignment: .leading,
-                    spacing: Tokens.Space.xxl,
-                    pinnedViews: []
+                    spacing: Tokens.Space.xxl
                 ) {
-                    ForEach(model.artistSections) { section in
-                        // The alphabet rails survive the move to a grid: a
-                        // section header in a LazyVGrid spans the full width,
-                        // so it still reads as a shelf divider.
-                        Section {
-                            ForEach(section.artists) { artist in
-                                ArtistCard(artist: artist)
-                            }
-                        } header: {
-                            LetterRail(letter: section.letter)
-                        }
+                    ForEach(model.artists) { artist in
+                        ArtistCard(artist: artist)
                     }
                 }
                 .padding(.horizontal, Tokens.Space.contentInset)
+                .padding(.top, Tokens.Space.xl)
                 .padding(.bottom, 40)
             }
             .scrollContentBackground(.hidden)
         }
-    }
-}
-
-private struct LetterRail: View {
-    var letter: String
-
-    var body: some View {
-        HStack(spacing: 14) {
-            Text(letter)
-                .font(Tokens.Typography.mono(12, .medium))
-                .tracking(1.2)
-                .foregroundStyle(Tokens.Palette.accent)
-            Rectangle().fill(Tokens.Palette.separator).frame(height: 1)
-        }
-        .padding(.top, Tokens.Space.xl)
-        .padding(.bottom, Tokens.Space.xs)
-        .background(Tokens.Palette.surface)
     }
 }
 
