@@ -174,8 +174,8 @@ private struct PlaylistRow: View {
             Task { await model.addTracks(ids, to: playlist.id) }
             return true
         } isTargeted: { isTargeted = $0 }
-        .contextMenu {
-            PlaylistActionButtons(model: model, playback: playback, playlist: playlist)
+        .cadenceContextMenu {
+            PlaylistMenu.actions(model: model, playback: playback, playlist: playlist)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Playlist: \(playlist.name), \(playlist.summary)")

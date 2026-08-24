@@ -370,12 +370,8 @@ struct AlbumCard: View {
         .draggable(TrackSelection(album.discs.flatMap(\.tracks))) {
             TrackDragPreview.album(album).anchored(in: cardSize, at: pointer)
         }
-        .contextMenu {
-            Button("Play") { playback.play(album) }
-            Button("Shuffle") { playback.shuffle(album) }
-            Button("Add to Queue") { playback.appendToQueue(album.discs.flatMap(\.tracks)) }
-            Divider()
-            AddToPlaylistMenu(model: model, tracks: album.discs.flatMap(\.tracks))
+        .cadenceContextMenu {
+            PlaylistMenu.album(album, model: model, playback: playback)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(spokenLabel)
@@ -467,8 +463,8 @@ private struct PlaylistShelfRow: View {
             Task { await model.addTracks(ids, to: playlist.id) }
             return true
         } isTargeted: { isTargeted = $0 }
-        .contextMenu {
-            PlaylistActionButtons(model: model, playback: playback, playlist: playlist)
+        .cadenceContextMenu {
+            PlaylistMenu.actions(model: model, playback: playback, playlist: playlist)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(playlist.name), \(playlist.summary), "

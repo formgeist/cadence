@@ -220,7 +220,12 @@ struct CadenceCommands: Commands {
                 container.playback.togglePlayPause()
             }
             .keyboardShortcut(.space, modifiers: [])
-            .disabled(container.textEntry.isEditing)
+            // An open Cadence menu owns the keyboard for the same reason a
+            // focused text field does: the key equivalent is dispatched before
+            // any window sees the event, so Space would toggle the transport
+            // from behind the menu. A disabled item does not claim its key
+            // equivalent, and the keystroke reaches the menu instead.
+            .disabled(container.textEntry.isEditing || MenuPresenter.shared.isPresenting)
 
             Button("Next Track") { container.playback.next() }
                 .keyboardShortcut(.rightArrow, modifiers: .command)

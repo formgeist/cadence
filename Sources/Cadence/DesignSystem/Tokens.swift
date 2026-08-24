@@ -54,6 +54,11 @@ enum Tokens {
 
         static let popover = Color(hex: 0x17171C)
         static let popoverBorder = Color(hex: 0x2B2B33)
+        /// The row wash on a popover. Lighter than `rowHover`, which is a step
+        /// *darker* than the content behind it and disappears entirely on the
+        /// popover's own ground. Shared by the search results and the actions
+        /// menu, so the two cannot drift.
+        static let popoverHover = Color(hex: 0x1F1F26)
 
         static let trackGroove = Color(hex: 0x24242B)
 
