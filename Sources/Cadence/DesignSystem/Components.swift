@@ -410,6 +410,10 @@ struct CapsuleButton: View {
     var title: String?
     var systemImage: String?
     var kind: Kind = .outlined
+    /// Held down while a menu this button opened is still on screen. The one
+    /// thing the AppKit menu it replaces could never say: which control you
+    /// are looking at the menu *of*.
+    var isActive: Bool = false
     /// Required when there is no title — an icon alone says nothing aloud.
     var accessibilityLabel: String?
     var action: () -> Void
@@ -433,23 +437,16 @@ struct CapsuleButton: View {
                                                      kind == .filled ? .bold : .semibold))
                 }
             }
-            .foregroundStyle(kind == .filled
-                             ? .white
-                             : (isHovering && isEnabled ? .white : Color(hex: 0xCACAD3)))
+            .foregroundStyle(foreground)
             .frame(height: 38)
             .padding(.horizontal, title == nil ? 0 : (kind == .filled ? 20 : 18))
             .frame(width: title == nil ? 38 : nil)
             .background {
-                Capsule().fill(kind == .filled
-                               ? (isHovering && isEnabled
-                                  ? Tokens.Palette.accentHover : Tokens.Palette.accent)
-                               : .clear)
+                Capsule().fill(fill)
             }
             .overlay {
                 if kind == .outlined {
-                    Capsule().strokeBorder(
-                        isHovering && isEnabled ? Color(hex: 0x4A4A55) : Color(hex: 0x32323B),
-                        lineWidth: 1)
+                    Capsule().strokeBorder(border, lineWidth: 1)
                 }
             }
             .opacity(isEnabled ? 1 : 0.4)
@@ -458,5 +455,28 @@ struct CapsuleButton: View {
         .onHover { isHovering = $0 }
         // Icon-only buttons have no text to fall back on.
         .accessibilityLabel(accessibilityLabel ?? title ?? "Button")
+        .accessibilityAddTraits(isActive ? [.isButton, .isSelected] : .isButton)
+    }
+
+    // The three colours the button can be, kept out of the body so the active
+    // case is legible rather than a third clause on every ternary.
+
+    private var foreground: Color {
+        if kind == .filled { return .white }
+        if isActive { return Tokens.Palette.accent }
+        return isHovering && isEnabled ? .white : Color(hex: 0xCACAD3)
+    }
+
+    private var fill: Color {
+        if kind == .filled {
+            return isHovering && isEnabled
+                ? Tokens.Palette.accentHover : Tokens.Palette.accent
+        }
+        return isActive ? Tokens.Palette.accentDim : .clear
+    }
+
+    private var border: Color {
+        if isActive { return Tokens.Palette.accentEdge }
+        return isHovering && isEnabled ? Color(hex: 0x4A4A55) : Color(hex: 0x32323B)
     }
 }

@@ -133,66 +133,146 @@ struct TrackDragPreview: View {
 
 // MARK: - Menus
 
-/// "Add to Playlist" wherever tracks are listed. A submenu rather than a
-/// dialog: choosing the destination is the whole interaction, and a library
-/// with three playlists should not open a window to pick one of them.
+/// Every menu the app offers, as data.
 ///
-/// The model is a property rather than `@Environment`. Most of these live
-/// inside a `.contextMenu`, which macOS turns into an NSMenu — the same kind
-/// of separate presentation that already forced `NewPlaylistSheet` to be
-/// handed the model by hand. Taking it as a parameter makes the question moot.
-struct AddToPlaylistMenu: View {
-    var model: AppModel
-    var tracks: [Track]
+/// Keeping the verbs here rather than in the views is what stops the sidebar
+/// row, the shelf card and the detail screen's ellipsis drifting into offering
+/// different things.
+///
+/// The model is a parameter rather than `@Environment` throughout. These are
+/// built inside a closure the menu calls when it opens, which may be long
+/// after the view that supplied it went out of scope — the same separate
+/// presentation that already forced `NewPlaylistSheet` to be handed its model
+/// by hand.
+@MainActor
+enum PlaylistMenu {
 
-    var body: some View {
-        Menu("Add to Playlist") {
-            ForEach(model.playlists) { playlist in
-                Button(playlist.name) {
-                    Task { await model.addTracks(tracks.map(\.id), to: playlist.id) }
-                }
-            }
-            if !model.playlists.isEmpty { Divider() }
-            // Seeded, so the tracks this menu was opened on end up in the
-            // playlist it makes rather than being forgotten by the sheet.
-            Button("New Playlist…") { model.naming = .create(seed: tracks) }
-        }
-        .disabled(tracks.isEmpty)
+    /// The symbol for each verb, in one place so the panel and the context
+    /// menus cannot pick different ones for the same word.
+    enum Symbol {
+        static let play = "play.fill"
+        static let shuffle = "shuffle"
+        static let addToQueue = "text.append"
+        static let addToPlaylist = "music.note.list"
+        static let newPlaylist = "plus"
+        static let rename = "pencil"
+        static let delete = "trash"
+        static let remove = "minus.circle"
+        static let replayGain = "waveform"
     }
-}
 
-/// Everything you can do to a playlist without opening it. Shared by the
-/// sidebar row, the Playlists shelf and the detail screen's ellipsis, so the
-/// three cannot drift into offering different verbs.
-struct PlaylistActionButtons: View {
-    /// Passed in for the same reason as `AddToPlaylistMenu`'s: these hang off
-    /// `.contextMenu` more often than not.
-    var model: AppModel
-    var playback: PlaybackController
-    var playlist: Playlist
-
-    private var tracks: [Track] { model.tracks(in: playlist) }
-
-    var body: some View {
-        Button("Play") {
-            guard let first = tracks.first else { return }
-            playback.play(first, in: tracks)
+    /// "Add to Playlist" wherever tracks are listed. A submenu rather than a
+    /// dialog: choosing the destination is the whole interaction, and a
+    /// library with three playlists should not open a window to pick one.
+    static func destinations(model: AppModel, tracks: [Track]) -> MenuItem {
+        var items: [MenuItem] = model.playlists.map { playlist in
+            .action(playlist.name, Symbol.addToPlaylist, enabled: !tracks.isEmpty) {
+                Task { await model.addTracks(tracks.map(\.id), to: playlist.id) }
+            }
         }
-        .disabled(tracks.isEmpty)
+        if !model.playlists.isEmpty { items.append(.separator) }
+        // Seeded, so the tracks this menu was opened on end up in the playlist
+        // it makes rather than being forgotten by the sheet.
+        items.append(.action("New Playlist…", Symbol.newPlaylist,
+                             enabled: !tracks.isEmpty) {
+            model.naming = .create(seed: tracks)
+        })
 
-        Button("Shuffle") { playback.shuffle(tracks) }
-            .disabled(tracks.isEmpty)
+        return .submenu("Add to Playlist", Symbol.addToPlaylist, items: items)
+    }
 
-        Button("Add to Queue") { playback.appendToQueue(tracks) }
-            .disabled(tracks.isEmpty)
+    /// Everything you can do to a playlist without opening it.
+    static func actions(model: AppModel,
+                        playback: PlaybackController,
+                        playlist: Playlist) -> [MenuItem] {
+        let tracks = model.tracks(in: playlist)
+        let hasTracks = !tracks.isEmpty
 
-        Divider()
+        return [
+            .action("Play", Symbol.play, enabled: hasTracks) {
+                guard let first = tracks.first else { return }
+                playback.play(first, in: tracks)
+            },
+            .action("Shuffle", Symbol.shuffle, enabled: hasTracks) {
+                playback.shuffle(tracks)
+            },
+            .action("Add to Queue", Symbol.addToQueue, enabled: hasTracks) {
+                playback.appendToQueue(tracks)
+            },
+            .separator,
+            // An empty playlist has nothing to play, but renaming and deleting
+            // it are exactly what you want to do with one.
+            .action("Rename…", Symbol.rename) {
+                model.naming = .rename(playlist)
+            },
+            // Its own group rather than sharing Rename's. The one destructive
+            // verb should never be a slip away from the one beside it.
+            .separator,
+            .action("Delete", Symbol.delete, shortcut: "⌫", destructive: true) {
+                model.playlistPendingDeletion = playlist
+            },
+        ]
+    }
 
-        // An empty playlist has nothing to play, but renaming and deleting it
-        // are exactly what you want to do with one.
-        Button("Rename…") { model.naming = .rename(playlist) }
-        Button("Delete", role: .destructive) {
-            model.playlistPendingDeletion = playlist
+    /// The album header's ＋: the queue, or a playlist.
+    static func albumAdditions(model: AppModel,
+                               playback: PlaybackController,
+                               tracks: [Track]) -> [MenuItem] {
+        [
+            .action("Add to Queue", Symbol.addToQueue, enabled: !tracks.isEmpty) {
+                playback.appendToQueue(tracks)
+            },
+            .separator,
+            destinations(model: model, tracks: tracks),
+        ]
+    }
+
+    /// A whole record, right-clicked on the Albums shelf.
+    static func album(_ album: Album,
+                      model: AppModel,
+                      playback: PlaybackController) -> [MenuItem] {
+        let tracks = album.discs.flatMap(\.tracks)
+        return [
+            .action("Play", Symbol.play) { playback.play(album) },
+            .action("Shuffle", Symbol.shuffle) { playback.shuffle(album) },
+            .action("Add to Queue", Symbol.addToQueue) {
+                playback.appendToQueue(tracks)
+            },
+            .separator,
+            destinations(model: model, tracks: tracks),
+        ]
+    }
+
+    /// One track, right-clicked wherever tracks are listed. `remove` is the
+    /// list's own way out — a playlist removes from itself, an album has none.
+    static func track(_ track: Track,
+                      model: AppModel,
+                      play: @escaping () -> Void,
+                      addToQueue: (() -> Void)? = nil,
+                      remove: (title: String, action: () -> Void)? = nil) -> [MenuItem] {
+        var items: [MenuItem] = [.action("Play", Symbol.play, play)]
+        if let addToQueue {
+            items.append(.action("Add to Queue", Symbol.addToQueue, addToQueue))
         }
+        items.append(.separator)
+        items.append(destinations(model: model, tracks: [track]))
+        if let remove {
+            items.append(.separator)
+            items.append(.action(remove.title, Symbol.remove,
+                                 shortcut: "⌫", destructive: true, remove.action))
+        }
+        return items
+    }
+
+    /// A track sitting in Up Next.
+    static func queued(_ track: Track, playback: PlaybackController) -> [MenuItem] {
+        [
+            .action("Play Now", Symbol.play) { playback.jump(to: track) },
+            .separator,
+            .action("Remove from Queue", Symbol.remove,
+                    shortcut: "⌫", destructive: true) {
+                playback.removeFromUpNext(track)
+            },
+        ]
     }
 }

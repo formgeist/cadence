@@ -80,18 +80,11 @@ struct PlaylistDetailView: View {
                     }
                     .disabled(tracks.isEmpty)
 
-                    Menu {
-                        PlaylistActionButtons(model: model, playback: playback,
-                                              playlist: playlist)
-                    } label: {
-                        Image(systemName: "ellipsis")
-                            .font(.system(size: 12, weight: .semibold))
-                            .frame(width: 30, height: 30)
+                    MenuButton(systemImage: "ellipsis",
+                               accessibilityLabel: "More playlist actions") {
+                        PlaylistMenu.actions(model: model, playback: playback,
+                                             playlist: playlist)
                     }
-                    .menuStyle(.borderlessButton)
-                    .menuIndicator(.hidden)
-                    .fixedSize()
-                    .accessibilityLabel("More playlist actions")
                 }
                 .padding(.top, 6)
             }
@@ -162,13 +155,13 @@ struct PlaylistDetailView: View {
                 // wrong one — you go to move a track up two places and instead
                 // start dragging it at the sidebar. Sending a track to another
                 // playlist from here is the context menu's job.
-                .contextMenu {
-                    Button("Play") { play(entry) }
-                    AddToPlaylistMenu(model: model, tracks: [entry.track])
-                    Divider()
-                    Button("Remove from Playlist", role: .destructive) {
-                        remove(IndexSet([entry.position]))
-                    }
+                .cadenceContextMenu(onOpen: { selectedEntry = entry.id }) {
+                    PlaylistMenu.track(
+                        entry.track,
+                        model: model,
+                        play: { play(entry) },
+                        remove: ("Remove from Playlist",
+                                 { remove(IndexSet([entry.position])) }))
                 }
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(spokenLabel(for: entry))

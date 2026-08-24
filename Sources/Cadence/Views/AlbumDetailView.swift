@@ -64,22 +64,11 @@ struct AlbumDetailView: View {
                     // A menu, not a button: the queue was the only thing an
                     // album could be added to, and a playlist is the other
                     // obvious answer to the same plus.
-                    Menu {
-                        Button("Add to Queue") { playback.appendToQueue(orderedTracks) }
-                        Divider()
-                        AddToPlaylistMenu(model: model, tracks: orderedTracks)
-                    } label: {
-                        Image(systemName: "plus")
-                            .font(.system(size: 13, weight: .bold))
-                            .frame(width: 38, height: 38)
-                            .overlay { Capsule().strokeBorder(Color(hex: 0x32323B),
-                                                              lineWidth: 1) }
+                    MenuButton(systemImage: "plus",
+                               accessibilityLabel: "Add album to queue or a playlist") {
+                        PlaylistMenu.albumAdditions(model: model, playback: playback,
+                                                    tracks: orderedTracks)
                     }
-                    .menuStyle(.borderlessButton)
-                    .menuIndicator(.hidden)
-                    .fixedSize()
-                    .foregroundStyle(Color(hex: 0xCACAD3))
-                    .accessibilityLabel("Add album to queue or a playlist")
                 }
                 .padding(.top, 10)
             }
@@ -169,14 +158,15 @@ struct AlbumDetailView: View {
                             playback.play(track, in: orderedTracks)
                         }
                     )
-                    .contextMenu {
-                        Button("Play") {
-                            selectedTrackID = track.id
-                            playback.play(track, in: orderedTracks)
-                        }
-                        Button("Add to Queue") { playback.appendToQueue([track]) }
-                        Divider()
-                        AddToPlaylistMenu(model: model, tracks: [track])
+                    .cadenceContextMenu(onOpen: { selectedTrackID = track.id }) {
+                        PlaylistMenu.track(
+                            track,
+                            model: model,
+                            play: {
+                                selectedTrackID = track.id
+                                playback.play(track, in: orderedTracks)
+                            },
+                            addToQueue: { playback.appendToQueue([track]) })
                     }
                 }
             }

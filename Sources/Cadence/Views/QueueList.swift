@@ -26,9 +26,8 @@ struct QueueList: View {
                     .listRowSeparator(.hidden)
                     .contentShape(Rectangle())
                     .onTapGesture { playback.jump(to: track) }
-                    .contextMenu {
-                        Button("Play Now") { playback.jump(to: track) }
-                        Button("Remove from Queue") { playback.removeFromUpNext(track) }
+                    .cadenceContextMenu {
+                        PlaylistMenu.queued(track, playback: playback)
                     }
             }
             .onMove { source, destination in
@@ -107,25 +106,25 @@ struct PlaybackOptions: View {
 
                 Spacer()
 
-                Menu {
-                    Picker("ReplayGain", selection: $playback.replayGainMode) {
-                        ForEach(ReplayGainMode.allCases, id: \.self) { mode in
-                            Text(mode.label).tag(mode)
+                MenuAnchor {
+                    ReplayGainMode.allCases.map { mode in
+                        MenuItem.choice(mode.label,
+                                        isOn: playback.replayGainMode == mode) {
+                            playback.replayGainMode = mode
                         }
                     }
-                    .pickerStyle(.inline)
-                } label: {
-                    Text("RG · \(playback.replayGainMode.label)")
-                        .font(Tokens.Typography.mono(9.5, .medium))
-                        .tracking(0.6)
-                        .foregroundStyle(playback.replayGainMode == .off
-                                         ? Tokens.Palette.textMuted
-                                         : Tokens.Palette.textSecondary)
+                } label: { isOpen, toggle in
+                    Button(action: toggle) {
+                        Text("RG · \(playback.replayGainMode.label)")
+                            .font(Tokens.Typography.mono(9.5, .medium))
+                            .tracking(0.6)
+                            .foregroundStyle(replayGainTint(isOpen: isOpen))
+                    }
+                    .plainControl()
+                    .accessibilityLabel("ReplayGain")
+                    .accessibilityValue(playback.replayGainMode.label)
+                    .help("How loudness is levelled between tracks")
                 }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .fixedSize()
-                .help("How loudness is levelled between tracks")
             }
 
             HStack(spacing: Tokens.Space.s) {
@@ -164,6 +163,15 @@ struct PlaybackOptions: View {
         case .all: "Repeat queue"
         case .one: "Repeat track"
         }
+    }
+
+    /// Lit while its menu is open, the way every other trigger in the app now
+    /// is — this one has no bezel to carry the accent, so the text does.
+    private func replayGainTint(isOpen: Bool) -> Color {
+        if isOpen { return Tokens.Palette.accent }
+        return playback.replayGainMode == .off
+            ? Tokens.Palette.textMuted
+            : Tokens.Palette.textSecondary
     }
 
     private var volumeIcon: String {
