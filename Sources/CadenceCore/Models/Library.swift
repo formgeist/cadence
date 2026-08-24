@@ -310,6 +310,16 @@ public struct Album: Identifiable, Hashable, Sendable {
             ($0.bitDepth ?? 0, $0.sampleRate) < ($1.bitDepth ?? 0, $1.sampleRate)
         }
     }
+
+    /// Groups tracks already in hand into albums, title-sorted the way
+    /// `LibraryStore.albums()` orders them. For a caller that already has
+    /// every track loaded, this is the same result without a second
+    /// round trip through the store.
+    public static func grouped(from tracks: [Track]) -> [Album] {
+        Dictionary(grouping: tracks, by: \.albumKey)
+            .map { Album(key: $0.key, tracks: $0.value) }
+            .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+    }
 }
 
 extension Track {

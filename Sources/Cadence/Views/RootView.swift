@@ -44,10 +44,14 @@ struct RootView: View {
         .task {
             await model.load()
             // A library that already has folders rescans on launch, so files
-            // added since last time appear without being asked for.
-            if !importer.folders.isEmpty, !model.isEmpty {
-                importer.rescanAll { Task { await model.load() } }
-            }
+            // added since last time appear without being asked for — but not
+            // a folder whose last scan is still recent (issue #39), and not
+            // before the window has actually had a chance to paint. Racing
+            // the scan against the first frame is what made launch feel slow
+            // in the first place.
+            guard !importer.folders.isEmpty, !model.isEmpty else { return }
+            try? await Task.sleep(for: .milliseconds(400))
+            importer.rescanStaleFolders { Task { await model.load() } }
         }
         .overlay(alignment: .bottom) { errorBanner }
         .sheet(item: $model.naming) { naming in

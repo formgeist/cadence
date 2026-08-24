@@ -61,7 +61,10 @@ final class AppModel {
     // MARK: Search
 
     var searchText = "" {
-        didSet { if !searchText.isEmpty { isSearching = true } }
+        didSet {
+            if !searchText.isEmpty { isSearching = true }
+            scheduleSearch()
+        }
     }
     var isSearching = false
 
@@ -124,7 +127,7 @@ final class AppModel {
         defer { isLoading = false }
         do {
             allTracks = try await store.allTracks()
-            albums = try await store.albums()
+            albums = Album.grouped(from: allTracks)
             artists = try await store.artists()
             playlists = try await store.playlists()
             librarySize = try await store.librarySize()
@@ -358,33 +361,67 @@ final class AppModel {
         var albums: [Album]
         var tracks: [Track]
 
+        static let empty = SearchResults(topHit: nil, artists: [], albums: [], tracks: [])
+
         var isEmpty: Bool {
             topHit == nil && artists.isEmpty && albums.isEmpty && tracks.isEmpty
         }
     }
 
-    /// Substring matching over what is already in memory. The real store does
-    /// this with FTS5; the shape of the answer is the same either way, so the
-    /// view does not change when that lands.
-    var searchResults: SearchResults {
-        let needle = searchText.trimmingCharacters(in: .whitespaces).lowercased()
+    /// What the popover shows. Filled in asynchronously by `runSearch`, since
+    /// the store answers this with FTS5 now rather than an in-memory scan —
+    /// see `scheduleSearch`.
+    private(set) var searchResults = SearchResults.empty
+    private var searchTask: Task<Void, Never>?
+
+    /// Debounced so a fast typist fires one query, not one per keystroke, and
+    /// cancelled on every call so a stale query can never land after a newer
+    /// one and flash outdated results.
+    private func scheduleSearch() {
+        searchTask?.cancel()
+        let needle = searchText.trimmingCharacters(in: .whitespaces)
         guard !needle.isEmpty else {
-            return SearchResults(topHit: nil, artists: [], albums: [], tracks: [])
+            searchResults = .empty
+            return
+        }
+        searchTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(150))
+            guard !Task.isCancelled else { return }
+            await self?.runSearch(needle)
+        }
+    }
+
+    /// FTS5 is token-prefix matching, not substring — searching "hours" no
+    /// longer finds "Slow Hours" the way the in-memory scan did, but it folds
+    /// diacritics the scan never did ("Halvard As" now finds "Halvard Ås").
+    ///
+    /// Albums and artists are derived from the track results rather than
+    /// queried separately: `tracks(matching:)` already matches against title,
+    /// artist, albumArtist, albumTitle and composer, so any album or artist
+    /// with a hit anywhere in that set has already surfaced a track here.
+    private func runSearch(_ needle: String) async {
+        guard let matchedTracks = try? await store.tracks(matching: needle) else { return }
+        guard !Task.isCancelled else { return }
+
+        var seenAlbumKeys = Set<Album.Key>()
+        let matchedAlbums = matchedTracks.compactMap { track -> Album? in
+            guard seenAlbumKeys.insert(track.albumKey).inserted else { return nil }
+            return album(for: track.albumKey)
         }
 
-        let matchedAlbums = albums.filter { $0.title.lowercased().contains(needle) }
-        let matchedArtists = artists.filter { $0.name.lowercased().contains(needle) }
-        let matchedTracks = allTracks.filter {
-            $0.title.lowercased().contains(needle)
-                || ($0.composer?.lowercased().contains(needle) ?? false)
+        var seenArtistNames = Set<String>()
+        let matchedArtists = matchedTracks.compactMap { track -> Artist? in
+            guard seenArtistNames.insert(track.albumArtist).inserted else { return nil }
+            return artist(named: track.albumArtist)
         }
 
         // Prefer an album whose title starts with the query — typing "slow ho"
         // should surface the record, not a track buried in another one.
-        let topHit = matchedAlbums.first { $0.title.lowercased().hasPrefix(needle) }
+        let lowercasedNeedle = needle.lowercased()
+        let topHit = matchedAlbums.first { $0.title.lowercased().hasPrefix(lowercasedNeedle) }
             ?? matchedAlbums.first
 
-        return SearchResults(
+        searchResults = SearchResults(
             topHit: topHit,
             artists: Array(matchedArtists.prefix(3)),
             albums: Array(matchedAlbums.filter { $0.key != topHit?.key }.prefix(3)),

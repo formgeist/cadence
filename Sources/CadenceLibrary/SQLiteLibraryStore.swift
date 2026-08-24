@@ -39,9 +39,7 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
     }
 
     public func albums() async throws -> [Album] {
-        let tracks = try await allTracks()
-        return Self.group(tracks)
-            .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        Album.grouped(from: try await allTracks())
     }
 
     public func album(for key: Album.Key) async throws -> Album? {
