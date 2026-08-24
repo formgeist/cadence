@@ -25,11 +25,26 @@ final class LibraryImporter {
 
     private let scanner: LibraryScanner?
     private let bookmarks: SecurityScopedFolders
+    private let defaults: UserDefaults
     private var task: Task<Void, Never>?
 
-    init(scanner: LibraryScanner?, bookmarks: SecurityScopedFolders = SecurityScopedFolders()) {
+    /// Folder path → when a scan of it last finished. Persisted so a relaunch
+    /// a minute after the last one doesn't repeat a walk of every file that
+    /// nothing has touched since.
+    private var lastScanned: [String: Date]
+    private static let lastScannedKey = "CadenceFolderLastScanned"
+    /// How stale a folder's last scan has to be before a launch rescans it.
+    /// Long enough that quitting and reopening the app doesn't repeat a walk
+    /// that just ran; short enough that a folder is never silently out of
+    /// date for more than a few minutes of continuous use.
+    static let staleAfter: TimeInterval = 10 * 60
+
+    init(scanner: LibraryScanner?, bookmarks: SecurityScopedFolders = SecurityScopedFolders(),
+        defaults: UserDefaults = .standard) {
         self.scanner = scanner
         self.bookmarks = bookmarks
+        self.defaults = defaults
+        lastScanned = (defaults.dictionary(forKey: Self.lastScannedKey) as? [String: Date]) ?? [:]
         // Resolving on launch is what re-opens access to the music folder. A
         // folder that has moved gets its bookmark re-made rather than lost.
         folders = bookmarks.restoreAll().map(\.url)
@@ -64,6 +79,8 @@ final class LibraryImporter {
     func forget(_ url: URL) {
         folders.removeAll { $0 == url }
         bookmarks.forget(url)
+        lastScanned[Self.scanKey(for: url)] = nil
+        defaults.set(lastScanned, forKey: Self.lastScannedKey)
     }
 
     // MARK: - Importing
@@ -91,6 +108,7 @@ final class LibraryImporter {
                     combined.failed += summary.failed
                     combined.removed += summary.removed
                     combined.failures += summary.failures
+                    self.recordScanned(url)
                 } catch is CancellationError {
                     break
                 } catch {
@@ -110,6 +128,21 @@ final class LibraryImporter {
         importFolders(folders, onFinish: onFinish)
     }
 
+    /// What a launch rescans: every folder minus whatever was scanned
+    /// recently enough — by this same launch's import, by ⌘R a moment ago,
+    /// or by an earlier session — not to need walking again. Unlike
+    /// `rescanAll`, which ⌘R uses to mean "scan everything, right now,"
+    /// this is allowed to find nothing to do.
+    func rescanStaleFolders(onFinish: @escaping @MainActor () -> Void) {
+        let now = Date()
+        let stale = folders.filter { url in
+            guard let last = lastScanned[Self.scanKey(for: url)] else { return true }
+            return now.timeIntervalSince(last) > Self.staleAfter
+        }
+        guard !stale.isEmpty else { return }
+        importFolders(stale, onFinish: onFinish)
+    }
+
     /// Re-reads every file, fingerprint or not. The way back from artwork that
     /// is no longer on disk: an ordinary rescan skips every unchanged file and
     /// so re-reads nothing, which is exactly the case that needs re-reading.
@@ -123,5 +156,19 @@ final class LibraryImporter {
         task?.cancel()
         task = nil
         progress = nil
+    }
+
+    // MARK: - Scan recency
+
+    private func recordScanned(_ url: URL) {
+        lastScanned[Self.scanKey(for: url)] = Date()
+        defaults.set(lastScanned, forKey: Self.lastScannedKey)
+    }
+
+    /// One spelling per folder, the same way `SecurityScopedFolders` files
+    /// its bookmarks — otherwise a folder scanned via one path spelling and
+    /// checked via another looks stale every time.
+    private static func scanKey(for url: URL) -> String {
+        LibraryScanner.normalize(url).path
     }
 }
