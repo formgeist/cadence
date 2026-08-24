@@ -9,6 +9,7 @@ import CadenceCore
 /// Reimplementing that on a stack to keep the container consistent would be
 /// worse than styling a List to match.
 struct QueueList: View {
+    @Environment(AppModel.self) private var model
     @Environment(PlaybackController.self) private var playback
 
     var body: some View {
@@ -21,6 +22,11 @@ struct QueueList: View {
                     .accessibilityLabel("\(track.title), \(track.artist), "
                         + NowPlayingPane.spokenDuration(track.duration))
                     .accessibilityHint("Plays this track. Drag to reorder.")
+                    // `.ignore` above also swallows the row's own artist
+                    // link; this stands in for it on the rotor.
+                    .accessibilityAction(named: "Go to artist") {
+                        model.show(.artist(track.artist))
+                    }
                     .listRowInsets(EdgeInsets(top: 1, leading: 0, bottom: 1, trailing: 0))
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
@@ -46,6 +52,8 @@ struct QueueList: View {
 }
 
 struct QueueRow: View {
+    @Environment(AppModel.self) private var model
+
     var track: Track
 
     var body: some View {
@@ -58,10 +66,10 @@ struct QueueRow: View {
                     .font(Tokens.Typography.sans(12, .semibold))
                     .foregroundStyle(Color(hex: 0xD6D6DE))
                     .lineLimit(1)
-                Text(track.artist)
-                    .font(Tokens.Typography.sans(10.5, .medium))
-                    .foregroundStyle(Color(hex: 0x63636D))
-                    .lineLimit(1)
+                InlineLink(text: track.artist, font: Tokens.Typography.sans(10.5, .medium),
+                           color: Color(hex: 0x63636D)) {
+                    model.show(.artist(track.artist))
+                }
             }
             Spacer(minLength: Tokens.Space.s)
             Text(DurationFormat.clock(track.duration))

@@ -61,18 +61,22 @@ struct NowPlayingPane: View {
                 .font(Tokens.Typography.paneTitle)
                 .foregroundStyle(Color(hex: 0xF1F1F5))
                 .lineLimit(2)
-            Text(track.artist)
-                .font(Tokens.Typography.sans(12.5, .semibold))
-                .foregroundStyle(Tokens.Palette.textSecondary)
-                .lineLimit(1)
-            Text(track.albumTitle)
-                .font(Tokens.Typography.caption)
-                .foregroundStyle(Color(hex: 0x64646E))
-                .lineLimit(1)
+            InlineLink(text: track.artist, font: Tokens.Typography.sans(12.5, .semibold),
+                       color: Tokens.Palette.textSecondary) {
+                model.show(.artist(track.artist))
+            }
+            InlineLink(text: track.albumTitle, font: Tokens.Typography.caption,
+                       color: Color(hex: 0x64646E)) {
+                model.show(.album(track.albumKey))
+            }
         }
-        // Three separate stops for one fact; one is enough.
+        // Three separate stops for one fact; one is enough. `.combine` also
+        // swallows the two links' own button semantics, so they come back as
+        // named rotor actions rather than disappearing from VoiceOver.
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Now playing: \(track.title), \(track.artist), \(track.albumTitle)")
+        .accessibilityAction(named: "Go to artist") { model.show(.artist(track.artist)) }
+        .accessibilityAction(named: "Go to album") { model.show(.album(track.albumKey)) }
         .padding(.horizontal, Tokens.Space.paneInset)
         .padding(.top, 18)
 

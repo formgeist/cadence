@@ -91,15 +91,22 @@ struct ImmersiveView: View {
                 .foregroundStyle(Color(hex: 0xF5F5F9))
                 .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
-            Text(track.artist)
-                .font(Tokens.Typography.sans(15.5, .semibold))
-                .foregroundStyle(Color(hex: 0xB9B9C2))
-            Text([track.albumTitle, track.year.map(String.init)]
-                .compactMap { $0 }.joined(separator: " · "))
-                .font(Tokens.Typography.sans(13, .medium))
-                .foregroundStyle(Color(hex: 0x6F6F7A))
+            InlineLink(text: track.artist, font: Tokens.Typography.sans(15.5, .semibold),
+                       color: Color(hex: 0xB9B9C2)) {
+                model.show(.artist(track.artist))
+            }
+            InlineLink(text: [track.albumTitle, track.year.map(String.init)]
+                .compactMap { $0 }.joined(separator: " · "),
+                       font: Tokens.Typography.sans(13, .medium),
+                       color: Color(hex: 0x6F6F7A)) {
+                model.show(.album(track.albumKey))
+            }
         }
+        // `.combine` swallows the two links' own button semantics along with
+        // everything else here, so they come back as named rotor actions.
         .accessibilityElement(children: .combine)
+        .accessibilityAction(named: "Go to artist") { model.show(.artist(track.artist)) }
+        .accessibilityAction(named: "Go to album") { model.show(.album(track.albumKey)) }
         .frame(maxWidth: 400, alignment: .leading)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
         .padding(.leading, 56)

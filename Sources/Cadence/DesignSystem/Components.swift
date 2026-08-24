@@ -363,6 +363,52 @@ struct IconButton: View {
     }
 }
 
+/// An artist or album name inside a track row, styled like the plain text
+/// around it until hovered — brightening and underlining, the way a link
+/// does, rather than sitting permanently accent-colored in a dense table. A
+/// `Button` rather than a bare `.onTapGesture`: rows that carry it also carry
+/// their own double-click-to-play, drag, or `List` selection, and a control
+/// keeps its own hit target instead of fighting theirs.
+struct InlineLink: View {
+    var text: String
+    var font: Font
+    var color: Color
+    var lineLimit: Int? = 1
+    var action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Text(text)
+                .font(font)
+                .foregroundStyle(isHovering ? Tokens.Palette.textPrimary : color)
+                .underline(isHovering)
+                .lineLimit(lineLimit)
+        }
+        .plainControl()
+        .onHover { isHovering = $0 }
+    }
+}
+
+extension View {
+    /// A named accessibility action that only exists when `isAvailable` is
+    /// true — for a row whose link is itself conditional, like a track's
+    /// artist link that only appears on a compilation. An action offered on
+    /// every row regardless would tell the rotor about a destination the
+    /// screen never actually shows.
+    @ViewBuilder
+    func accessibilityAction(
+        named name: String, isAvailable: Bool, _ handler: @escaping () -> Void
+    ) -> some View {
+        if isAvailable {
+            accessibilityAction(named: name, handler)
+        } else {
+            self
+        }
+    }
+}
+
 /// A screen with nothing on it yet: the ring mark, what is missing, and the
 /// one action that fixes it. Shared so an empty library and an empty playlist
 /// shelf do not drift into two different apologies.

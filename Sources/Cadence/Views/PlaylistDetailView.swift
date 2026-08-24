@@ -175,6 +175,15 @@ struct PlaylistDetailView: View {
                 .accessibilityAction(named: "Remove from playlist") {
                     remove(IndexSet([entry.position]))
                 }
+                // `.ignore` above also swallows the row's own artist/album
+                // links, same as it does the play button — these stand in for
+                // them on the rotor.
+                .accessibilityAction(named: "Go to artist") {
+                    model.show(.artist(entry.track.artist))
+                }
+                .accessibilityAction(named: "Go to album") {
+                    model.show(.album(entry.track.albumKey))
+                }
             }
             // Offsets pass straight through: `entries` is one row per stored
             // item, in stored order. It stays that way because
@@ -227,6 +236,8 @@ struct PlaylistDetailView: View {
 /// is a running order, and the track's own "07" would say nothing about where
 /// it sits in this one.
 private struct PlaylistTrackRow: View {
+    @Environment(AppModel.self) private var model
+
     var entry: AppModel.PlaylistEntry
     var isCurrent: Bool
     var isSelected: Bool
@@ -251,18 +262,18 @@ private struct PlaylistTrackRow: View {
                     .lineLimit(1)
                 // Always the artist here, never nil as on an album screen: a
                 // playlist has no single artist to make repeating one noise.
-                Text(track.artist)
-                    .font(Tokens.Typography.sans(11, .medium))
-                    .foregroundStyle(Color(hex: 0x6A6A74))
-                    .lineLimit(1)
+                InlineLink(text: track.artist, font: Tokens.Typography.sans(11, .medium),
+                           color: Color(hex: 0x6A6A74)) {
+                    model.show(.artist(track.artist))
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            Text(track.albumTitle)
-                .font(Tokens.Typography.sans(11, .medium))
-                .foregroundStyle(Tokens.Palette.textMuted)
-                .lineLimit(1)
-                .frame(width: 160, alignment: .leading)
+            InlineLink(text: track.albumTitle, font: Tokens.Typography.sans(11, .medium),
+                       color: Tokens.Palette.textMuted) {
+                model.show(.album(track.albumKey))
+            }
+            .frame(width: 160, alignment: .leading)
 
             Text(DurationFormat.clock(track.duration))
                 .font(Tokens.Typography.mono(11.5))
