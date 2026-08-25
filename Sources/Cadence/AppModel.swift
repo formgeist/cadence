@@ -38,10 +38,19 @@ final class AppModel {
 
     /// How the Artist and Albums screens order what they show — see #69.
     enum LibrarySort: String, CaseIterable, Identifiable {
-        case alphabetical = "Alphabetical"
-        case recentlyAdded = "Recently Added"
+        case alphabetical, recentlyAdded
 
         var id: String { rawValue }
+
+        /// What the dropdown and its menu rows say. Kept separate from
+        /// `rawValue`, which is what gets persisted — a wording change here
+        /// should not touch a value already written to `UserDefaults`.
+        var label: String {
+            switch self {
+            case .alphabetical: "A-Z"
+            case .recentlyAdded: "Recently Added"
+            }
+        }
     }
 
     // MARK: Navigation

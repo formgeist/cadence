@@ -149,23 +149,46 @@ private struct GridZoomControl: View {
 /// Alphabetical or Recently Added, for whichever of Artists/Albums is on
 /// screen — see #69. The two lists keep separate preferences: sorting Albums
 /// by date added says nothing about how Artists should be ordered.
+///
+/// Reads as a dropdown rather than a button: the current choice is always on
+/// screen, next to the mono track count it's styled to match, so it sits in
+/// the header rather than calling attention to itself the way a filled
+/// icon button would.
 private struct LibrarySortMenu: View {
     @Environment(AppModel.self) private var model
+    @State private var isHovering = false
 
     private var sort: AppModel.LibrarySort {
         model.tab == .albums ? model.albumSort : model.artistSort
     }
 
     var body: some View {
-        MenuButton(systemImage: "arrow.up.arrow.down",
-                   accessibilityLabel: "Sort \(model.tab.rawValue.lowercased())") {
-            AppModel.LibrarySort.allCases.map { option in
-                MenuItem.choice(option.rawValue, isOn: sort == option) {
-                    if model.tab == .albums {
-                        model.albumSort = option
-                    } else {
-                        model.artistSort = option
-                    }
+        MenuAnchor(items: menuItems) { isOpen, toggle in
+            Button(action: toggle) {
+                HStack(spacing: 5) {
+                    Text(sort.label)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 8, weight: .semibold))
+                }
+                .font(Tokens.Typography.mono(11))
+                .foregroundStyle(isOpen || isHovering
+                                 ? Tokens.Palette.textSecondary
+                                 : Tokens.Palette.textTertiary)
+            }
+            .plainControl()
+            .onHover { isHovering = $0 }
+            .accessibilityLabel("Sort \(model.tab.rawValue.lowercased())")
+            .accessibilityValue(sort.label)
+        }
+    }
+
+    private func menuItems() -> [MenuItem] {
+        AppModel.LibrarySort.allCases.map { option in
+            MenuItem.choice(option.label, isOn: sort == option) {
+                if model.tab == .albums {
+                    model.albumSort = option
+                } else {
+                    model.artistSort = option
                 }
             }
         }
