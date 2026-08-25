@@ -753,6 +753,78 @@ struct MockEngineTests {
     }
 }
 
+@MainActor
+@Suite("Settings persistence")
+struct SettingsPersistenceTests {
+
+    @Test("Volume, mute, shuffle, repeat and ReplayGain mode are written as they change")
+    func writesOnChange() {
+        let settings = InMemorySettingsStore()
+        let controller = PlaybackController(engine: SpyEngine(), settings: settings)
+
+        controller.volume = 0.3
+        controller.isMuted = true
+        controller.shuffleMode = .on
+        controller.repeatMode = .all
+        controller.replayGainMode = .track
+
+        // Muting drove volume to 0 and banked 0.3 as the level to return to.
+        #expect(settings.double(forKey: .volume) == 0)
+        #expect(settings.double(forKey: .volumeBeforeMute) == 0.3)
+        #expect(settings.bool(forKey: .isMuted) == true)
+        #expect(settings.string(forKey: .shuffleMode) == ShuffleMode.on.rawValue)
+        #expect(settings.string(forKey: .repeatMode) == RepeatMode.all.rawValue)
+        #expect(settings.string(forKey: .replayGainMode) == ReplayGainMode.track.rawValue)
+    }
+
+    @Test("A new controller restores volume, shuffle, repeat and ReplayGain mode from settings")
+    func restoresPlainState() {
+        let settings = InMemorySettingsStore()
+        settings.set(0.65, forKey: .volume)
+        settings.set(ShuffleMode.on.rawValue, forKey: .shuffleMode)
+        settings.set(RepeatMode.all.rawValue, forKey: .repeatMode)
+        settings.set(ReplayGainMode.track.rawValue, forKey: .replayGainMode)
+
+        let engine = SpyEngine()
+        let controller = PlaybackController(engine: engine, settings: settings)
+
+        #expect(controller.volume == 0.65)
+        #expect(engine.volume == 0.65)
+        #expect(controller.shuffleMode == .on)
+        #expect(controller.repeatMode == .all)
+        #expect(controller.replayGainMode == .track)
+    }
+
+    @Test("Launching muted restores the level to return to, not zero")
+    func restoresMuteWithoutLosingTheLevel() {
+        let settings = InMemorySettingsStore()
+        settings.set(0.0, forKey: .volume)
+        settings.set(true, forKey: .isMuted)
+        settings.set(0.8, forKey: .volumeBeforeMute)
+
+        let controller = PlaybackController(engine: SpyEngine(), settings: settings)
+
+        #expect(controller.isMuted)
+        #expect(controller.volume == 0)
+
+        controller.isMuted = false
+        #expect(controller.volume == 0.8)
+    }
+
+    @Test("With nothing persisted, a controller starts at its compiled-in defaults")
+    func defaultsWithNothingPersisted() {
+        let engine = SpyEngine()
+        let controller = PlaybackController(engine: engine, settings: InMemorySettingsStore())
+
+        #expect(controller.volume == 1.0)
+        #expect(engine.volume == 1.0)
+        #expect(controller.shuffleMode == .off)
+        #expect(controller.repeatMode == .off)
+        #expect(controller.replayGainMode == .album)
+        #expect(!controller.isMuted)
+    }
+}
+
 extension SpyEngine {
     func clearSeeks() { seeks.removeAll() }
 }

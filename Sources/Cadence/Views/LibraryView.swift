@@ -32,63 +32,31 @@ struct LibraryView: View {
     private var header: some View {
         @Bindable var model = model
 
-        return VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .bottom) {
-                Text(model.tab.rawValue)
-                    .font(Tokens.Typography.screenTitle)
-                    .tracking(Tokens.Typography.Tracking.screenTitle)
-                    .foregroundStyle(Tokens.Palette.textPrimary)
+        return HStack(alignment: .bottom) {
+            Text(model.tab.rawValue)
+                .font(Tokens.Typography.screenTitle)
+                .tracking(Tokens.Typography.Tracking.screenTitle)
+                .foregroundStyle(Tokens.Palette.textPrimary)
 
-                Spacer()
+            Spacer()
 
-                HStack(spacing: Tokens.Space.l) {
-                    if model.tab == .albums {
-                        GridZoomControl(zoom: $model.gridZoom)
-                    }
-                    Text(model.screenCount)
-                        .font(Tokens.Typography.mono(11))
-                        .foregroundStyle(Color(hex: 0x63636D))
+            HStack(spacing: Tokens.Space.l) {
+                if model.tab != .playlists {
+                    LibraryActionsMenu()
                 }
-                .padding(.bottom, 6)
+                Text(model.screenCount)
+                    .font(Tokens.Typography.mono(11))
+                    .foregroundStyle(Color(hex: 0x63636D))
             }
-            .padding(.bottom, 18)
-
-            HStack(spacing: Tokens.Space.xxl) {
-                ForEach(AppModel.Tab.allCases) { tab in
-                    TabButton(tab: tab, isSelected: model.tab == tab) {
-                        model.tab = tab
-                    }
-                }
-            }
+            .padding(.bottom, 6)
         }
         .padding(.horizontal, Tokens.Space.contentInset)
         .padding(.top, Tokens.Space.xxl)
+        .padding(.bottom, Tokens.Space.xl)
         .background(Tokens.Palette.surface)
         .overlay(alignment: .bottom) {
             Rectangle().fill(Color(hex: 0x1C1C21)).frame(height: 1)
         }
-    }
-}
-
-private struct TabButton: View {
-    var tab: AppModel.Tab
-    var isSelected: Bool
-    var action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Text(tab.rawValue)
-                .font(Tokens.Typography.sans(13, .bold))
-                .foregroundStyle(isSelected ? Tokens.Palette.textPrimary : Color(hex: 0x6D6D77))
-                .padding(.bottom, Tokens.Space.m)
-                .overlay(alignment: .bottom) {
-                    Rectangle()
-                        .fill(isSelected ? Tokens.Palette.accent : .clear)
-                        .frame(height: 2)
-                }
-        }
-        .plainControl()
-        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 }
 
@@ -105,7 +73,7 @@ private struct GridZoomControl: View {
                     .frame(width: 9, height: 9)
             }
             .plainControl()
-            .accessibilityLabel("Smaller album covers")
+            .accessibilityLabel("Smaller artwork")
 
             GeometryReader { geometry in
                 let width = geometry.size.width
@@ -128,7 +96,7 @@ private struct GridZoomControl: View {
             .frame(width: 96, height: 14)
             .accessibilityRepresentation {
                 Slider(value: $zoom, in: 0...1, step: 0.1)
-                    .accessibilityLabel("Album cover size")
+                    .accessibilityLabel("Artwork size")
                     .accessibilityValue("\(Int((zoom * 100).rounded())) percent")
             }
 
@@ -138,7 +106,67 @@ private struct GridZoomControl: View {
                     .frame(width: 14, height: 14)
             }
             .plainControl()
-            .accessibilityLabel("Larger album covers")
+            .accessibilityLabel("Larger artwork")
+        }
+    }
+}
+
+/// Sort, and — on Albums — artwork size, behind one small trigger rather than
+/// two separate controls competing for room in the header. See #69.
+///
+/// A plain icon button, not a dropdown that names the current sort: with
+/// zoom folded in too there is no longer one live value this button could
+/// summarize in its own label.
+private struct LibraryActionsMenu: View {
+    @Environment(AppModel.self) private var model
+
+    private var sort: AppModel.LibrarySort {
+        model.tab == .albums ? model.albumSort : model.artistSort
+    }
+
+    var body: some View {
+        @Bindable var model = model
+
+        return MenuButton(systemImage: "slider.horizontal.3",
+                          accessibilityLabel: "\(model.tab.rawValue) view options") {
+            menuItems(zoom: $model.gridZoom)
+        }
+    }
+
+    private func menuItems(zoom: Binding<Double>) -> [MenuItem] {
+        var items = AppModel.LibrarySort.allCases.map { option in
+            MenuItem.choice(option.label, isOn: sort == option) {
+                if model.tab == .albums {
+                    model.albumSort = option
+                } else {
+                    model.artistSort = option
+                }
+            }
+        }
+        // The two lists keep separate sort preferences — sorting Albums by
+        // date added says nothing about how Artists should be ordered — and
+        // only Albums has a grid to zoom in the first place.
+        if model.tab == .albums {
+            items.append(.separator)
+            items.append(.custom { ZoomMenuRow(zoom: zoom) })
+        }
+        return items
+    }
+}
+
+/// A label so the slider means something on first glance inside a menu,
+/// where — unlike the toolbar it used to sit in — there's no surrounding
+/// context to say what it controls.
+private struct ZoomMenuRow: View {
+    @Binding var zoom: Double
+
+    var body: some View {
+        HStack(spacing: MenuMetrics.iconGap) {
+            Text("Artwork Size")
+                .font(Tokens.Typography.sans(12.5, .semibold))
+                .foregroundStyle(Color(hex: 0xDCDCE3))
+            Spacer(minLength: MenuMetrics.iconGap)
+            GridZoomControl(zoom: $zoom)
         }
     }
 }

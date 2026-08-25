@@ -36,10 +36,29 @@ final class AppModel {
         }
     }
 
+    /// How the Artist and Albums screens order what they show — see #69.
+    enum LibrarySort: String, CaseIterable, Identifiable {
+        case alphabetical, recentlyAdded
+
+        var id: String { rawValue }
+
+        /// What the dropdown and its menu rows say. Kept separate from
+        /// `rawValue`, which is what gets persisted — a wording change here
+        /// should not touch a value already written to `UserDefaults`.
+        var label: String {
+            switch self {
+            case .alphabetical: "A-Z"
+            case .recentlyAdded: "Recently Added"
+            }
+        }
+    }
+
     // MARK: Navigation
 
     private(set) var screen: Screen = .library
-    var tab: Tab = .artists
+    var tab: Tab = .artists {
+        didSet { settings.set(tab.rawValue, forKey: .tab) }
+    }
     var isImmersive = false
     /// A stack, so Back from an album reached through search returns to the
     /// search results' screen rather than guessing.
@@ -76,7 +95,9 @@ final class AppModel {
     // MARK: Album grid zoom
 
     /// 0…1. The design's zoom slider; drives the grid's minimum column width.
-    var gridZoom: Double = 0.4
+    var gridZoom: Double = 0.4 {
+        didSet { settings.set(gridZoom, forKey: .gridZoom) }
+    }
 
     var albumColumnWidth: CGFloat {
         // 128pt at the small end holds a title and an artist without
@@ -95,6 +116,26 @@ final class AppModel {
     /// One cover per artist, chosen once at load. Asking for it per card meant
     /// scanning every album in the library on each row the grid drew.
     private var artistArtwork: [String: Artwork.ID] = [:]
+    /// An artist has no `dateAdded` of its own — it is an aggregate the store
+    /// hands back, not a row with tracks attached — so "recently added" is the
+    /// latest addition among everything credited to them, computed once here
+    /// rather than re-scanning `allTracks` on every sort.
+    private var artistDateAdded: [String: Date] = [:]
+
+    var artistSort: LibrarySort = .alphabetical {
+        didSet {
+            guard oldValue != artistSort else { return }
+            settings.set(artistSort.rawValue, forKey: .artistSort)
+            sortArtists()
+        }
+    }
+    var albumSort: LibrarySort = .alphabetical {
+        didSet {
+            guard oldValue != albumSort else { return }
+            settings.set(albumSort.rawValue, forKey: .albumSort)
+            sortAlbums()
+        }
+    }
     /// Playlists hold track ids; resolving one per row against `allTracks`
     /// would be a linear scan of the whole library for every line on screen.
     private var tracksByID: [Track.ID: Track] = [:]
@@ -117,6 +158,7 @@ final class AppModel {
     var isEmpty: Bool { !isLoading && allTracks.isEmpty }
 
     let store: any LibraryStore
+    private let settings: any SettingsStore
 
     /// Set by the composition root. `AppModel` only holds the store protocol
     /// and has no reach into `LibraryScanner`/`DiskArtworkStore`, but a track
@@ -124,8 +166,21 @@ final class AppModel {
     /// closed for a track leaving because its file did.
     var pruneArtwork: (() async -> Void)?
 
-    init(store: any LibraryStore) {
+    init(store: any LibraryStore, settings: any SettingsStore = InMemorySettingsStore()) {
         self.store = store
+        self.settings = settings
+        if let raw = settings.string(forKey: .tab), let restored = Tab(rawValue: raw) {
+            tab = restored
+        }
+        if let zoom = settings.double(forKey: .gridZoom) {
+            gridZoom = zoom
+        }
+        if let raw = settings.string(forKey: .artistSort), let restored = LibrarySort(rawValue: raw) {
+            artistSort = restored
+        }
+        if let raw = settings.string(forKey: .albumSort), let restored = LibrarySort(rawValue: raw) {
+            albumSort = restored
+        }
     }
 
     func load() async {
@@ -141,9 +196,41 @@ final class AppModel {
                 guard let artworkID = album.artworkID else { return }
                 result[album.albumArtist] = result[album.albumArtist] ?? artworkID
             }
+            artistDateAdded = Dictionary(grouping: allTracks, by: \.albumArtist)
+                .mapValues { tracks in tracks.map(\.dateAdded).max() ?? .distantPast }
             tracksByID = Dictionary(allTracks.map { ($0.id, $0) }) { first, _ in first }
+            sortArtists()
+            sortAlbums()
         } catch {
             loadError = error.localizedDescription
+        }
+    }
+
+    /// Re-sorts in place rather than exposing a computed property, so the
+    /// grids' own identity-based diffing (`onChange(of: albums.map(\.id))`,
+    /// keyboard focus by index) sees one array update instead of a new one
+    /// on every read.
+    private func sortArtists() {
+        switch artistSort {
+        case .alphabetical:
+            artists.sort {
+                Artist.stripArticle($0.name).localizedStandardCompare(Artist.stripArticle($1.name))
+                    == .orderedAscending
+            }
+        case .recentlyAdded:
+            artists.sort {
+                artistDateAdded[$0.name, default: .distantPast]
+                    > artistDateAdded[$1.name, default: .distantPast]
+            }
+        }
+    }
+
+    private func sortAlbums() {
+        switch albumSort {
+        case .alphabetical:
+            albums.sort { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        case .recentlyAdded:
+            albums.sort { $0.dateAdded > $1.dateAdded }
         }
     }
 

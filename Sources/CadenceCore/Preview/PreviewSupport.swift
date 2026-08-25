@@ -1,5 +1,27 @@
 import Foundation
 
+// MARK: - In-memory settings
+
+/// A `SettingsStore` that remembers nothing past the process. Previews,
+/// design review, and most tests want playback state without a dependency on
+/// the user's real defaults — see `UserDefaultsSettingsStore` in
+/// `CadenceLibrary` for the one that actually persists.
+@MainActor
+public final class InMemorySettingsStore: SettingsStore {
+    private var doubles: [SettingsKey: Double] = [:]
+    private var bools: [SettingsKey: Bool] = [:]
+    private var strings: [SettingsKey: String] = [:]
+
+    public init() {}
+
+    public func double(forKey key: SettingsKey) -> Double? { doubles[key] }
+    public func set(_ value: Double?, forKey key: SettingsKey) { doubles[key] = value }
+    public func bool(forKey key: SettingsKey) -> Bool? { bools[key] }
+    public func set(_ value: Bool?, forKey key: SettingsKey) { bools[key] = value }
+    public func string(forKey key: SettingsKey) -> String? { strings[key] }
+    public func set(_ value: String?, forKey key: SettingsKey) { strings[key] = value }
+}
+
 // MARK: - Mock engine
 
 /// Advances a clock instead of decoding anything. Everything in the interface
