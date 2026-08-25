@@ -306,6 +306,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// isolated: AppKit only ever asks for the dock menu on the main thread.
     @MainActor static weak var playback: PlaybackController?
 
+    /// Held for the process lifetime — an unretained monitor is removed
+    /// immediately. See `applicationDidFinishLaunching`.
+    private var firstClickMonitor: Any?
+
     /// Play/pause, next and previous without bringing the window forward.
     @MainActor
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
@@ -465,6 +469,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+
+        // A trackpad scroll reaches a background window without activating
+        // it — standard AppKit behaviour, unlike a click — so scrolling the
+        // artist grid, then clicking a card, routinely lands on a window
+        // that is not yet key. AppKit's own click-to-activate handling
+        // swallows that click for every view SwiftUI hosts here, none of
+        // which opt out via `acceptsFirstMouse(for:)`, so the click only
+        // raises the window and a second one is needed to actually reach the
+        // button. Making the window key before AppKit's own dispatch sees
+        // the event sidesteps the swallow rather than opting out of it.
+        firstClickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { event in
+            if let window = event.window, !window.isKeyWindow {
+                window.makeKey()
+            }
+            return event
+        }
 
         // Window position and size across launches. SwiftUI has no API for
         // this on a WindowGroup, so the frame is autosaved on the NSWindow

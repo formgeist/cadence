@@ -174,12 +174,11 @@ private struct ArtistGrid: View {
                     ) {
                         ForEach(Array(model.artists.enumerated()), id: \.element.id) { index, artist in
                             ArtistCard(artist: artist,
-                                      isKeyboardFocused: isFocused && focusedIndex == index)
-                                .id(artist.id)
-                                .simultaneousGesture(TapGesture().onEnded {
-                                    focusedIndex = index
-                                    isFocused = true
-                                })
+                                      isKeyboardFocused: isFocused && focusedIndex == index) {
+                                focusedIndex = index
+                                isFocused = true
+                            }
+                            .id(artist.id)
                         }
                     }
                     .padding(.horizontal, Tokens.Space.contentInset)
@@ -190,7 +189,6 @@ private struct ArtistGrid: View {
                 .focusable()
                 .focusEffectDisabled()
                 .focused($isFocused)
-                .onKeyPress { handleKeyPress($0) }
                 // Arrow keys, not `.onKeyPress`: `ScrollView` implements the
                 // same `moveUp:`/`moveDown:` responder actions for its own
                 // line-scrolling and wins them before a nested `.onKeyPress`
@@ -199,21 +197,34 @@ private struct ArtistGrid: View {
                 // view swallowing them — see `AlbumDetailView`.
                 .onMoveCommand { direction in
                     guard let direction = GridNavigation.Direction(direction) else { return }
-                    focusedIndex = GridNavigation.move(from: focusedIndex, by: direction,
-                                                       count: model.artists.count, columns: columns)
+                    move(to: GridNavigation.move(from: focusedIndex, by: direction,
+                                                 count: model.artists.count, columns: columns),
+                        proxy: proxy)
                 }
+                .onKeyPress { handleKeyPress($0, proxy: proxy) }
+                // A plain default, not `move(to:)`: gaining focus happens on
+                // the very first scroll or click in a fresh grid, not just a
+                // deliberate Tab-in, so scrolling here yanked the list to the
+                // top from under a click already landing somewhere else —
+                // see `ArtistCard.onSelect`.
                 .onChange(of: isFocused) { _, focused in
                     if focused, focusedIndex == nil, !model.artists.isEmpty { focusedIndex = 0 }
-                }
-                .onChange(of: focusedIndex) { _, new in
-                    guard let new, model.artists.indices.contains(new) else { return }
-                    proxy.scrollTo(model.artists[new].id, anchor: .center)
                 }
             }
         }
     }
 
-    private func handleKeyPress(_ press: KeyPress) -> KeyPress.Result {
+    /// Moves keyboard focus and scrolls it into view. Only for arrow keys and
+    /// type-ahead: a click already means the item is on screen, so the same
+    /// jump-to-center there did nothing but yank the list out from under the
+    /// pointer the moment it landed — see `ArtistCard.onSelect`.
+    private func move(to index: Int?, proxy: ScrollViewProxy) {
+        focusedIndex = index
+        guard let index, model.artists.indices.contains(index) else { return }
+        proxy.scrollTo(model.artists[index].id, anchor: .center)
+    }
+
+    private func handleKeyPress(_ press: KeyPress, proxy: ScrollViewProxy) -> KeyPress.Result {
         guard press.modifiers.isEmpty else { return .ignored }
         if press.key == .return {
             if let focusedIndex, model.artists.indices.contains(focusedIndex) {
@@ -224,7 +235,7 @@ private struct ArtistGrid: View {
         if let character = press.characters.first, character.isLetter || character.isNumber {
             if let index = typeAhead.index(for: character, current: focusedIndex,
                                            keys: model.artists.map(\.name)) {
-                focusedIndex = index
+                move(to: index, proxy: proxy)
             }
             return .handled
         }
@@ -236,12 +247,21 @@ private struct ArtistCard: View {
     @Environment(AppModel.self) private var model
     var artist: Artist
     var isKeyboardFocused: Bool = false
+    /// Marks this card keyboard-focused, called from the same click that
+    /// opens the artist. A separate `.simultaneousGesture` doing this instead
+    /// raced the button's own tap: the focus change it caused re-rendered the
+    /// card before the click's mouse-up reached the button, so the first
+    /// click only selected and a second one was needed to navigate.
+    var onSelect: () -> Void = {}
     @State private var isHovering = false
 
     var body: some View {
         // The artist screen, not the first album that happens to match — an
         // artist with ten records had nine of them unreachable from here.
-        Button { model.show(.artist(artist.name)) } label: {
+        Button {
+            onSelect()
+            model.show(.artist(artist.name))
+        } label: {
             VStack(spacing: 11) {
                 ArtworkView(artworkID: model.artworkID(forArtist: artist.name),
                             isCircular: true,
@@ -322,12 +342,11 @@ struct AlbumGrid<Header: View>: View {
                     ) {
                         ForEach(Array(albums.enumerated()), id: \.element.id) { index, album in
                             AlbumCard(album: album, subtitle: subtitle,
-                                     isKeyboardFocused: isFocused && focusedIndex == index)
-                                .id(album.id)
-                                .simultaneousGesture(TapGesture().onEnded {
-                                    focusedIndex = index
-                                    isFocused = true
-                                })
+                                     isKeyboardFocused: isFocused && focusedIndex == index) {
+                                focusedIndex = index
+                                isFocused = true
+                            }
+                            .id(album.id)
                         }
                     }
                     .padding(.horizontal, Tokens.Space.contentInset)
@@ -337,19 +356,17 @@ struct AlbumGrid<Header: View>: View {
                 .focusable()
                 .focusEffectDisabled()
                 .focused($isFocused)
-                .onKeyPress { handleKeyPress($0) }
                 // Arrow keys, not `.onKeyPress` — see `ArtistGrid` above.
                 .onMoveCommand { direction in
                     guard let direction = GridNavigation.Direction(direction) else { return }
-                    focusedIndex = GridNavigation.move(from: focusedIndex, by: direction,
-                                                       count: albums.count, columns: columns)
+                    move(to: GridNavigation.move(from: focusedIndex, by: direction,
+                                                 count: albums.count, columns: columns),
+                        proxy: proxy)
                 }
+                .onKeyPress { handleKeyPress($0, proxy: proxy) }
+                // A plain default, not `move(to:)` — see `ArtistGrid` above.
                 .onChange(of: isFocused) { _, focused in
                     if focused, focusedIndex == nil, !albums.isEmpty { focusedIndex = 0 }
-                }
-                .onChange(of: focusedIndex) { _, new in
-                    guard let new, albums.indices.contains(new) else { return }
-                    proxy.scrollTo(albums[new].id, anchor: .center)
                 }
             }
         }
@@ -359,7 +376,14 @@ struct AlbumGrid<Header: View>: View {
         .onChange(of: albums.map(\.id)) { _, _ in focusedIndex = nil }
     }
 
-    private func handleKeyPress(_ press: KeyPress) -> KeyPress.Result {
+    /// Moves keyboard focus and scrolls it into view — see `ArtistGrid.move`.
+    private func move(to index: Int?, proxy: ScrollViewProxy) {
+        focusedIndex = index
+        guard let index, albums.indices.contains(index) else { return }
+        proxy.scrollTo(albums[index].id, anchor: .center)
+    }
+
+    private func handleKeyPress(_ press: KeyPress, proxy: ScrollViewProxy) -> KeyPress.Result {
         guard press.modifiers.isEmpty else { return .ignored }
         if press.key == .return {
             if let focusedIndex, albums.indices.contains(focusedIndex) {
@@ -370,7 +394,7 @@ struct AlbumGrid<Header: View>: View {
         if let character = press.characters.first, character.isLetter || character.isNumber {
             if let index = typeAhead.index(for: character, current: focusedIndex,
                                            keys: albums.map(\.title)) {
-                focusedIndex = index
+                move(to: index, proxy: proxy)
             }
             return .handled
         }
@@ -393,6 +417,9 @@ struct AlbumCard: View {
     /// tell a record from its remaster.
     var subtitle: Subtitle = .artist
     var isKeyboardFocused: Bool = false
+    /// Marks this card keyboard-focused, called from the same click that
+    /// opens the album — see `ArtistCard.onSelect`.
+    var onSelect: () -> Void = {}
     @State private var isHovering = false
     /// Where the pointer last was inside this card, and how big the card is —
     /// between them they place the drag chip. See `anchored(in:at:)`.
@@ -409,7 +436,10 @@ struct AlbumCard: View {
     }
 
     var body: some View {
-        Button { model.show(.album(album.key)) } label: {
+        Button {
+            onSelect()
+            model.show(.album(album.key))
+        } label: {
             VStack(alignment: .leading, spacing: 11) {
                 ArtworkView(artworkID: album.artworkID,
                             cornerRadius: Tokens.Radius.control,
