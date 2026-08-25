@@ -24,6 +24,9 @@ final class AppContainer {
     /// Whether a text field has the keyboard, so the menu bar can get out of
     /// its way — see `TextEntryMonitor`.
     let textEntry: TextEntryMonitor
+    /// The other direction: lets ⌘K ask the search field to take the
+    /// keyboard — see `SearchFocusRequester`.
+    let searchFocus = SearchFocusRequester()
     /// Held for the process lifetime: access must stay open for playback, not
     /// just for the import that first granted it.
     let folders: SecurityScopedFolders
@@ -132,6 +135,12 @@ final class AppContainer {
             importer = LibraryImporter(scanner: nil, bookmarks: folders)
             artworkLoader = ArtworkLoader(store: nil)
         }
+
+        // Play history is recorded here, not inside `PlaybackController`,
+        // which knows nothing about `AppModel` or persistence — see #72.
+        playback.onTrackStarted = { [weak model = self.model] track in
+            model?.recordPlayed(track)
+        }
     }
 }
 
@@ -170,6 +179,7 @@ struct CadenceApp: App {
                 .environment(container.importer)
                 .environment(container.artworkLoader)
                 .environment(container.textEntry)
+                .environment(container.searchFocus)
                 .environment(\.isSilentPlayback, container.isSilentPlayback)
                 .frame(minWidth: Tokens.Layout.minWindow.width,
                        minHeight: Tokens.Layout.minWindow.height)
@@ -295,6 +305,14 @@ struct CadenceCommands: Commands {
                 .keyboardShortcut("2", modifiers: .command)
             Button("Playlists") { container.model.show(.library); container.model.tab = .playlists }
                 .keyboardShortcut("3", modifiers: .command)
+
+            Divider()
+
+            // ⌘K rather than ⌘F: Full-Screen Artwork already sits on ⌃⌘F, and
+            // ⌘K is the convention a lot of apps have converged on for
+            // "focus search" — unclaimed here otherwise. See #72.
+            Button("Search Library") { container.searchFocus.requestFocus() }
+                .keyboardShortcut("k", modifiers: .command)
 
             Divider()
 

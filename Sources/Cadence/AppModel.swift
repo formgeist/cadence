@@ -181,6 +181,8 @@ final class AppModel {
         if let raw = settings.string(forKey: .albumSort), let restored = LibrarySort(rawValue: raw) {
             albumSort = restored
         }
+        recentSearches = Self.decode(settings.string(forKey: .recentSearches))
+        recentlyPlayedIDs = Self.decode(settings.string(forKey: .recentlyPlayed)).compactMap(UUID.init)
     }
 
     func load() async {
@@ -199,6 +201,10 @@ final class AppModel {
             artistDateAdded = Dictionary(grouping: allTracks, by: \.albumArtist)
                 .mapValues { tracks in tracks.map(\.dateAdded).max() ?? .distantPast }
             tracksByID = Dictionary(allTracks.map { ($0.id, $0) }) { first, _ in first }
+            // A track removed from the library should not sit in this list
+            // forever, wasting one of its five slots on something
+            // `recentlyPlayed` will never resolve again.
+            recentlyPlayedIDs.removeAll { tracksByID[$0] == nil }
             sortArtists()
             sortAlbums()
         } catch {
@@ -494,6 +500,14 @@ final class AppModel {
     private(set) var searchResults = SearchResults.empty
     private var searchTask: Task<Void, Never>?
 
+    /// True while a query is debouncing or running for the current
+    /// `searchText`. Lets the popover tell "no results yet" apart from
+    /// "genuinely found nothing" — without it, the first keystroke of a
+    /// fresh search flashes "No results" for the length of the debounce,
+    /// before the query it hasn't run yet has had a chance to say otherwise.
+    /// See #72.
+    private(set) var isSearchPending = false
+
     /// Debounced so a fast typist fires one query, not one per keystroke, and
     /// cancelled on every call so a stale query can never land after a newer
     /// one and flash outdated results.
@@ -502,13 +516,73 @@ final class AppModel {
         let needle = searchText.trimmingCharacters(in: .whitespaces)
         guard !needle.isEmpty else {
             searchResults = .empty
+            isSearchPending = false
             return
         }
+        isSearchPending = true
         searchTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(150))
             guard !Task.isCancelled else { return }
             await self?.runSearch(needle)
         }
+    }
+
+    // MARK: Recent activity
+
+    /// Capped separately from the popover's own `prefix` calls elsewhere —
+    /// this is the storage limit, not a display detail. See #72.
+    private static let recentSearchesLimit = 5
+    private static let recentlyPlayedLimit = 5
+
+    /// Most-recent first. Filled in by `commitCurrentSearch`, never by every
+    /// keystroke — `searchText` already drives the live query.
+    private(set) var recentSearches: [String] = []
+
+    /// Saves the current query as a recent search: most-recent first,
+    /// de-duplicated case-insensitively so searching "beatles" twice doesn't
+    /// produce two rows. Call on submit or on picking a result — every
+    /// keystroke would fill the history with partial strings.
+    func commitCurrentSearch() {
+        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        recentSearches.removeAll { $0.caseInsensitiveCompare(trimmed) == .orderedSame }
+        recentSearches.insert(trimmed, at: 0)
+        if recentSearches.count > Self.recentSearchesLimit {
+            recentSearches.removeLast(recentSearches.count - Self.recentSearchesLimit)
+        }
+        settings.set(Self.encode(recentSearches), forKey: .recentSearches)
+    }
+
+    /// Ids only — the tracks themselves come from `tracksByID`, so a track
+    /// that leaves the library drops out of `recentlyPlayed` without this
+    /// list needing to be told.
+    private var recentlyPlayedIDs: [Track.ID] = []
+
+    /// What the popover shows before anything has been typed. Resolved
+    /// against the live library on every read rather than cached, so a
+    /// removed track never shows up and a rescan never goes stale.
+    var recentlyPlayed: [Track] { recentlyPlayedIDs.compactMap { tracksByID[$0] } }
+
+    /// Wired to `PlaybackController.onTrackStarted` by the composition root —
+    /// called once a track actually starts, not when it's merely queued. See
+    /// #72.
+    func recordPlayed(_ track: Track) {
+        recentlyPlayedIDs.removeAll { $0 == track.id }
+        recentlyPlayedIDs.insert(track.id, at: 0)
+        if recentlyPlayedIDs.count > Self.recentlyPlayedLimit {
+            recentlyPlayedIDs.removeLast(recentlyPlayedIDs.count - Self.recentlyPlayedLimit)
+        }
+        settings.set(Self.encode(recentlyPlayedIDs.map(\.uuidString)), forKey: .recentlyPlayed)
+    }
+
+    private static func encode(_ values: [String]) -> String? {
+        guard !values.isEmpty else { return nil }
+        return (try? JSONEncoder().encode(values)).flatMap { String(data: $0, encoding: .utf8) }
+    }
+
+    private static func decode(_ raw: String?) -> [String] {
+        guard let raw, let data = raw.data(using: .utf8) else { return [] }
+        return (try? JSONDecoder().decode([String].self, from: data)) ?? []
     }
 
     /// FTS5 is token-prefix matching, not substring — searching "hours" no
@@ -520,8 +594,13 @@ final class AppModel {
     /// artist, albumArtist, albumTitle and composer, so any album or artist
     /// with a hit anywhere in that set has already surfaced a track here.
     private func runSearch(_ needle: String) async {
-        guard let matchedTracks = try? await store.tracks(matching: needle) else { return }
+        let matchedTracks = try? await store.tracks(matching: needle)
+        // Cancelled means a newer keystroke has already scheduled the query
+        // that will actually decide `isSearchPending` — leaving it alone
+        // here is what keeps that one, not this stale one, in charge of it.
         guard !Task.isCancelled else { return }
+        defer { isSearchPending = false }
+        guard let matchedTracks else { return }
 
         var seenAlbumKeys = Set<Album.Key>()
         let matchedAlbums = matchedTracks.compactMap { track -> Album? in

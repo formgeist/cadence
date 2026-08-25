@@ -149,6 +149,9 @@ public enum SettingsKey: String, Sendable {
     case shuffleMode, repeatMode, replayGainMode
     case tab, gridZoom
     case artistSort, albumSort
+    /// JSON-encoded `[String]` — recent search terms and recently played
+    /// track ids, most-recent first. See #72.
+    case recentSearches, recentlyPlayed
 }
 
 /// Small pieces of state that should survive a relaunch — volume, mute,

@@ -144,12 +144,26 @@ enum Snapshot {
             container.model.tab = .albums
         },
 
-        // The suggestions drop out of the header and over the library. They
-        // spent a release painted *underneath* it — issue #21 — which is the
-        // sort of thing a shot catches and a passing build does not.
-        Shot(name: "16-search-suggestions", size: Tokens.Layout.defaultWindow,
+        // The results drop out of the header and over the library. They spent
+        // a release painted *underneath* it — issue #21 — which is the sort
+        // of thing a shot catches and a passing build does not.
+        Shot(name: "16-search-results", size: Tokens.Layout.defaultWindow,
              focusesSearchField: true) { container in
             container.model.searchText = "slow"
+        },
+
+        // What the field shows the instant it takes focus, before anything is
+        // typed — issue #72: this used to be a blank field over a blank
+        // popover, with nothing to click.
+        Shot(name: "19-search-suggestions", size: Tokens.Layout.defaultWindow,
+             focusesSearchField: true) { container in
+            container.model.recordPlayed(PreviewData.slowHours[2])
+            container.model.recordPlayed(PreviewData.slowHours[0])
+            container.model.searchText = "slow hours"
+            container.model.commitCurrentSearch()
+            container.model.searchText = "nordic ambient"
+            container.model.commitCurrentSearch()
+            container.model.searchText = ""
         },
     ]
 
@@ -194,6 +208,7 @@ enum Snapshot {
                 .environment(container.importer)
                 .environment(container.artworkLoader)
                 .environment(container.textEntry)
+                .environment(container.searchFocus)
                 .environment(\.isSilentPlayback, container.isSilentPlayback)
                 .environment(\.rendersSearchFocused, shot.focusesSearchField)
                 .preferredColorScheme(.dark)
@@ -293,6 +308,7 @@ enum Snapshot {
                 .environment(container.importer)
                 .environment(container.artworkLoader)
                 .environment(container.textEntry)
+                .environment(container.searchFocus)
                 .environment(\.isSilentPlayback, container.isSilentPlayback)
                 .preferredColorScheme(.dark)
                 .background(Tokens.Palette.surface)

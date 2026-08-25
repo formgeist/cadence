@@ -69,6 +69,13 @@ public final class PlaybackController {
     /// next thing the user does.
     public private(set) var notice: String?
 
+    /// Fired the instant a track actually starts, whether that's a fresh
+    /// `play(_:in:)` or a gapless handoff the engine made on its own — never
+    /// on queuing alone. The composition root wires this to record play
+    /// history; `PlaybackController` itself knows nothing about persistence.
+    /// See #72.
+    public var onTrackStarted: ((Track) -> Void)?
+
     public func clearNotice() { notice = nil }
 
     /// Tracks the queue moved past because the engine could not play them.
@@ -551,6 +558,7 @@ public final class PlaybackController {
             if let track = currentTrack {
                 state = .playing(track.id)
                 progress.duration = track.duration
+                onTrackStarted?(track)
             }
             if let position = pendingSeek {
                 pendingSeek = nil
@@ -581,6 +589,7 @@ public final class PlaybackController {
                 progress = PlaybackProgress(elapsed: 0, duration: track.duration)
                 preparedNext = nil
                 prepareNextIfNeeded()
+                onTrackStarted?(track)
             }
 
         case .finished:
