@@ -1,9 +1,11 @@
 import SwiftUI
 import CadenceCore
+import CadenceLibrary
 
 struct SidebarView: View {
     @Environment(AppModel.self) private var model
     @Environment(PlaybackController.self) private var playback
+    @Environment(LibraryImporter.self) private var importer
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -59,13 +61,43 @@ struct SidebarView: View {
             Spacer(minLength: Tokens.Space.l)
 
             VStack(alignment: .leading, spacing: 5) {
-                SectionLabel("Local library", size: 10, color: Color(hex: 0x4E4E57))
-                Text(model.librarySummary)
-                    .font(Tokens.Typography.mono(10.5))
-                    .foregroundStyle(Color(hex: 0x7D7D88))
+                HStack(spacing: Tokens.Space.s) {
+                    SectionLabel("Local library", size: 10, color: Color(hex: 0x4E4E57))
+                    Spacer(minLength: 0)
+                    if !importer.folders.isEmpty {
+                        IconButton(systemImage: importer.isImporting ? "xmark" : "arrow.clockwise",
+                                   label: importer.isImporting ? "Cancel Scan" : "Rescan Library",
+                                   glyphSize: 9.5, side: 16) {
+                            if importer.isImporting {
+                                importer.cancel()
+                            } else {
+                                importer.rescanAll { Task { await model.load() } }
+                            }
+                        }
+                    }
+                }
+
+                // Swapping the row's text in place — rather than sliding a
+                // banner in above the content — is what keeps the sidebar and
+                // everything to its right from jumping while a scan runs
+                // (issue #56).
+                Group {
+                    if let progress = importer.progress {
+                        HStack(spacing: 6) {
+                            ProgressView()
+                                .controlSize(.mini)
+                            Text(importSummary(progress))
+                                .monospacedDigit()
+                        }
+                    } else {
+                        Text(model.librarySummary)
+                    }
+                }
+                .font(Tokens.Typography.mono(10.5))
+                .foregroundStyle(Color(hex: 0x7D7D88))
             }
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("Local library: \(model.librarySummary)")
+            .accessibilityLabel(libraryAccessibilityLabel)
             .padding(.horizontal, Tokens.Space.xl)
             .padding(.vertical, Tokens.Space.l)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -89,6 +121,18 @@ struct SidebarView: View {
         case .artist: tab == .artists
         case .album, .playlist: false
         }
+    }
+
+    private func importSummary(_ progress: LibraryScanner.Progress) -> String {
+        guard progress.found > 0 else { return "Scanning…" }
+        return "\(progress.processed) / \(progress.found) tracks"
+    }
+
+    private var libraryAccessibilityLabel: String {
+        guard let progress = importer.progress else {
+            return "Local library: \(model.librarySummary)"
+        }
+        return "Local library: \(importSummary(progress))"
     }
 }
 
