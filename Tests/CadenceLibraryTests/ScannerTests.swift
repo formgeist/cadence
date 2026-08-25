@@ -201,6 +201,63 @@ struct ScannerTests {
         #expect(thumbnail != nil)
     }
 
+    @Test("A folder cover fills in for tracks whose own tags carry no artwork")
+    func localArtworkFallback() async throws {
+        let harness = try Self.makeHarness()
+        defer { try? FileManager.default.removeItem(at: harness.root) }
+
+        // A separate album folder so the fallback cover only applies to these
+        // two tracks, not the whole corpus.
+        let album = harness.music.appendingPathComponent("Local Cover Album", isDirectory: true)
+        try FLACFixture.build([
+            .init(name: "01-a", tags: [
+                ("TITLE", "A"), ("ARTIST", "Someone"), ("ALBUM", "Local Cover Album"),
+                ("TRACKNUMBER", "1"),
+            ]),
+            .init(name: "02-b", tags: [
+                ("TITLE", "B"), ("ARTIST", "Someone"), ("ALBUM", "Local Cover Album"),
+                ("TRACKNUMBER", "2"),
+            ]),
+        ], in: album)
+        let coverBytes = Data("folder cover bytes".utf8)
+        try coverBytes.write(to: album.appendingPathComponent("cover.jpg"))
+
+        try await harness.scanner.scan(folder: harness.music)
+
+        let tracks = try await harness.store.allTracks()
+            .filter { $0.albumTitle == "Local Cover Album" }
+        #expect(tracks.count == 2)
+        #expect(tracks.allSatisfy { $0.artworkID != nil })
+
+        // Both tracks share the same folder cover, so content addressing
+        // collapses them to the same entry.
+        #expect(Set(tracks.map(\.artworkID)).count == 1)
+        let id = try #require(tracks.first?.artworkID)
+        #expect(try await harness.artwork.full(for: id) == coverBytes)
+    }
+
+    @Test("Embedded artwork wins over a folder cover sitting right next to it")
+    func embeddedArtworkBeatsLocalCover() async throws {
+        let harness = try Self.makeHarness()
+        defer { try? FileManager.default.removeItem(at: harness.root) }
+
+        let album = harness.music.appendingPathComponent("Embedded Wins", isDirectory: true)
+        try FLACFixture.build([
+            .init(name: "01-a", tags: [
+                ("TITLE", "A"), ("ARTIST", "Someone"), ("ALBUM", "Embedded Wins"),
+                ("TRACKNUMBER", "1"),
+            ], picture: FLACFixture.samplePNG),
+        ], in: album)
+        try Data("folder cover bytes".utf8).write(to: album.appendingPathComponent("cover.jpg"))
+
+        try await harness.scanner.scan(folder: harness.music)
+
+        let track = try #require(try await harness.store.allTracks()
+            .first { $0.albumTitle == "Embedded Wins" })
+        let id = try #require(track.artworkID)
+        #expect(try await harness.artwork.full(for: id) == FLACFixture.samplePNG)
+    }
+
     @Test("Search works end to end, from files on disk to a query")
     func searchAfterImport() async throws {
         let harness = try Self.makeHarness()

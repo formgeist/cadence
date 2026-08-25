@@ -62,6 +62,10 @@ public actor LibraryScanner {
     private let batchSize: Int
     private let parallelism: Int
 
+    /// Folders already checked for a local cover this scan, so an album of
+    /// twenty tracks reads `cover.jpg` once rather than once per track.
+    private var localArtworkCache: [URL: Data?] = [:]
+
     public var supportedExtensions: Set<String> { router.supportedExtensions }
 
     public init(
@@ -101,6 +105,9 @@ public actor LibraryScanner {
         // rewrites /private/tmp to /tmp, so a caller passing either form must
         // end up at the same place.
         let root = Self.normalize(folder)
+        // Local covers can change between scans (a user drops one in after the
+        // fact), so nothing from a previous run should linger.
+        localArtworkCache.removeAll()
         let files = Self.audioFiles(in: root, extensions: router.supportedExtensions)
         var progress = Progress(found: files.count, processed: 0, imported: 0,
                                 skipped: 0, failed: 0, removed: 0, currentFile: nil)
@@ -126,7 +133,12 @@ public actor LibraryScanner {
                     let fingerprint = FLACMetadataReader.fingerprint(for: url)
                     let unchanged = !force && fingerprint != nil && known[url] == fingerprint
                     group.addTask {
-                        Self.process(url: url, unchanged: unchanged, reader: reader)
+                        var result = Self.process(url: url, unchanged: unchanged, reader: reader)
+                        if case .parsed(let track, let size, nil) = result.outcome,
+                           let local = await self.localArtwork(in: url.deletingLastPathComponent()) {
+                            result = FileResult(url: url, outcome: .parsed(track, size, local))
+                        }
+                        return result
                     }
                 }
                 var collected: [FileResult] = []
@@ -188,6 +200,17 @@ public actor LibraryScanner {
             failed: progress.failed,
             removed: progress.removed,
             failures: failures)
+    }
+
+    // MARK: - Local cover fallback
+
+    /// Looks up (and memoises) whether `folder` holds a cover image, for the
+    /// tracks whose own tags carried no artwork.
+    private func localArtwork(in folder: URL) -> Data? {
+        if let cached = localArtworkCache[folder] { return cached }
+        let data = LocalArtworkFinder.artwork(in: folder)
+        localArtworkCache[folder] = data
+        return data
     }
 
     // MARK: - Per-file work
