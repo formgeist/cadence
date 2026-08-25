@@ -12,12 +12,20 @@ struct QueueList: View {
     @Environment(AppModel.self) private var model
     @Environment(PlaybackController.self) private var playback
 
+    /// The row a single click put under the cursor, as on the album screen:
+    /// playback needs a second click, so something has to show what the first
+    /// one did. Not wired up as the `List`'s own `selection`, which resolves a
+    /// click the moment it lands — before a `.onTapGesture(count: 2)` on the
+    /// same row gets a chance to see whether a second one is coming, so every
+    /// click jumps instead of only the second.
+    @State private var selectedTrack: Track.ID?
+
     var body: some View {
         let upNext = Array(playback.upNext)
 
         List {
             ForEach(upNext) { track in
-                QueueRow(track: track)
+                QueueRow(track: track, isSelected: selectedTrack == track.id)
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("\(track.title), \(track.artist), "
                         + NowPlayingPane.spokenDuration(track.duration))
@@ -31,8 +39,9 @@ struct QueueList: View {
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                     .contentShape(Rectangle())
-                    .onTapGesture { playback.jump(to: track) }
-                    .cadenceContextMenu {
+                    .onTapGesture(count: 2) { playback.jump(to: track) }
+                    .onTapGesture { selectedTrack = track.id }
+                    .cadenceContextMenu(onOpen: { selectedTrack = track.id }) {
                         PlaylistMenu.queued(track, playback: playback)
                     }
             }
@@ -55,6 +64,7 @@ struct QueueRow: View {
     @Environment(AppModel.self) private var model
 
     var track: Track
+    var isSelected: Bool = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -78,12 +88,12 @@ struct QueueRow: View {
         }
         .padding(.horizontal, Tokens.Space.s)
         .padding(.vertical, 6)
-        .hoverHighlight(hoverColor: Tokens.Palette.navHover)
+        .hoverHighlight(isActive: isSelected, hoverColor: Tokens.Palette.navHover)
     }
 }
 
-/// Volume, and the shuffle and repeat toggles the design only ever drew in the
-/// immersive view. Phase 3 wants them reachable without going full-screen.
+/// Volume and ReplayGain. Shuffle and repeat live in `TransportControls` now,
+/// flanking the play controls, rather than duplicated down here.
 struct PlaybackOptions: View {
     @Environment(PlaybackController.self) private var playback
 
@@ -92,26 +102,6 @@ struct PlaybackOptions: View {
 
         VStack(spacing: Tokens.Space.m) {
             HStack(spacing: Tokens.Space.m) {
-                ModeToggle(
-                    systemImage: "shuffle",
-                    isOn: playback.shuffleMode.isOn,
-                    help: "Shuffle",
-                    spokenLabel: "Shuffle",
-                    spokenValue: playback.shuffleMode.isOn ? "On" : "Off"
-                ) { playback.toggleShuffle() }
-
-                ModeToggle(
-                    systemImage: playback.repeatMode == .one ? "repeat.1" : "repeat",
-                    isOn: playback.repeatMode != .off,
-                    help: repeatHelp,
-                    // Without an explicit label the SF Symbol's own name leaks
-                    // through: "repeat.1" was being announced as "Repeat 1".
-                    spokenLabel: "Repeat",
-                    // The label already says "Repeat"; the value should not
-                    // repeat the word back.
-                    spokenValue: repeatValue
-                ) { playback.cycleRepeat() }
-
                 Spacer()
 
                 MenuAnchor {
@@ -157,22 +147,6 @@ struct PlaybackOptions: View {
         }
     }
 
-    private var repeatValue: String {
-        switch playback.repeatMode {
-        case .off: "Off"
-        case .all: "Whole queue"
-        case .one: "This track"
-        }
-    }
-
-    private var repeatHelp: String {
-        switch playback.repeatMode {
-        case .off: "Repeat off"
-        case .all: "Repeat queue"
-        case .one: "Repeat track"
-        }
-    }
-
     /// Lit while its menu is open, the way every other trigger in the app now
     /// is — this one has no bezel to carry the accent, so the text does.
     private func replayGainTint(isOpen: Bool) -> Color {
@@ -187,38 +161,6 @@ struct PlaybackOptions: View {
         if playback.volume < 0.34 { return "speaker.fill" }
         if playback.volume < 0.67 { return "speaker.wave.1.fill" }
         return "speaker.wave.2.fill"
-    }
-}
-
-private struct ModeToggle: View {
-    var systemImage: String
-    var isOn: Bool
-    var help: String
-    var spokenLabel: String
-    var spokenValue: String
-    var action: () -> Void
-
-    @State private var isHovering = false
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(isOn
-                                 ? Tokens.Palette.accent
-                                 : (isHovering ? .white : Color(hex: 0x71717B)))
-                .frame(width: 22, height: 20)
-                .background {
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        .fill(isOn ? Tokens.Palette.accentDim : .clear)
-                }
-        }
-        .plainControl()
-        .onHover { isHovering = $0 }
-        .help(help)
-        .accessibilityLabel(spokenLabel)
-        .accessibilityValue(spokenValue)
-        .accessibilityAddTraits(isOn ? .isSelected : [])
     }
 }
 
