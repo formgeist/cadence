@@ -291,6 +291,26 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
         }
     }
 
+    public func remove(trackIDs: [Track.ID]) async throws {
+        guard !trackIDs.isEmpty else { return }
+        let strings = trackIDs.map(\.uuidString)
+        try await pool.write { db in
+            let rowIDs = try Int64.fetchAll(
+                db,
+                sql: "SELECT rowid FROM track WHERE id IN (\(Self.placeholders(strings.count)))",
+                arguments: StatementArguments(strings))
+            for rowID in rowIDs {
+                try db.execute(sql: "DELETE FROM trackSearch WHERE rowid = ?",
+                               arguments: [rowID])
+            }
+            // playlistItem.trackID references track with ON DELETE CASCADE, so
+            // this also drops every playlist row that pointed at these tracks.
+            try db.execute(
+                sql: "DELETE FROM track WHERE id IN (\(Self.placeholders(strings.count)))",
+                arguments: StatementArguments(strings))
+        }
+    }
+
     /// Every fingerprint already on file, so the scanner can skip files that
     /// have not changed since the last import.
     public func fingerprints() async throws -> [URL: String] {

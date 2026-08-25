@@ -241,6 +241,10 @@ public actor InMemoryLibraryStore: LibraryStore {
         // The preview store is read-only; the real store writes here.
     }
 
+    public func remove(trackIDs: [Track.ID]) async throws {
+        // The preview store is read-only; the real store writes here.
+    }
+
     public func librarySize() async throws -> Int64 {
         // Roughly what lossless costs: ~1.1 MB per second of 24/96 stereo,
         // ~0.5 MB for 16/44.1. Enough to make the sidebar figure plausible.
