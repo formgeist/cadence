@@ -42,11 +42,8 @@ struct LibraryView: View {
                 Spacer()
 
                 HStack(spacing: Tokens.Space.l) {
-                    if model.tab == .albums {
-                        GridZoomControl(zoom: $model.gridZoom)
-                    }
                     if model.tab != .playlists {
-                        LibrarySortMenu()
+                        LibraryActionsMenu()
                     }
                     Text(model.screenCount)
                         .font(Tokens.Typography.mono(11))
@@ -146,44 +143,30 @@ private struct GridZoomControl: View {
     }
 }
 
-/// Alphabetical or Recently Added, for whichever of Artists/Albums is on
-/// screen — see #69. The two lists keep separate preferences: sorting Albums
-/// by date added says nothing about how Artists should be ordered.
+/// Sort, and — on Albums — cover size, behind one small trigger rather than
+/// two separate controls competing for room in the header. See #69.
 ///
-/// Reads as a dropdown rather than a button: the current choice is always on
-/// screen, next to the mono track count it's styled to match, so it sits in
-/// the header rather than calling attention to itself the way a filled
-/// icon button would.
-private struct LibrarySortMenu: View {
+/// A plain icon button, not a dropdown that names the current sort: with
+/// zoom folded in too there is no longer one live value this button could
+/// summarize in its own label.
+private struct LibraryActionsMenu: View {
     @Environment(AppModel.self) private var model
-    @State private var isHovering = false
 
     private var sort: AppModel.LibrarySort {
         model.tab == .albums ? model.albumSort : model.artistSort
     }
 
     var body: some View {
-        MenuAnchor(items: menuItems) { isOpen, toggle in
-            Button(action: toggle) {
-                HStack(spacing: 5) {
-                    Text(sort.label)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 8, weight: .semibold))
-                }
-                .font(Tokens.Typography.mono(11))
-                .foregroundStyle(isOpen || isHovering
-                                 ? Tokens.Palette.textSecondary
-                                 : Tokens.Palette.textTertiary)
-            }
-            .plainControl()
-            .onHover { isHovering = $0 }
-            .accessibilityLabel("Sort \(model.tab.rawValue.lowercased())")
-            .accessibilityValue(sort.label)
+        @Bindable var model = model
+
+        return MenuButton(systemImage: "slider.horizontal.3",
+                          accessibilityLabel: "\(model.tab.rawValue) view options") {
+            menuItems(zoom: $model.gridZoom)
         }
     }
 
-    private func menuItems() -> [MenuItem] {
-        AppModel.LibrarySort.allCases.map { option in
+    private func menuItems(zoom: Binding<Double>) -> [MenuItem] {
+        var items = AppModel.LibrarySort.allCases.map { option in
             MenuItem.choice(option.label, isOn: sort == option) {
                 if model.tab == .albums {
                     model.albumSort = option
@@ -191,6 +174,31 @@ private struct LibrarySortMenu: View {
                     model.artistSort = option
                 }
             }
+        }
+        // The two lists keep separate sort preferences — sorting Albums by
+        // date added says nothing about how Artists should be ordered — and
+        // only Albums has a grid to zoom in the first place.
+        if model.tab == .albums {
+            items.append(.separator)
+            items.append(.custom { ZoomMenuRow(zoom: zoom) })
+        }
+        return items
+    }
+}
+
+/// A label so the slider means something on first glance inside a menu,
+/// where — unlike the toolbar it used to sit in — there's no surrounding
+/// context to say what it controls.
+private struct ZoomMenuRow: View {
+    @Binding var zoom: Double
+
+    var body: some View {
+        HStack(spacing: MenuMetrics.iconGap) {
+            Text("Cover Size")
+                .font(Tokens.Typography.sans(12.5, .semibold))
+                .foregroundStyle(Color(hex: 0xDCDCE3))
+            Spacer(minLength: MenuMetrics.iconGap)
+            GridZoomControl(zoom: $zoom)
         }
     }
 }

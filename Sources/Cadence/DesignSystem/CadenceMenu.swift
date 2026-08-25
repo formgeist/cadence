@@ -32,6 +32,10 @@ struct MenuItem: Identifiable {
         case submenu(title: String, systemImage: String, items: [MenuItem])
         /// A row that shows whether it is the live answer. Pickers only.
         case choice(title: String, isOn: Bool, handler: () -> Void)
+        /// Content that isn't a verb — the album grid's zoom slider, so far.
+        /// Manages its own interaction, so it skips the hover wash, the
+        /// keyboard focus ring and `onFire` entirely; see `isFocusable`.
+        case custom(AnyView)
     }
 
     let id = UUID()
@@ -68,11 +72,16 @@ struct MenuItem: Identifiable {
         MenuItem(kind: .choice(title: title, isOn: isOn, handler: handler))
     }
 
+    static func custom<Content: View>(@ViewBuilder _ content: () -> Content) -> MenuItem {
+        MenuItem(kind: .custom(AnyView(content())))
+    }
+
     /// Separators are not stops on the way down the menu, and neither is a
-    /// row the model has switched off.
+    /// row the model has switched off — nor custom content, which has no
+    /// single "fire" and handles its own input.
     var isFocusable: Bool {
         switch kind {
-        case .separator: false
+        case .separator, .custom: false
         case .action(let action): action.isEnabled
         case .submenu, .choice: true
         }
@@ -209,6 +218,15 @@ struct MenuSurface: View {
                     state: state,
                     onFire: { onFire(item) },
                     onHover: { _ in state.openSubmenu = nil })
+
+        case .custom(let content):
+            // No hover/submenu wiring: nothing here opens a submenu, and a
+            // drag gesture underneath (the zoom slider) should not have
+            // anything else in this view competing for the same pointer.
+            content
+                .padding(.horizontal, MenuMetrics.rowInset)
+                .frame(height: MenuMetrics.rowHeight)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }
@@ -500,7 +518,7 @@ final class MenuPresenter {
         let handler: (() -> Void)? = switch item.kind {
         case .action(let action): action.isEnabled ? action.handler : nil
         case .choice(_, _, let handler): handler
-        case .separator, .submenu: nil
+        case .separator, .submenu, .custom: nil
         }
         guard let handler else { return }
         // Dismissed first so the menu is gone before a sheet or an alert the
