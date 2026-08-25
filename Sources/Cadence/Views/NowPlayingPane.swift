@@ -41,106 +41,102 @@ struct NowPlayingPane: View {
 
     @ViewBuilder
     private func content(for track: Track) -> some View {
-        Button { model.isImmersive = true } label: {
-            ArtworkView(artworkID: track.artworkID,
-                        cornerRadius: Tokens.Radius.card,
-                        caption: "ARTWORK",
-                        stripe: 7,
-                        displaySize: 320)
-                .aspectRatio(1, contentMode: .fit)
-                .shadow(color: .black.opacity(0.5), radius: 18, y: 9)
-        }
-        .plainControl()
-        .accessibilityLabel("Artwork for \(track.albumTitle)")
-        .accessibilityHint("Opens full-screen artwork")
-        .padding(.horizontal, Tokens.Space.paneInset)
-        .padding(.top, Tokens.Space.l)
-
-        VStack(alignment: .leading, spacing: 5) {
-            Text(track.title)
-                .font(Tokens.Typography.paneTitle)
-                .foregroundStyle(Color(hex: 0xF1F1F5))
-                .lineLimit(2)
-            InlineLink(text: track.artist, font: Tokens.Typography.sans(12.5, .semibold),
-                       color: Tokens.Palette.textSecondary) {
-                model.show(.artist(track.artist))
+        // Grouped and given priority over `upNext` below: on a short window
+        // there isn't room for both at full size, and it's the artwork that
+        // matters, not how many queued rows are visible without scrolling.
+        VStack(alignment: .leading, spacing: 0) {
+            Button { model.isImmersive = true } label: {
+                ArtworkView(artworkID: track.artworkID,
+                            cornerRadius: Tokens.Radius.card,
+                            caption: "ARTWORK",
+                            stripe: 7,
+                            displaySize: 320)
+                    .aspectRatio(1, contentMode: .fit)
+                    .shadow(color: .black.opacity(0.5), radius: 18, y: 9)
             }
-            InlineLink(text: track.albumTitle, font: Tokens.Typography.caption,
-                       color: Color(hex: 0x64646E)) {
-                model.show(.album(track.albumKey))
-            }
-        }
-        // Three separate stops for one fact; one is enough. `.combine` also
-        // swallows the two links' own button semantics, so they come back as
-        // named rotor actions rather than disappearing from VoiceOver.
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Now playing: \(track.title), \(track.artist), \(track.albumTitle)")
-        .accessibilityAction(named: "Go to artist") { model.show(.artist(track.artist)) }
-        .accessibilityAction(named: "Go to album") { model.show(.album(track.albumKey)) }
-        .padding(.horizontal, Tokens.Space.paneInset)
-        .padding(.top, 18)
-
-        VStack(spacing: 7) {
-            ScrubBar(
-                fraction: playback.progress.fraction,
-                height: 3,
-                accessibilityValue: Self.spokenPosition(playback.progress)
-            ) { fraction in
-                playback.seek(toFraction: fraction)
-            }
-            HStack {
-                Text(playback.progress.elapsedText)
-                Spacer()
-                Text(playback.progress.remainingText)
-            }
-            .font(Tokens.Typography.mono(10.5))
-            .foregroundStyle(Color(hex: 0x5E5E68))
-            // The scrubber already announces the position; these would repeat it.
-            .accessibilityHidden(true)
-            // Times jitter in width as digits change; a fixed-width font plus
-            // a monospaced-digit hint keeps the row from twitching.
-            .monospacedDigit()
-        }
-        .padding(.horizontal, Tokens.Space.paneInset)
-        .padding(.top, 18)
-
-        TransportControls(size: .compact)
-            .padding(.top, 14)
-            .frame(maxWidth: .infinity)
-
-        HStack {
-            HStack(spacing: 7) {
-                Circle().fill(Tokens.Palette.accent).frame(width: 5, height: 5)
-                Text(track.format.badgeDescription)
-                    .font(Tokens.Typography.mono(9.5, .medium))
-                    .tracking(0.8)
-                    .foregroundStyle(Color(hex: 0x7C7C86))
-            }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Format: \(Self.spokenFormat(track.format))")
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
-            .overlay {
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .strokeBorder(Color(hex: 0x2A2A32), lineWidth: 1)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.top, Tokens.Space.l)
-
-        PlaybackOptions()
+            .plainControl()
+            .accessibilityLabel("Artwork for \(track.albumTitle)")
+            .accessibilityHint("Opens full-screen artwork")
             .padding(.horizontal, Tokens.Space.paneInset)
             .padding(.top, Tokens.Space.l)
 
-        if isSilentPlayback {
-            // The transport moves but nothing is decoded. Saying so beats
-            // letting it look like broken audio.
-            Text("Silent preview — audio engine not built yet")
-                .font(Tokens.Typography.sans(10, .medium))
-                .foregroundStyle(Tokens.Palette.textFaint)
+            VStack(alignment: .leading, spacing: 5) {
+                Text(track.title)
+                    .font(Tokens.Typography.paneTitle)
+                    .foregroundStyle(Color(hex: 0xF1F1F5))
+                    .lineLimit(2)
+                InlineLink(text: track.artist, font: Tokens.Typography.sans(12.5, .semibold),
+                           color: Tokens.Palette.textSecondary) {
+                    model.show(.artist(track.artist))
+                }
+                InlineLink(text: track.albumTitle, font: Tokens.Typography.caption,
+                           color: Color(hex: 0x64646E)) {
+                    model.show(.album(track.albumKey))
+                }
+            }
+            // Three separate stops for one fact; one is enough. `.combine` also
+            // swallows the two links' own button semantics, so they come back as
+            // named rotor actions rather than disappearing from VoiceOver.
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Now playing: \(track.title), \(track.artist), \(track.albumTitle)")
+            .accessibilityAction(named: "Go to artist") { model.show(.artist(track.artist)) }
+            .accessibilityAction(named: "Go to album") { model.show(.album(track.albumKey)) }
+            .padding(.horizontal, Tokens.Space.paneInset)
+            .padding(.top, 18)
+
+            VStack(spacing: 7) {
+                ScrubBar(
+                    fraction: playback.progress.fraction,
+                    height: 3,
+                    accessibilityValue: Self.spokenPosition(playback.progress)
+                ) { fraction in
+                    playback.seek(toFraction: fraction)
+                }
+                HStack {
+                    Text(playback.progress.elapsedText)
+                    Spacer()
+                    Text(playback.progress.remainingText)
+                }
+                .font(Tokens.Typography.mono(10.5))
+                .foregroundStyle(Color(hex: 0x5E5E68))
+                // The scrubber already announces the position; these would repeat it.
+                .accessibilityHidden(true)
+                // Times jitter in width as digits change; a fixed-width font plus
+                // a monospaced-digit hint keeps the row from twitching.
+                .monospacedDigit()
+            }
+            .padding(.horizontal, Tokens.Space.paneInset)
+            .padding(.top, 18)
+
+            TransportControls(size: .compact)
+                .padding(.top, 14)
                 .frame(maxWidth: .infinity)
-                .padding(.top, Tokens.Space.s)
+
+            // Same two badges as the album header — a track playing here is
+            // always the same format the header would show for its album.
+            HStack(spacing: Tokens.Space.s) {
+                QualityBadge(text: track.format.codec.name, emphasis: .accent)
+                QualityBadge(text: track.format.longDescription,
+                             spokenText: Self.spokenFormat(track.format))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, Tokens.Space.l)
+
+            PlaybackOptions()
+                .padding(.horizontal, Tokens.Space.paneInset)
+                .padding(.top, Tokens.Space.l)
+
+            if isSilentPlayback {
+                // The transport moves but nothing is decoded. Saying so beats
+                // letting it look like broken audio.
+                Text("Silent preview — audio engine not built yet")
+                    .font(Tokens.Typography.sans(10, .medium))
+                    .foregroundStyle(Tokens.Palette.textFaint)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, Tokens.Space.s)
+            }
         }
+        .layoutPriority(1)
 
         upNext
     }
@@ -288,13 +284,11 @@ struct TransportControls: View {
 
     var body: some View {
         HStack(spacing: size == .compact ? 20 : 22) {
-            if size == .immersive {
-                ModeButton(
-                    systemImage: "shuffle",
-                    isOn: playback.shuffleMode.isOn,
-                    label: "Shuffle"
-                ) { playback.toggleShuffle() }
-            }
+            ModeButton(
+                systemImage: "shuffle",
+                isOn: playback.shuffleMode.isOn,
+                label: "Shuffle"
+            ) { playback.toggleShuffle() }
 
             TransportButton(systemImage: "backward.fill", size: sideSize,
                             label: "Previous track") {
@@ -324,13 +318,11 @@ struct TransportControls: View {
                 playback.next()
             }
 
-            if size == .immersive {
-                ModeButton(
-                    systemImage: playback.repeatMode == .one ? "repeat.1" : "repeat",
-                    isOn: playback.repeatMode != .off,
-                    label: "Repeat"
-                ) { playback.cycleRepeat() }
-            }
+            ModeButton(
+                systemImage: playback.repeatMode == .one ? "repeat.1" : "repeat",
+                isOn: playback.repeatMode != .off,
+                label: "Repeat"
+            ) { playback.cycleRepeat() }
         }
     }
 }
