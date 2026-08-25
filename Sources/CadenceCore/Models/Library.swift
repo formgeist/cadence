@@ -255,6 +255,10 @@ public struct Album: Identifiable, Hashable, Sendable {
     public var duration: TimeInterval { tracks.reduce(0) { $0 + $1.duration } }
     public var trackCount: Int { tracks.count }
     public var artworkID: Artwork.ID? { tracks.compactMap(\.artworkID).first }
+    /// When the most recently added track on the record entered the library —
+    /// a reissue with one bonus track added later reads as new, which is what
+    /// "recently added" means to a listener rather than to the file system.
+    public var dateAdded: Date { tracks.map(\.dateAdded).max() ?? .distantPast }
 
     /// A record by many artists. Deliberately harder to satisfy than "the
     /// COMPILATION tag is set": deluxe editions in the wild carry that tag

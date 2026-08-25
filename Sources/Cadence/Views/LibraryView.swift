@@ -45,6 +45,9 @@ struct LibraryView: View {
                     if model.tab == .albums {
                         GridZoomControl(zoom: $model.gridZoom)
                     }
+                    if model.tab != .playlists {
+                        LibrarySortMenu()
+                    }
                     Text(model.screenCount)
                         .font(Tokens.Typography.mono(11))
                         .foregroundStyle(Color(hex: 0x63636D))
@@ -139,6 +142,32 @@ private struct GridZoomControl: View {
             }
             .plainControl()
             .accessibilityLabel("Larger album covers")
+        }
+    }
+}
+
+/// Alphabetical or Recently Added, for whichever of Artists/Albums is on
+/// screen — see #69. The two lists keep separate preferences: sorting Albums
+/// by date added says nothing about how Artists should be ordered.
+private struct LibrarySortMenu: View {
+    @Environment(AppModel.self) private var model
+
+    private var sort: AppModel.LibrarySort {
+        model.tab == .albums ? model.albumSort : model.artistSort
+    }
+
+    var body: some View {
+        MenuButton(systemImage: "arrow.up.arrow.down",
+                   accessibilityLabel: "Sort \(model.tab.rawValue.lowercased())") {
+            AppModel.LibrarySort.allCases.map { option in
+                MenuItem.choice(option.rawValue, isOn: sort == option) {
+                    if model.tab == .albums {
+                        model.albumSort = option
+                    } else {
+                        model.artistSort = option
+                    }
+                }
+            }
         }
     }
 }

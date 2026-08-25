@@ -148,6 +148,7 @@ public enum SettingsKey: String, Sendable {
     case volume, isMuted, volumeBeforeMute
     case shuffleMode, repeatMode, replayGainMode
     case tab, gridZoom
+    case artistSort, albumSort
 }
 
 /// Small pieces of state that should survive a relaunch — volume, mute,
