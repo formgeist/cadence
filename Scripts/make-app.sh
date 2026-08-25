@@ -108,6 +108,22 @@ cat > "$APP/Contents/Info.plist" <<PLIST
             <key>UTTypeTagSpecification</key>
             <dict/>
         </dict>
+        <dict>
+            <key>UTTypeIdentifier</key>   <string>com.formgeist.cadence.playlist-reorder</string>
+            <key>UTTypeDescription</key>  <string>Cadence Playlist Row</string>
+            <key>UTTypeConformsTo</key>
+            <array><string>public.data</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict/>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key>   <string>com.formgeist.cadence.queue-reorder</string>
+            <key>UTTypeDescription</key>  <string>Cadence Queue Row</string>
+            <key>UTTypeConformsTo</key>
+            <array><string>public.data</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict/>
+        </dict>
     </array>
 </dict>
 </plist>

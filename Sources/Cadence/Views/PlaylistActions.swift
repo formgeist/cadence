@@ -11,6 +11,40 @@ extension UTType {
     /// outside this app, and dropping an album into TextEdit should do nothing
     /// rather than paste a column of UUIDs.
     static let cadenceTracks = UTType(exportedAs: "com.formgeist.cadence.track-ids")
+
+    /// One type per reorderable list, so a drag started in one never reads as
+    /// a valid drop somewhere it means something else — dropping a queue row
+    /// onto a playlist should do nothing, not reorder-by-coincidence.
+    static let cadencePlaylistReorder =
+        UTType(exportedAs: "com.formgeist.cadence.playlist-reorder")
+    static let cadenceQueueReorder =
+        UTType(exportedAs: "com.formgeist.cadence.queue-reorder")
+}
+
+/// A playlist row in flight, for drag-to-reorder within `PlaylistDetailView`.
+///
+/// Carries the entry's own id rather than an offset: the drop handler reads
+/// offsets fresh from the current `entries` array, so a stale index captured
+/// at drag-start (the list having changed underneath — a track scrolled out
+/// having been removed, say) can't move the wrong row.
+struct PlaylistReorderItem: Codable, Transferable {
+    var entryID: AppModel.PlaylistEntry.EntryID
+
+    static var transferRepresentation: some TransferRepresentation {
+        CodableRepresentation(contentType: .cadencePlaylistReorder)
+    }
+}
+
+/// A queue row in flight, for drag-to-reorder in `QueueList`. An index rather
+/// than a track id: the same track can sit in Up Next twice, and an index
+/// captured at drag-start unambiguously means "this one," where a track id
+/// would not.
+struct QueueReorderItem: Codable, Transferable {
+    var index: Int
+
+    static var transferRepresentation: some TransferRepresentation {
+        CodableRepresentation(contentType: .cadenceQueueReorder)
+    }
 }
 
 /// Tracks in flight between a list and a playlist.
