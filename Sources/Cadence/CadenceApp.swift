@@ -93,11 +93,16 @@ final class AppContainer {
             do {
                 let store = try SQLiteLibraryStore(url: try Self.libraryURL())
                 let artwork = try DiskArtworkStore.makeDefault()
+                let scanner = LibraryScanner(
+                    store: store, artwork: artwork, router: Self.metadataRouter)
                 model = AppModel(store: store)
-                importer = LibraryImporter(
-                    scanner: LibraryScanner(
-                        store: store, artwork: artwork, router: Self.metadataRouter),
-                    bookmarks: scoped)
+                // Removing a track from the library can orphan its cover the
+                // same way a deleted file does — see pruneOrphanedArtwork's
+                // own reasoning (#40). AppModel only knows the store
+                // protocol, so the scanner that already holds both halves is
+                // handed over as a closure rather than widening it.
+                model.pruneArtwork = { [scanner] in try? await scanner.pruneOrphanedArtwork() }
+                importer = LibraryImporter(scanner: scanner, bookmarks: scoped)
                 artworkLoader = ArtworkLoader(store: artwork)
                 nowPlaying = NowPlayingCoordinator(playback: playback, artwork: artwork)
 

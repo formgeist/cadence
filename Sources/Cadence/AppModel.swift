@@ -118,6 +118,12 @@ final class AppModel {
 
     let store: any LibraryStore
 
+    /// Set by the composition root. `AppModel` only holds the store protocol
+    /// and has no reach into `LibraryScanner`/`DiskArtworkStore`, but a track
+    /// leaving the library outright can orphan its cover — the same gap #40
+    /// closed for a track leaving because its file did.
+    var pruneArtwork: (() async -> Void)?
+
     init(store: any LibraryStore) {
         self.store = store
     }
@@ -198,6 +204,13 @@ final class AppModel {
     /// The playlist the confirmation dialog is asking about. Deleting is the
     /// one playlist action that cannot be undone.
     var playlistPendingDeletion: Playlist?
+    /// The tracks the confirmation dialog is asking about — one track from a
+    /// context menu, or a whole album's worth. Removing from the library is
+    /// the one track action that cannot be undone, same as deleting a
+    /// playlist.
+    var tracksPendingRemoval: [Track]?
+    /// Non-nil while the Get Info sheet is up.
+    var infoTrack: Track?
 
     func playlist(id: Playlist.ID) -> Playlist? {
         playlists.first { $0.id == id }
@@ -311,6 +324,26 @@ final class AppModel {
         if screen == .playlist(playlist.id) {
             show(.library)
             tab = .playlists
+        }
+    }
+
+    // MARK: Removing from the library
+
+    /// The track (or every track in an album) leaves the library outright,
+    /// not just the screen it was removed from — cascading out of every
+    /// playlist through the store's own foreign key. The file on disk is
+    /// never touched.
+    func removeFromLibrary(_ tracks: [Track]) async {
+        guard !tracks.isEmpty else { return }
+        do {
+            try await store.remove(trackIDs: tracks.map(\.id))
+            await load()
+            await pruneArtwork?()
+            let count = tracks.count == 1 ? "1 track" : "\(tracks.count) tracks"
+            notice = "Removed \(count) from your library"
+        } catch {
+            actionError = "Could not remove from your library: "
+                + error.localizedDescription
         }
     }
 

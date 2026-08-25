@@ -57,6 +57,9 @@ struct RootView: View {
             PlaylistNameSheet(naming: naming)
                 .environment(model)
         }
+        .sheet(item: $model.infoTrack) { track in
+            TrackInfoSheet(track: track)
+        }
         .confirmationDialog(
             deletionPrompt,
             isPresented: Binding(get: { model.playlistPendingDeletion != nil },
@@ -73,11 +76,41 @@ struct RootView: View {
             // the dangerous kind of delete.
             Text("The tracks stay in your library.")
         }
+        .confirmationDialog(
+            libraryRemovalPrompt,
+            isPresented: Binding(get: { model.tracksPendingRemoval != nil },
+                                 set: { if !$0 { model.tracksPendingRemoval = nil } }),
+            presenting: model.tracksPendingRemoval
+        ) { tracks in
+            Button("Remove from Library", role: .destructive) {
+                model.tracksPendingRemoval = nil
+                Task { await model.removeFromLibrary(tracks) }
+            }
+            Button("Cancel", role: .cancel) { model.tracksPendingRemoval = nil }
+        } message: { tracks in
+            // The file staying put is the surprising half; the playlist
+            // cascade (README-documented) is the half people forget to ask
+            // about before they click through.
+            Text(tracks.count == 1
+                 ? "The file stays on disk. It’s also removed from any playlists it’s in."
+                 : "The files stay on disk. They’re also removed from any playlists they’re in.")
+        }
     }
 
     private var deletionPrompt: String {
         guard let playlist = model.playlistPendingDeletion else { return "Delete playlist?" }
         return "Delete “\(playlist.name)”?"
+    }
+
+    private var libraryRemovalPrompt: String {
+        guard let tracks = model.tracksPendingRemoval, let first = tracks.first else {
+            return "Remove from library?"
+        }
+        // A single track names itself; a whole album's worth names the
+        // record, not "12 tracks", which says nothing about what is leaving.
+        return tracks.count == 1
+            ? "Remove “\(first.title)” from your library?"
+            : "Remove “\(first.albumTitle)” from your library?"
     }
 
     @ViewBuilder

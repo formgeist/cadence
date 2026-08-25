@@ -132,6 +132,10 @@ public protocol LibraryStore: Sendable {
     func deletePlaylist(_ id: Playlist.ID) async throws
     func tracks(matching query: String) async throws -> [Track]
     func upsert(_ tracks: [Track]) async throws
+    /// Removes tracks from the library outright — not from one playlist, from
+    /// every one of them, via the cascade on `playlistItem.trackID`. Does not
+    /// touch the file on disk.
+    func remove(trackIDs: [Track.ID]) async throws
     /// Total bytes on disk, for the sidebar footer.
     func librarySize() async throws -> Int64
 }

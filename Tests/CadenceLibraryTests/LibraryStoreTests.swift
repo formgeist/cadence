@@ -320,6 +320,22 @@ struct SQLiteLibraryStoreTests {
             #expect(try await store.playlists().first?.trackIDs == [kept.id])
         }
     }
+
+    @Test("Removing by track id also cascades out of playlists")
+    func removingByIDCascades() async throws {
+        try await withStore { store in
+            let track = makeTrack("Slow Hours")
+            let kept = makeTrack("Undertow", number: 2)
+            try await store.upsert([track, kept])
+            let playlist = try await store.createPlaylist(named: "Late Desk")
+            try await store.addTracks([track.id, kept.id], to: playlist.id)
+
+            try await store.remove(trackIDs: [track.id])
+
+            #expect(try await store.allTracks().map(\.id) == [kept.id])
+            #expect(try await store.playlists().first?.trackIDs == [kept.id])
+        }
+    }
 }
 
 /// Search is the part PLAN.md §1 calls out as unfinished: `upsert` wrote the
@@ -392,6 +408,16 @@ struct SearchTests {
             let track = makeTrack("Slow Hours")
             try await store.upsert([track])
             try await store.remove(urls: [track.url])
+            #expect(try await store.tracks(matching: "slow").isEmpty)
+        }
+    }
+
+    @Test("Removing by track id removes it from search too")
+    func removalByIDClearsIndex() async throws {
+        try await withStore { store in
+            let track = makeTrack("Slow Hours")
+            try await store.upsert([track])
+            try await store.remove(trackIDs: [track.id])
             #expect(try await store.tracks(matching: "slow").isEmpty)
         }
     }

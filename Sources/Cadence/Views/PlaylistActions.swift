@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import UniformTypeIdentifiers
 import CadenceCore
 
@@ -159,6 +160,8 @@ enum PlaylistMenu {
         static let delete = "trash"
         static let remove = "minus.circle"
         static let replayGain = "waveform"
+        static let revealInFinder = "folder"
+        static let getInfo = "info.circle"
     }
 
     /// "Add to Playlist" wherever tracks are listed. A submenu rather than a
@@ -240,11 +243,22 @@ enum PlaylistMenu {
             },
             .separator,
             destinations(model: model, tracks: tracks),
+            .separator,
+            .action("Reveal in Finder", Symbol.revealInFinder, enabled: !tracks.isEmpty) {
+                NSWorkspace.shared.activateFileViewerSelecting(tracks.map(\.url))
+            },
+            .separator,
+            .action("Remove from Library", Symbol.delete,
+                    destructive: true, enabled: !tracks.isEmpty) {
+                model.tracksPendingRemoval = tracks
+            },
         ]
     }
 
     /// One track, right-clicked wherever tracks are listed. `remove` is the
-    /// list's own way out — a playlist removes from itself, an album has none.
+    /// list's own way out — a playlist removes from itself, an album has none
+    /// — and is a different, smaller thing than "Remove from Library" below
+    /// it, which is why the two never share a group.
     static func track(_ track: Track,
                       model: AppModel,
                       play: @escaping () -> Void,
@@ -256,11 +270,22 @@ enum PlaylistMenu {
         }
         items.append(.separator)
         items.append(destinations(model: model, tracks: [track]))
+        items.append(.separator)
+        items.append(.action("Reveal in Finder", Symbol.revealInFinder) {
+            NSWorkspace.shared.activateFileViewerSelecting([track.url])
+        })
+        items.append(.action("Get Info", Symbol.getInfo) {
+            model.infoTrack = track
+        })
         if let remove {
             items.append(.separator)
             items.append(.action(remove.title, Symbol.remove,
                                  shortcut: "⌫", destructive: true, remove.action))
         }
+        items.append(.separator)
+        items.append(.action("Remove from Library", Symbol.delete, destructive: true) {
+            model.tracksPendingRemoval = [track]
+        })
         return items
     }
 
