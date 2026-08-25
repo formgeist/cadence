@@ -112,22 +112,12 @@ struct NowPlayingPane: View {
                 .padding(.top, 14)
                 .frame(maxWidth: .infinity)
 
-            HStack {
-                HStack(spacing: 7) {
-                    Circle().fill(Tokens.Palette.accent).frame(width: 5, height: 5)
-                    Text(track.format.badgeDescription)
-                        .font(Tokens.Typography.mono(9.5, .medium))
-                        .tracking(0.8)
-                        .foregroundStyle(Color(hex: 0x7C7C86))
-                }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Format: \(Self.spokenFormat(track.format))")
-                .padding(.horizontal, 9)
-                .padding(.vertical, 5)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        .strokeBorder(Color(hex: 0x2A2A32), lineWidth: 1)
-                }
+            // Same two badges as the album header — a track playing here is
+            // always the same format the header would show for its album.
+            HStack(spacing: Tokens.Space.s) {
+                QualityBadge(text: track.format.codec.name, emphasis: .accent)
+                QualityBadge(text: track.format.longDescription,
+                             spokenText: Self.spokenFormat(track.format))
             }
             .frame(maxWidth: .infinity)
             .padding(.top, Tokens.Space.l)
