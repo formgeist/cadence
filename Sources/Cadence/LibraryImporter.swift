@@ -127,6 +127,11 @@ final class LibraryImporter {
                 }
             }
 
+            // Best-effort and once per import rather than per folder: a
+            // failed prune leaves stale files for next time, not a broken
+            // library, so it must not turn a successful scan into an error.
+            try? await scanner.pruneOrphanedArtwork()
+
             self.progress = nil
             self.lastSummary = combined
             self.task = nil

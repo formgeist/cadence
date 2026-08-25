@@ -304,6 +304,15 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
         }
     }
 
+    /// Every artwork id a track still points at, so `DiskArtworkStore.prune`
+    /// knows what is safe to delete.
+    public func referencedArtworkIDs() async throws -> Set<Artwork.ID> {
+        try await pool.read { db in
+            try Set(String.fetchAll(
+                db, sql: "SELECT DISTINCT artworkID FROM track WHERE artworkID IS NOT NULL"))
+        }
+    }
+
     public func replacePlaylists(_ playlists: [Playlist]) async throws {
         try await pool.write { db in
             try db.execute(sql: "DELETE FROM playlist")
