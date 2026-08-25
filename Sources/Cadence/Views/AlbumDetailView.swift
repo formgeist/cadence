@@ -43,7 +43,7 @@ struct AlbumDetailView: View {
     // MARK: Header
 
     private var header: some View {
-        HStack(alignment: .bottom, spacing: 48) {
+        HStack(alignment: .top, spacing: 48) {
             ArtworkView(
                 artworkID: album.artworkID,
                 cornerRadius: Tokens.Radius.card,
