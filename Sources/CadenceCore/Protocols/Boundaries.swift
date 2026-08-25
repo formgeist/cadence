@@ -140,6 +140,31 @@ public protocol LibraryStore: Sendable {
     func librarySize() async throws -> Int64
 }
 
+// MARK: - Settings
+
+/// Keys `SettingsStore` values are filed under — a closed set, so a typo in a
+/// key string can't silently open a new, disconnected slot.
+public enum SettingsKey: String, Sendable {
+    case volume, isMuted, volumeBeforeMute
+    case shuffleMode, repeatMode, replayGainMode
+    case tab, gridZoom
+}
+
+/// Small pieces of state that should survive a relaunch — volume, mute,
+/// shuffle, the selected tab — see #42. `PlaybackController` and `AppModel`
+/// live above where the app runs and know nothing about `UserDefaults`
+/// (PLAN.md §5), so persistence is injected the same way the engine is
+/// rather than reached for directly.
+@MainActor
+public protocol SettingsStore: AnyObject {
+    func double(forKey key: SettingsKey) -> Double?
+    func set(_ value: Double?, forKey key: SettingsKey)
+    func bool(forKey key: SettingsKey) -> Bool?
+    func set(_ value: Bool?, forKey key: SettingsKey)
+    func string(forKey key: SettingsKey) -> String?
+    func set(_ value: String?, forKey key: SettingsKey)
+}
+
 // MARK: - Artwork
 
 public protocol ArtworkStore: Sendable {

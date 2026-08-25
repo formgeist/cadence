@@ -39,7 +39,9 @@ final class AppModel {
     // MARK: Navigation
 
     private(set) var screen: Screen = .library
-    var tab: Tab = .artists
+    var tab: Tab = .artists {
+        didSet { settings.set(tab.rawValue, forKey: .tab) }
+    }
     var isImmersive = false
     /// A stack, so Back from an album reached through search returns to the
     /// search results' screen rather than guessing.
@@ -76,7 +78,9 @@ final class AppModel {
     // MARK: Album grid zoom
 
     /// 0…1. The design's zoom slider; drives the grid's minimum column width.
-    var gridZoom: Double = 0.4
+    var gridZoom: Double = 0.4 {
+        didSet { settings.set(gridZoom, forKey: .gridZoom) }
+    }
 
     var albumColumnWidth: CGFloat {
         // 128pt at the small end holds a title and an artist without
@@ -117,6 +121,7 @@ final class AppModel {
     var isEmpty: Bool { !isLoading && allTracks.isEmpty }
 
     let store: any LibraryStore
+    private let settings: any SettingsStore
 
     /// Set by the composition root. `AppModel` only holds the store protocol
     /// and has no reach into `LibraryScanner`/`DiskArtworkStore`, but a track
@@ -124,8 +129,15 @@ final class AppModel {
     /// closed for a track leaving because its file did.
     var pruneArtwork: (() async -> Void)?
 
-    init(store: any LibraryStore) {
+    init(store: any LibraryStore, settings: any SettingsStore = InMemorySettingsStore()) {
         self.store = store
+        self.settings = settings
+        if let raw = settings.string(forKey: .tab), let restored = Tab(rawValue: raw) {
+            tab = restored
+        }
+        if let zoom = settings.double(forKey: .gridZoom) {
+            gridZoom = zoom
+        }
     }
 
     func load() async {

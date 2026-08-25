@@ -71,15 +71,24 @@ final class AppContainer {
     init(mode: Mode = .live, store previewStore: (any LibraryStore)? = nil) {
         textEntry = TextEntryMonitor()
 
+        // Preview mode keeps everything in memory, the same way it keeps the
+        // mock engine — snapshots and design review should never touch the
+        // user's real defaults.
+        let settings: any SettingsStore
+        switch mode {
+        case .live: settings = UserDefaultsSettingsStore()
+        case .preview: settings = InMemorySettingsStore()
+        }
+
         // The line PLAN.md §4 was written around: swapping the engine touches
         // nothing above this point. Preview mode keeps the mock so snapshots
         // and design review never open an audio device.
         switch mode {
         case .live:
-            playback = PlaybackController(engine: SFBPlayerEngine())
+            playback = PlaybackController(engine: SFBPlayerEngine(), settings: settings)
             isSilentPlayback = false
         case .preview:
-            playback = PlaybackController(engine: MockPlayerEngine())
+            playback = PlaybackController(engine: MockPlayerEngine(), settings: settings)
             isSilentPlayback = true
         }
 
@@ -95,7 +104,7 @@ final class AppContainer {
                 let artwork = try DiskArtworkStore.makeDefault()
                 let scanner = LibraryScanner(
                     store: store, artwork: artwork, router: Self.metadataRouter)
-                model = AppModel(store: store)
+                model = AppModel(store: store, settings: settings)
                 // Removing a track from the library can orphan its cover the
                 // same way a deleted file does — see pruneOrphanedArtwork's
                 // own reasoning (#40). AppModel only knows the store
@@ -111,7 +120,7 @@ final class AppContainer {
                 importer.onFolderAdded = { [weak coordinator] url in coordinator?.folderAdded(url) }
                 importer.onFolderForgotten = { [weak coordinator] url in coordinator?.folderRemoved(url) }
             } catch {
-                model = AppModel(store: PreviewData.store())
+                model = AppModel(store: PreviewData.store(), settings: settings)
                 model.storeFailure = error.localizedDescription
                 importer = LibraryImporter(scanner: nil, bookmarks: scoped)
                 artworkLoader = ArtworkLoader(store: nil)
@@ -119,7 +128,7 @@ final class AppContainer {
 
         case .preview:
             folders = SecurityScopedFolders(defaultsKey: "CadencePreviewBookmarks")
-            model = AppModel(store: previewStore ?? PreviewData.store())
+            model = AppModel(store: previewStore ?? PreviewData.store(), settings: settings)
             importer = LibraryImporter(scanner: nil, bookmarks: folders)
             artworkLoader = ArtworkLoader(store: nil)
         }

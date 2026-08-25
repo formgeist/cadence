@@ -20,20 +20,29 @@ public final class PlaybackController {
     public private(set) var queue: [Track] = []
     public private(set) var currentIndex: Int?
 
-    public var repeatMode: RepeatMode = .off
+    public var repeatMode: RepeatMode = .off {
+        didSet { settings.set(repeatMode.rawValue, forKey: .repeatMode) }
+    }
     public var replayGainMode: ReplayGainMode = .album {
-        didSet { applyGainToCurrent() }
+        didSet {
+            applyGainToCurrent()
+            settings.set(replayGainMode.rawValue, forKey: .replayGainMode)
+        }
     }
 
     public var shuffleMode: ShuffleMode = .off {
         didSet {
+            settings.set(shuffleMode.rawValue, forKey: .shuffleMode)
             guard oldValue != shuffleMode else { return }
             reshuffleAroundCurrent()
         }
     }
 
     public var volume: Double = 1.0 {
-        didSet { engine.volume = volume }
+        didSet {
+            engine.volume = volume
+            settings.set(volume, forKey: .volume)
+        }
     }
 
     // MARK: Derived
@@ -87,6 +96,7 @@ public final class PlaybackController {
     // MARK: Private
 
     private let engine: any PlayerEngine
+    private let settings: any SettingsStore
     /// The queue in the order it was handed to us, so turning shuffle off can
     /// restore it rather than re-sorting a shuffled list.
     private var orderedQueue: [Track] = []
@@ -98,10 +108,40 @@ public final class PlaybackController {
     private var eventTask: Task<Void, Never>?
     private var positionTask: Task<Void, Never>?
 
-    public init(engine: any PlayerEngine) {
+    public init(engine: any PlayerEngine, settings: any SettingsStore = InMemorySettingsStore()) {
         self.engine = engine
-        engine.volume = volume
+        self.settings = settings
+        restore(from: settings)
         observe()
+    }
+
+    /// Order matters here: `isMuted`'s own `didSet` recomputes `volume` and
+    /// `volumeBeforeMute` from whatever they currently hold, so it has to run
+    /// first, while both are still at their compiled-in defaults — restoring
+    /// `volumeBeforeMute` and then `volume` afterwards overwrites whatever
+    /// that recomputation did with the real persisted values.
+    private func restore(from settings: any SettingsStore) {
+        if let raw = settings.string(forKey: .repeatMode), let mode = RepeatMode(rawValue: raw) {
+            repeatMode = mode
+        }
+        if let raw = settings.string(forKey: .shuffleMode), let mode = ShuffleMode(rawValue: raw) {
+            shuffleMode = mode
+        }
+        if let raw = settings.string(forKey: .replayGainMode),
+           let mode = ReplayGainMode(rawValue: raw) {
+            replayGainMode = mode
+        }
+        if let muted = settings.bool(forKey: .isMuted) {
+            isMuted = muted
+        }
+        if let level = settings.double(forKey: .volumeBeforeMute) {
+            volumeBeforeMute = level
+        }
+        if let level = settings.double(forKey: .volume) {
+            volume = level
+        } else {
+            engine.volume = volume
+        }
     }
 
     private func observe() {
@@ -406,6 +446,7 @@ public final class PlaybackController {
     /// 0…1. Kept separate from ReplayGain, which the engine folds in itself.
     public var isMuted: Bool = false {
         didSet {
+            settings.set(isMuted, forKey: .isMuted)
             guard oldValue != isMuted else { return }
             if isMuted {
                 volumeBeforeMute = volume
@@ -416,7 +457,9 @@ public final class PlaybackController {
         }
     }
 
-    private var volumeBeforeMute: Double = 1.0
+    private var volumeBeforeMute: Double = 1.0 {
+        didSet { settings.set(volumeBeforeMute, forKey: .volumeBeforeMute) }
+    }
 
     private func reshuffleAroundCurrent() {
         guard let current = currentTrack else {
