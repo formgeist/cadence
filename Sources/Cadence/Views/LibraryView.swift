@@ -32,63 +32,31 @@ struct LibraryView: View {
     private var header: some View {
         @Bindable var model = model
 
-        return VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .bottom) {
-                Text(model.tab.rawValue)
-                    .font(Tokens.Typography.screenTitle)
-                    .tracking(Tokens.Typography.Tracking.screenTitle)
-                    .foregroundStyle(Tokens.Palette.textPrimary)
+        return HStack(alignment: .bottom) {
+            Text(model.tab.rawValue)
+                .font(Tokens.Typography.screenTitle)
+                .tracking(Tokens.Typography.Tracking.screenTitle)
+                .foregroundStyle(Tokens.Palette.textPrimary)
 
-                Spacer()
+            Spacer()
 
-                HStack(spacing: Tokens.Space.l) {
-                    if model.tab != .playlists {
-                        LibraryActionsMenu()
-                    }
-                    Text(model.screenCount)
-                        .font(Tokens.Typography.mono(11))
-                        .foregroundStyle(Color(hex: 0x63636D))
+            HStack(spacing: Tokens.Space.l) {
+                if model.tab != .playlists {
+                    LibraryActionsMenu()
                 }
-                .padding(.bottom, 6)
+                Text(model.screenCount)
+                    .font(Tokens.Typography.mono(11))
+                    .foregroundStyle(Color(hex: 0x63636D))
             }
-            .padding(.bottom, 18)
-
-            HStack(spacing: Tokens.Space.xxl) {
-                ForEach(AppModel.Tab.allCases) { tab in
-                    TabButton(tab: tab, isSelected: model.tab == tab) {
-                        model.tab = tab
-                    }
-                }
-            }
+            .padding(.bottom, 6)
         }
         .padding(.horizontal, Tokens.Space.contentInset)
         .padding(.top, Tokens.Space.xxl)
+        .padding(.bottom, Tokens.Space.xl)
         .background(Tokens.Palette.surface)
         .overlay(alignment: .bottom) {
             Rectangle().fill(Color(hex: 0x1C1C21)).frame(height: 1)
         }
-    }
-}
-
-private struct TabButton: View {
-    var tab: AppModel.Tab
-    var isSelected: Bool
-    var action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Text(tab.rawValue)
-                .font(Tokens.Typography.sans(13, .bold))
-                .foregroundStyle(isSelected ? Tokens.Palette.textPrimary : Color(hex: 0x6D6D77))
-                .padding(.bottom, Tokens.Space.m)
-                .overlay(alignment: .bottom) {
-                    Rectangle()
-                        .fill(isSelected ? Tokens.Palette.accent : .clear)
-                        .frame(height: 2)
-                }
-        }
-        .plainControl()
-        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 }
 
@@ -105,7 +73,7 @@ private struct GridZoomControl: View {
                     .frame(width: 9, height: 9)
             }
             .plainControl()
-            .accessibilityLabel("Smaller album covers")
+            .accessibilityLabel("Smaller artwork")
 
             GeometryReader { geometry in
                 let width = geometry.size.width
@@ -128,7 +96,7 @@ private struct GridZoomControl: View {
             .frame(width: 96, height: 14)
             .accessibilityRepresentation {
                 Slider(value: $zoom, in: 0...1, step: 0.1)
-                    .accessibilityLabel("Album cover size")
+                    .accessibilityLabel("Artwork size")
                     .accessibilityValue("\(Int((zoom * 100).rounded())) percent")
             }
 
@@ -138,12 +106,12 @@ private struct GridZoomControl: View {
                     .frame(width: 14, height: 14)
             }
             .plainControl()
-            .accessibilityLabel("Larger album covers")
+            .accessibilityLabel("Larger artwork")
         }
     }
 }
 
-/// Sort, and — on Albums — cover size, behind one small trigger rather than
+/// Sort, and — on Albums — artwork size, behind one small trigger rather than
 /// two separate controls competing for room in the header. See #69.
 ///
 /// A plain icon button, not a dropdown that names the current sort: with
@@ -194,7 +162,7 @@ private struct ZoomMenuRow: View {
 
     var body: some View {
         HStack(spacing: MenuMetrics.iconGap) {
-            Text("Cover Size")
+            Text("Artwork Size")
                 .font(Tokens.Typography.sans(12.5, .semibold))
                 .foregroundStyle(Color(hex: 0xDCDCE3))
             Spacer(minLength: MenuMetrics.iconGap)
