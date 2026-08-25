@@ -16,7 +16,6 @@ struct RootView: View {
                 // library draws straight over them (issue #21).
                 TitleBarView()
                     .zIndex(50)
-                ImportProgressBar()
                 HStack(spacing: 0) {
                     SidebarView()
                     content
@@ -37,7 +36,6 @@ struct RootView: View {
         // issue #15 exactly.
         .ignoresSafeArea(.container, edges: .top)
         .animation(.easeInOut(duration: 0.2), value: model.isImmersive)
-        .animation(.easeOut(duration: 0.2), value: importer.isImporting)
         .animation(.easeOut(duration: 0.2), value: playback.notice)
         .animation(.easeOut(duration: 0.2), value: model.actionError)
         .animation(.easeOut(duration: 0.2), value: model.notice)
