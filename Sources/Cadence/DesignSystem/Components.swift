@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import CadenceCore
 
 // MARK: - Artwork
@@ -387,7 +388,15 @@ struct InlineLink: View {
                 .lineLimit(lineLimit)
         }
         .plainControl()
-        .onHover { isHovering = $0 }
+        .onHover { hovering in
+            isHovering = hovering
+            // Unlike `plainControl()`'s buttons, this reads as a hyperlink —
+            // underline and all — so the cursor should say so too (issue
+            // #76). `.set()` rather than `.push()`/`.pop()`: a click here
+            // navigates away and unmounts the view mid-hover, which would
+            // skip the matching pop and leave the hand cursor stuck.
+            if hovering { NSCursor.pointingHand.set() } else { NSCursor.arrow.set() }
+        }
     }
 }
 
