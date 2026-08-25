@@ -355,6 +355,17 @@ final class MenuPanel: NSPanel {
     override var canBecomeKey: Bool { true }
 }
 
+/// A real `NSMenu`'s tracking loop is a special case AppKit itself owns, so a
+/// click on one of its items always just works. This panel is an ordinary
+/// window standing in for that, and an ordinary window's first click — even
+/// one it was just handed `makeKey()` for a moment earlier — is eaten purely
+/// to bring it forward unless the view under the pointer opts out by
+/// overriding this. Without it, the row a right-click lands on needs a
+/// second, separate click before its tap gesture ever sees the first one.
+private final class MenuHostingView<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
 // MARK: - Presenter
 
 /// Owns every open menu. There is only ever one stack of them on screen, the
@@ -465,7 +476,7 @@ final class MenuPresenter {
             onHoverSubmenu: { [weak self] item in self?.openSubmenu(item, from: level) }
         )
 
-        let hosting = NSHostingView(rootView: surface)
+        let hosting = MenuHostingView(rootView: surface)
         hosting.sizingOptions = [.intrinsicContentSize]
         panel.contentView = hosting
         panel.setContentSize(hosting.fittingSize)
