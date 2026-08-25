@@ -7,21 +7,37 @@ struct AlbumDetailView: View {
 
     var album: Album
 
-    /// The row a single click put under the cursor. Playback needs a second
-    /// click, so something has to show what the first one did.
+    /// The row a single click put under the cursor, and the row an arrow key
+    /// last moved to — the same state serves both, so a keyboard user picks up
+    /// exactly where a mouse user would have left off. Playback needs a
+    /// second click or a `Return`, so something has to show what either one
+    /// did.
     @State private var selectedTrackID: Track.ID?
+    @FocusState private var isTrackListFocused: Bool
+    @State private var typeAhead = TypeAheadBuffer()
 
     private var orderedTracks: [Track] { album.discs.flatMap(\.tracks) }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                header
-                trackList
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(spacing: 0) {
+                    header
+                    trackList
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(Tokens.Palette.surface)
+            .onChange(of: selectedTrackID) { _, new in
+                guard let new else { return }
+                proxy.scrollTo(new, anchor: .center)
             }
         }
-        .scrollContentBackground(.hidden)
-        .background(Tokens.Palette.surface)
+        // A different album, reached without this view ever leaving the
+        // screen — `RootView` keeps the same `.album` case on the switch when
+        // you jump from one record to another — so a stale id here would
+        // otherwise point at a track that isn't on screen at all.
+        .onChange(of: album.key) { _, _ in selectedTrackID = nil }
     }
 
     // MARK: Header
@@ -172,6 +188,8 @@ struct AlbumDetailView: View {
                             playback.play(track, in: orderedTracks)
                         }
                     )
+                    .id(track.id)
+                    .simultaneousGesture(TapGesture().onEnded { isTrackListFocused = true })
                     .cadenceContextMenu(onOpen: { selectedTrackID = track.id }) {
                         PlaylistMenu.track(
                             track,
@@ -185,9 +203,50 @@ struct AlbumDetailView: View {
                 }
             }
         }
+        .focusable()
+        .focusEffectDisabled()
+        .focused($isTrackListFocused)
+        .onKeyPress { handleTrackListKeyPress($0) }
+        // Arrow keys, not `.onKeyPress`: `ScrollView` implements the same
+        // `moveUp:`/`moveDown:` responder actions for its own line-scrolling
+        // and wins them before a nested `.onKeyPress` ever sees the event.
+        // `.onMoveCommand` hooks those same selectors, so this handler is the
+        // one that answers instead of the scroll view swallowing them.
+        .onMoveCommand { direction in
+            guard let direction = GridNavigation.Direction(direction),
+                  direction == .up || direction == .down else { return }
+            let current = orderedTracks.firstIndex { $0.id == selectedTrackID }
+            if let index = GridNavigation.move(from: current, by: direction,
+                                               count: orderedTracks.count, columns: 1) {
+                selectedTrackID = orderedTracks[index].id
+            }
+        }
+        .onChange(of: isTrackListFocused) { _, focused in
+            if focused, selectedTrackID == nil { selectedTrackID = orderedTracks.first?.id }
+        }
         .padding(.horizontal, Tokens.Space.albumInset)
         .padding(.top, 22)
         .padding(.bottom, 44)
+    }
+
+    private func handleTrackListKeyPress(_ press: KeyPress) -> KeyPress.Result {
+        guard press.modifiers.isEmpty else { return .ignored }
+        if press.key == .return {
+            if let selectedTrackID,
+               let track = orderedTracks.first(where: { $0.id == selectedTrackID }) {
+                playback.play(track, in: orderedTracks)
+            }
+            return .handled
+        }
+        if let character = press.characters.first, character.isLetter || character.isNumber {
+            let current = orderedTracks.firstIndex { $0.id == selectedTrackID }
+            if let index = typeAhead.index(for: character, current: current,
+                                           keys: orderedTracks.map(\.title)) {
+                selectedTrackID = orderedTracks[index].id
+            }
+            return .handled
+        }
+        return .ignored
     }
 
     private var columnHeader: some View {
@@ -293,6 +352,7 @@ private struct TrackRow: View {
                             .contentShape(Rectangle())
                     }
                     .plainControl()
+                    .focusable(false)
                     // The row already says all of this, and says it better.
                     .accessibilityHidden(true)
                 } else {
