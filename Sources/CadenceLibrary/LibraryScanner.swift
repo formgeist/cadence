@@ -202,6 +202,16 @@ public actor LibraryScanner {
             failures: failures)
     }
 
+    /// Deletes artwork on disk that no track references any more — a track
+    /// removed, retagged, or its cover replaced all orphan the old bytes.
+    /// Meant to run once after a whole import (every folder), not per folder:
+    /// the set of referenced ids is already the full library either way, so
+    /// scanning it more than once just repeats the same disk walk for nothing.
+    public func pruneOrphanedArtwork() async throws {
+        guard let artwork else { return }
+        try await artwork.prune(keeping: try await store.referencedArtworkIDs())
+    }
+
     // MARK: - Local cover fallback
 
     /// Looks up (and memoises) whether `folder` holds a cover image, for the

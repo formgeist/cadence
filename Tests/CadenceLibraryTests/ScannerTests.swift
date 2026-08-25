@@ -258,6 +258,46 @@ struct ScannerTests {
         #expect(try await harness.artwork.full(for: id) == FLACFixture.samplePNG)
     }
 
+    @Test("Pruning after an import deletes artwork no track references any more")
+    func pruneOrphanedArtworkRemovesDeletedTracksCover() async throws {
+        let harness = try Self.makeHarness()
+        defer { try? FileManager.default.removeItem(at: harness.root) }
+
+        let album = harness.music.appendingPathComponent("Solo Album", isDirectory: true)
+        try FLACFixture.build([
+            .init(name: "01-a", tags: [
+                ("TITLE", "A"), ("ARTIST", "Someone"), ("ALBUM", "Solo Album"),
+                ("TRACKNUMBER", "1"),
+            ], picture: Data("solo album art".utf8)),
+        ], in: album)
+
+        try await harness.scanner.scan(folder: harness.music)
+        let track = try #require(try await harness.store.allTracks()
+            .first { $0.albumTitle == "Solo Album" })
+        let id = try #require(track.artworkID)
+        #expect(try await harness.artwork.full(for: id) != nil)
+
+        try FileManager.default.removeItem(at: album)
+        try await harness.scanner.scan(folder: harness.music)
+        try await harness.scanner.pruneOrphanedArtwork()
+
+        #expect(try await harness.artwork.full(for: id) == nil)
+    }
+
+    @Test("Pruning after an import keeps artwork still referenced by another track")
+    func pruneOrphanedArtworkKeepsSharedCover() async throws {
+        let harness = try Self.makeHarness()
+        defer { try? FileManager.default.removeItem(at: harness.root) }
+        try await harness.scanner.scan(folder: harness.music)
+
+        let withArt = try await harness.store.allTracks().first { $0.artworkID != nil }
+        let id = try #require(withArt?.artworkID)
+
+        try await harness.scanner.pruneOrphanedArtwork()
+
+        #expect(try await harness.artwork.full(for: id) != nil)
+    }
+
     @Test("Search works end to end, from files on disk to a query")
     func searchAfterImport() async throws {
         let harness = try Self.makeHarness()
