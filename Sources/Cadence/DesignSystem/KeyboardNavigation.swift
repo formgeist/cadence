@@ -33,6 +33,21 @@ enum GridNavigation {
             @unknown default: return nil
             }
         }
+
+        /// From a raw `NSEvent.keyCode`, for the one place in the app that
+        /// answers arrow keys via a local `NSEvent` monitor rather than
+        /// `.onMoveCommand` — `SearchField`'s popover, where the search
+        /// field's own text-editing responder answers `moveUp:`/`moveDown:`
+        /// before either SwiftUI mechanism would ever see the event.
+        init?(keyCode: UInt16) {
+            switch keyCode {
+            case 126: self = .up
+            case 125: self = .down
+            case 123: self = .left
+            case 124: self = .right
+            default: return nil
+            }
+        }
     }
 
     /// The index arrow keys should move focus to, clamped to the array's
