@@ -169,7 +169,11 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
             try db.execute(
                 sql: "DELETE FROM playlistItem WHERE rowid IN (\(Self.placeholders(doomed.count)))",
                 arguments: StatementArguments(doomed))
-            try Self.renumber(rowIDs.filter { !doomed.contains($0) }, in: db)
+            // A `Set` rather than testing `doomed` itself: removing a large
+            // selection out of a long playlist would otherwise check every
+            // survivor against every doomed row rather than against a hash.
+            let doomedSet = Set(doomed)
+            try Self.renumber(rowIDs.filter { !doomedSet.contains($0) }, from: rowIDs, in: db)
         }
     }
 
@@ -180,9 +184,10 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
         try await pool.write { db in
             // Row ids, not track ids: a playlist may hold the same track twice,
             // and reordering has to move one of them without touching the other.
-            var rowIDs = try Self.itemRowIDs(of: playlistID, in: db)
-            Ordering.move(&rowIDs, fromOffsets: source, toOffset: destination)
-            try Self.renumber(rowIDs, in: db)
+            let rowIDs = try Self.itemRowIDs(of: playlistID, in: db)
+            var moved = rowIDs
+            Ordering.move(&moved, fromOffsets: source, toOffset: destination)
+            try Self.renumber(moved, from: rowIDs, in: db)
         }
     }
 
@@ -387,11 +392,16 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
             """, arguments: [playlistID.uuidString])
     }
 
-    /// Writes 0…n-1 over the given order. Positions are only ever read back
-    /// sorted, so gaps would do no harm — but a contiguous run is what the
-    /// next append counts from.
-    private static func renumber(_ rowIDs: [Int64], in db: Database) throws {
-        for (position, rowID) in rowIDs.enumerated() {
+    /// Writes 0…n-1 over the given order — but only where a row's position
+    /// actually changed against `previous`. A single-track move on a long
+    /// playlist only ever displaces the rows strictly between where it left
+    /// and where it landed; the rest already hold the position this would
+    /// write back unchanged. Rewriting every row anyway was fine as dead
+    /// weight while dragging did not work (#25); now that a drop runs this on
+    /// every drag, it is not.
+    private static func renumber(_ rowIDs: [Int64], from previous: [Int64], in db: Database) throws {
+        for (position, rowID) in rowIDs.enumerated()
+        where position >= previous.count || previous[position] != rowID {
             try db.execute(sql: "UPDATE playlistItem SET position = ? WHERE rowid = ?",
                            arguments: [position, rowID])
         }

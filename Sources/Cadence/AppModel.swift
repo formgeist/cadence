@@ -318,14 +318,29 @@ final class AppModel {
     /// track twice, and a list keyed by track id would draw one row where the
     /// user put two — then move and delete the wrong one.
     struct PlaylistEntry: Identifiable, Hashable {
+        /// A track id plus how many earlier copies of it precede this one in
+        /// the playlist. For a track with no duplicates this is stable across
+        /// any reorder; `position` alone was not — as a plain index it reads
+        /// `0, 1, 2, …` before and after every move, so a drag diffed against
+        /// itself and looked like nothing had happened. See #25.
+        struct EntryID: Hashable, Codable {
+            var trackID: Track.ID
+            var occurrence: Int
+        }
+
         var position: Int
         var track: Track
-        var id: Int { position }
+        var id: EntryID
     }
 
     func entries(in playlist: Playlist) -> [PlaylistEntry] {
-        playlist.trackIDs.enumerated().compactMap { position, id in
-            tracksByID[id].map { PlaylistEntry(position: position, track: $0) }
+        var occurrences: [Track.ID: Int] = [:]
+        return playlist.trackIDs.enumerated().compactMap { position, id in
+            guard let track = tracksByID[id] else { return nil }
+            let occurrence = occurrences[id, default: 0]
+            occurrences[id] = occurrence + 1
+            return PlaylistEntry(position: position, track: track,
+                                  id: .init(trackID: id, occurrence: occurrence))
         }
     }
 

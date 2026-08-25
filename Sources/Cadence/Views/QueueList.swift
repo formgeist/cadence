@@ -3,60 +3,113 @@ import CadenceCore
 
 /// Up Next, with drag to reorder.
 ///
-/// A `List` rather than the `LazyVStack` the rest of the app uses, because
-/// `onMove` is the only reordering that behaves the way macOS users expect —
-/// grab anywhere, autoscroll at the edges, drop where the insertion line shows.
-/// Reimplementing that on a stack to keep the container consistent would be
-/// worse than styling a List to match.
+/// A plain `ScrollView`/`LazyVStack`, not a `List`. It was a `List` originally,
+/// for the autoscroll-at-the-edges and native row plumbing that brings for
+/// free — but no drag out of a row in this `List` ever got off the ground,
+/// `onMove`'s AppKit one or `.draggable`'s SwiftUI one alike (#25), while both
+/// work without complaint everywhere else in the app (`AlbumDetailView`,
+/// `LibraryView`), and every one of those is a plain stack, never a `List`.
+/// Losing an argument with `List` twice over is not a coincidence worth a
+/// third attempt — this rebuilds on the container that has never fought back.
 struct QueueList: View {
     @Environment(AppModel.self) private var model
     @Environment(PlaybackController.self) private var playback
 
     /// The row a single click put under the cursor, as on the album screen:
     /// playback needs a second click, so something has to show what the first
-    /// one did. Not wired up as the `List`'s own `selection`, which resolves a
-    /// click the moment it lands — before a `.onTapGesture(count: 2)` on the
-    /// same row gets a chance to see whether a second one is coming, so every
-    /// click jumps instead of only the second.
+    /// one did.
     @State private var selectedTrack: Track.ID?
+    /// The row (or the space after the last one) a drag is currently over.
+    /// `nil` when nothing is being dragged. An index rather than a track id:
+    /// the same track can appear in Up Next twice.
+    @State private var dropTarget: Int?
 
     var body: some View {
-        let upNext = Array(playback.upNext)
+        let upNext = Array(playback.upNext.enumerated())
 
-        List {
-            ForEach(upNext) { track in
-                QueueRow(track: track, isSelected: selectedTrack == track.id)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("\(track.title), \(track.artist), "
-                        + NowPlayingPane.spokenDuration(track.duration))
-                    .accessibilityHint("Plays this track. Drag to reorder.")
-                    // `.ignore` above also swallows the row's own artist
-                    // link; this stands in for it on the rotor.
-                    .accessibilityAction(named: "Go to artist") {
-                        model.show(.artist(track.artist))
-                    }
-                    .listRowInsets(EdgeInsets(top: 1, leading: 0, bottom: 1, trailing: 0))
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                    .contentShape(Rectangle())
-                    .onTapGesture(count: 2) { playback.jump(to: track) }
-                    .onTapGesture { selectedTrack = track.id }
-                    .cadenceContextMenu(onOpen: { selectedTrack = track.id }) {
-                        PlaylistMenu.queued(track, playback: playback)
-                    }
-            }
-            .onMove { source, destination in
-                playback.moveUpNext(fromOffsets: source, toOffset: destination)
-            }
-            .onDelete { offsets in
-                for index in offsets where upNext.indices.contains(index) {
-                    playback.removeFromUpNext(upNext[index])
+        ScrollView {
+            LazyVStack(spacing: 2) {
+                ForEach(upNext, id: \.offset) { offset, track in
+                    QueueRow(track: track, isSelected: selectedTrack == track.id)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("\(track.title), \(track.artist), "
+                            + NowPlayingPane.spokenDuration(track.duration))
+                        .accessibilityHint("Plays this track. Drag to reorder.")
+                        // `.ignore` above also swallows the row's own artist
+                        // link; this stands in for it on the rotor.
+                        .accessibilityAction(named: "Go to artist") {
+                            model.show(.artist(track.artist))
+                        }
+                        .contentShape(Rectangle())
+                        .overlay(alignment: .top) {
+                            if dropTarget == offset { insertionLine }
+                        }
+                        // `.draggable` before the tap gestures, not after: it
+                        // is the order `AlbumDetailView`'s track row uses, and
+                        // the one place in the app that already combines a
+                        // drag with both a single- and double-tap on the same
+                        // view.
+                        .draggable(QueueReorderItem(index: offset)) {
+                            TrackDragPreview(systemImage: "line.3.horizontal",
+                                             title: track.title, detail: track.artist)
+                        }
+                        .dropDestination(for: QueueReorderItem.self) { items, _ in
+                            drop(items, before: offset, in: upNext.map(\.element))
+                        } isTargeted: { targeted in
+                            setTarget(offset, targeted: targeted)
+                        }
+                        .onTapGesture(count: 2) { playback.jump(to: track) }
+                        .onTapGesture { selectedTrack = track.id }
+                        .cadenceContextMenu(onOpen: { selectedTrack = track.id }) {
+                            PlaylistMenu.queued(track, playback: playback)
+                        }
                 }
+
+                // The only way to drop after the last row: every other row
+                // only accepts a drop above itself, so nothing above accepts
+                // "last."
+                Color.clear
+                    .frame(height: 8)
+                    .overlay(alignment: .top) {
+                        if dropTarget == upNext.count { insertionLine }
+                    }
+                    .dropDestination(for: QueueReorderItem.self) { items, _ in
+                        drop(items, before: upNext.count, in: upNext.map(\.element))
+                    } isTargeted: { targeted in
+                        setTarget(upNext.count, targeted: targeted)
+                    }
             }
         }
-        .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .environment(\.defaultMinListRowHeight, 40)
+    }
+
+    /// A thin accent line standing in for the row that would be pushed down.
+    private var insertionLine: some View {
+        Rectangle().fill(Tokens.Palette.accent).frame(height: 2)
+    }
+
+    private func setTarget(_ target: Int, targeted: Bool) {
+        if targeted {
+            dropTarget = target
+        } else if dropTarget == target {
+            // Only clear a target that is still this one: entering the next
+            // row's drop zone fires before leaving this one's, and clearing
+            // unconditionally on exit would erase the line the new row just drew.
+            dropTarget = nil
+        }
+    }
+
+    /// `destination` is `Ordering.move`'s convention — an index into `tracks`
+    /// before the dragged one is removed — so "before row 5" and "after the
+    /// last row" both reduce to one call into `moveUpNext`.
+    private func drop(_ items: [QueueReorderItem], before destination: Int,
+                       in tracks: [Track]) -> Bool {
+        dropTarget = nil
+        guard let source = items.first?.index, tracks.indices.contains(source) else { return false }
+        // Dropping a row on itself or on the gap right behind it is not a move.
+        guard destination != source, destination != source + 1 else { return true }
+        playback.moveUpNext(fromOffsets: IndexSet([source]), toOffset: destination)
+        return true
     }
 }
 

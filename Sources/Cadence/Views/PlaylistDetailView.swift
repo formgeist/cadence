@@ -2,9 +2,16 @@ import SwiftUI
 import CadenceCore
 
 /// One playlist, open. The header is `ArtistDetailView`'s shape — a cover over
-/// a name, counts and the verbs — and the body is `QueueList`'s: a `List` with
-/// `onMove` and `onDelete`, because a playlist is a running order the user is
-/// expected to rearrange.
+/// a name, counts and the verbs — and the body is a plain `ScrollView`, like
+/// `AlbumDetailView`'s track list, reordered by dragging: a playlist is a
+/// running order the user is expected to rearrange.
+///
+/// Not a `List`. It was one originally, driven by `onMove` — which never
+/// engaged its drag in this app (#25) — and rebuilding on `.draggable`/
+/// `.dropDestination` still did not fix it as long as the rows sat inside a
+/// `List`. Only moving off `List` entirely, onto the same plain-stack
+/// container `.draggable` already works in elsewhere (`AlbumDetailView`,
+/// `LibraryView`), got a drag to actually start. See #25.
 struct PlaylistDetailView: View {
     @Environment(AppModel.self) private var model
     @Environment(PlaybackController.self) private var playback
@@ -15,17 +22,34 @@ struct PlaylistDetailView: View {
     /// playback needs a second click, so something has to show what the first
     /// one did.
     @State private var selectedEntry: AppModel.PlaylistEntry.ID?
+    /// The row (or the space after the last one) a drag is currently over —
+    /// what draws the insertion line. `nil` when nothing is being dragged.
+    @State private var dropTarget: DropTarget?
 
+    private enum DropTarget: Hashable {
+        case entry(AppModel.PlaylistEntry.EntryID)
+        case end
+    }
+
+    /// Recomputed on every access — walking the playlist and its track
+    /// dictionary is not free, and `dropTarget` above changes on every row
+    /// boundary the cursor crosses mid-drag, re-running `body` continuously
+    /// while that happens. `body` reads each of these exactly once per render
+    /// and hands the result down, rather than letting `header` and
+    /// `trackList` each call back into these independently.
     private var entries: [AppModel.PlaylistEntry] { model.entries(in: playlist) }
     private var tracks: [Track] { entries.map(\.track) }
 
     var body: some View {
+        let entries = entries
+        let tracks = entries.map(\.track)
+
         VStack(spacing: 0) {
-            header
+            header(tracks: tracks)
             if entries.isEmpty {
                 emptyState
             } else {
-                trackList
+                trackList(entries: entries)
             }
         }
         .background(Tokens.Palette.surface)
@@ -33,12 +57,18 @@ struct PlaylistDetailView: View {
 
     // MARK: Header
 
-    /// Fixed above the list rather than scrolling with it, unlike the album and
-    /// artist screens. Those scroll their header away inside one scroll view;
-    /// a `List` brings its own, and nesting the two is what turns a drag near
-    /// the top edge into a fight between them.
-    private var header: some View {
-        HStack(alignment: .bottom, spacing: 32) {
+    /// Fixed above the list rather than scrolling with it, unlike the album
+    /// and artist screens that scroll their header away inside the same
+    /// scroll view as their tracks. Here the two stay separate: `trackList`
+    /// is its own `ScrollView`, sibling to this one rather than wrapping it,
+    /// so nothing here competes with a drag over the tracks below.
+    private func header(tracks: [Track]) -> some View {
+        // A playlist has no cover of its own; the first track that has one
+        // stands in, rather than the first track's — which is often the one
+        // with none.
+        let coverID = tracks.compactMap(\.artworkID).first
+
+        return HStack(alignment: .bottom, spacing: 32) {
             ArtworkView(
                 artworkID: coverID,
                 cornerRadius: Tokens.Radius.card,
@@ -104,12 +134,6 @@ struct PlaylistDetailView: View {
         }
     }
 
-    /// A playlist has no cover of its own; the first track that has one stands
-    /// in, rather than the first track's — which is often the one with none.
-    private var coverID: Artwork.ID? {
-        tracks.compactMap(\.artworkID).first
-    }
-
     /// `12 tracks · 47 min`. The duration comes off the playlist rather than
     /// being summed here, so it matches the figure the sidebar quotes even
     /// when a track has left the library since.
@@ -130,79 +154,84 @@ struct PlaylistDetailView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var trackList: some View {
-        // A `List`, for the same reason `QueueList` is one: `onMove` is the
-        // only reordering that behaves the way macOS users expect — grab
-        // anywhere, autoscroll at the edges, drop where the line shows.
-        // Selection is the List's own, not an `.onTapGesture`. A tap gesture on
-        // a row swallows the press that `onMove` needs, and reordering then
-        // silently does nothing — the row highlights and never lifts.
-        List(selection: $selectedEntry) {
-            ForEach(entries) { entry in
-                PlaylistTrackRow(
-                    entry: entry,
-                    isCurrent: playback.currentTrack?.id == entry.track.id,
-                    isSelected: selectedEntry == entry.id
-                )
-                .tag(entry.id)
-                .listRowInsets(EdgeInsets(top: 1, leading: 0, bottom: 1, trailing: 0))
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-                .contentShape(Rectangle())
-                .onTapGesture(count: 2) { play(entry) }
-                // Deliberately not `.draggable`. `onMove` brings its own drag,
-                // and a row carrying both hands the reorder gesture to the
-                // wrong one — you go to move a track up two places and instead
-                // start dragging it at the sidebar. Sending a track to another
-                // playlist from here is the context menu's job.
-                .cadenceContextMenu(onOpen: { selectedEntry = entry.id }) {
-                    PlaylistMenu.track(
-                        entry.track,
-                        model: model,
-                        play: { play(entry) },
-                        remove: ("Remove from Playlist",
-                                 { remove(IndexSet([entry.position])) }))
+    private func trackList(entries: [AppModel.PlaylistEntry]) -> some View {
+        ScrollView {
+            LazyVStack(spacing: 2) {
+                ForEach(entries) { entry in
+                    PlaylistTrackRow(
+                        entry: entry,
+                        isCurrent: playback.currentTrack?.id == entry.track.id,
+                        isSelected: selectedEntry == entry.id
+                    )
+                    .contentShape(Rectangle())
+                    .overlay(alignment: .top) {
+                        if dropTarget == .entry(entry.id) { insertionLine }
+                    }
+                    // `.draggable` before the tap gesture, not after: it is
+                    // the order `AlbumDetailView`'s track row uses, and the
+                    // one place in the app that already combines a drag with
+                    // both a single- and double-tap on the same view.
+                    .draggable(PlaylistReorderItem(entryID: entry.id)) {
+                        TrackDragPreview(systemImage: "line.3.horizontal",
+                                         title: entry.track.title, detail: entry.track.artist)
+                    }
+                    .dropDestination(for: PlaylistReorderItem.self) { items, _ in
+                        drop(items, before: entry.position)
+                    } isTargeted: { targeted in
+                        setTarget(.entry(entry.id), targeted: targeted)
+                    }
+                    .onTapGesture(count: 2) { play(entry) }
+                    .onTapGesture { selectedEntry = entry.id }
+                    .cadenceContextMenu(onOpen: { selectedEntry = entry.id }) {
+                        PlaylistMenu.track(
+                            entry.track,
+                            model: model,
+                            play: { play(entry) },
+                            remove: ("Remove from Playlist",
+                                     { remove(IndexSet([entry.position])) }))
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(spokenLabel(for: entry))
+                    .accessibilityHint("Plays this track. Drag to reorder.")
+                    .accessibilityAddTraits(playback.currentTrack?.id == entry.track.id
+                                            || selectedEntry == entry.id
+                                            ? [.isButton, .isSelected] : .isButton)
+                    // VoiceOver has no double click, and no drag either: both
+                    // the way in and the way out have to be reachable from
+                    // the rotor.
+                    .accessibilityAction(.default) { play(entry) }
+                    .accessibilityAction(named: "Remove from playlist") {
+                        remove(IndexSet([entry.position]))
+                    }
+                    // `.ignore` above also swallows the row's own artist/album
+                    // links, same as it does the play button — these stand in
+                    // for them on the rotor.
+                    .accessibilityAction(named: "Go to artist") {
+                        model.show(.artist(entry.track.artist))
+                    }
+                    .accessibilityAction(named: "Go to album") {
+                        model.show(.album(entry.track.albumKey))
+                    }
                 }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(spokenLabel(for: entry))
-                .accessibilityHint("Plays this track. Drag to reorder.")
-                .accessibilityAddTraits(playback.currentTrack?.id == entry.track.id
-                                        || selectedEntry == entry.id
-                                        ? [.isButton, .isSelected] : .isButton)
-                // VoiceOver has no double click, and no drag either: both the
-                // way in and the way out have to be reachable from the rotor.
-                .accessibilityAction(.default) { play(entry) }
-                .accessibilityAction(named: "Remove from playlist") {
-                    remove(IndexSet([entry.position]))
-                }
-                // `.ignore` above also swallows the row's own artist/album
-                // links, same as it does the play button — these stand in for
-                // them on the rotor.
-                .accessibilityAction(named: "Go to artist") {
-                    model.show(.artist(entry.track.artist))
-                }
-                .accessibilityAction(named: "Go to album") {
-                    model.show(.album(entry.track.albumKey))
-                }
+
+                // The only way to drop after the last row: every other row
+                // only accepts a drop above itself, so nothing above accepts
+                // "last."
+                Color.clear
+                    .frame(height: 10)
+                    .overlay(alignment: .top) {
+                        if dropTarget == .end { insertionLine }
+                    }
+                    .dropDestination(for: PlaylistReorderItem.self) { items, _ in
+                        drop(items, before: entries.count)
+                    } isTargeted: { targeted in
+                        setTarget(.end, targeted: targeted)
+                    }
             }
-            // Offsets pass straight through: `entries` is one row per stored
-            // item, in stored order. It stays that way because
-            // `playlistItem.trackID` cascades — an item cannot outlive the
-            // track it points at — so there is never an unresolvable id to
-            // drop and shift everything below it by one.
-            .onMove { source, destination in
-                Task {
-                    await model.moveInPlaylist(playlist, fromOffsets: source,
-                                               toOffset: destination)
-                }
-            }
-            .onDelete(perform: remove)
+            .padding(.horizontal, Tokens.Space.m)
+            .padding(.top, Tokens.Space.m)
         }
-        .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .environment(\.defaultMinListRowHeight, 44)
-        .padding(.horizontal, Tokens.Space.m)
-        .padding(.top, Tokens.Space.m)
     }
 
     /// In the playlist's own order, so playing row 3 queues the rest of the
@@ -212,9 +241,9 @@ struct PlaylistDetailView: View {
         playback.play(entry.track, in: tracks)
     }
 
-    /// Row offsets translated to stored positions before they reach the store.
-    /// The two are the same today — see `onMove` — but a deletion aimed at the
-    /// wrong row is silent and permanent, so this one does not rely on it.
+    /// Row offsets translated to stored positions before they reach the
+    /// store. The two are the same today, but a deletion aimed at the wrong
+    /// row is silent and permanent, so this one does not rely on it.
     private func remove(_ offsets: IndexSet) {
         let rows = entries
         let positions = IndexSet(offsets.compactMap {
@@ -222,6 +251,40 @@ struct PlaylistDetailView: View {
         })
         guard !positions.isEmpty else { return }
         Task { await model.removeFromPlaylist(playlist, atOffsets: positions) }
+    }
+
+    /// A thin accent line standing in for the row that would be pushed down.
+    private var insertionLine: some View {
+        Rectangle().fill(Tokens.Palette.accent).frame(height: 2)
+    }
+
+    private func setTarget(_ target: DropTarget, targeted: Bool) {
+        if targeted {
+            dropTarget = target
+        } else if dropTarget == target {
+            // Only clear a target that is still this one: entering the next
+            // row's drop zone fires before leaving this one's, and clearing
+            // unconditionally on exit would erase the line the new row just drew.
+            dropTarget = nil
+        }
+    }
+
+    /// `destination` is `Ordering.move`'s convention — an index into the
+    /// *current* `entries`, before the dragged row is removed — so dropping
+    /// "before row 5" and "onto the space after the last row" both reduce to
+    /// the same call the old `onMove` handler made.
+    private func drop(_ items: [PlaylistReorderItem], before destination: Int) -> Bool {
+        dropTarget = nil
+        guard let dragged = items.first,
+              let source = entries.firstIndex(where: { $0.id == dragged.entryID })
+        else { return false }
+        // Dropping a row on itself or on the gap right behind it is not a move.
+        guard destination != source, destination != source + 1 else { return true }
+        Task {
+            await model.moveInPlaylist(playlist, fromOffsets: IndexSet([source]),
+                                       toOffset: destination)
+        }
+        return true
     }
 
     private func spokenLabel(for entry: AppModel.PlaylistEntry) -> String {
