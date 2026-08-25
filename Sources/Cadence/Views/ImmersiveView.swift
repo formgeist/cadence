@@ -7,10 +7,35 @@ import CadenceCore
 struct ImmersiveView: View {
     @Environment(AppModel.self) private var model
     @Environment(PlaybackController.self) private var playback
+    @Environment(ArtworkLoader.self) private var artworkLoader
 
     @State private var isHovering = false
 
+    private var bloom: (primary: Color, secondary: Color) {
+        artworkLoader.bloomColors(for: playback.currentTrack?.artworkID)
+            ?? (Tokens.Palette.accent, Color(hex: 0x4C2A8C))
+    }
+
     var body: some View {
+        ZStack(alignment: .bottom) {
+            backgroundLayer
+
+            VStack(spacing: 0) {
+                topBar
+                VStack(spacing: 0) {
+                    stage
+                    band
+                }
+                .contentShape(Rectangle())
+                .onHover { isHovering = $0 }
+            }
+
+            bottomScrim
+        }
+        .transition(.opacity)
+    }
+
+    private var backgroundLayer: some View {
         ZStack {
             LinearGradient(
                 stops: [
@@ -20,14 +45,9 @@ struct ImmersiveView: View {
                 ],
                 startPoint: .top, endPoint: .bottom
             )
-            .ignoresSafeArea()
-
-            VStack(spacing: 0) {
-                topBar
-                artworkStage
-            }
+            AmbientBloom(primary: bloom.primary, secondary: bloom.secondary)
         }
-        .transition(.opacity)
+        .ignoresSafeArea()
     }
 
     private var topBar: some View {
@@ -49,8 +69,19 @@ struct ImmersiveView: View {
         .frame(height: 44)
     }
 
-    private var artworkStage: some View {
-        ZStack {
+    /// Flexible: it takes whatever height is left once the top bar and the
+    /// bottom band — fixed regardless of hover — have theirs, so the artwork
+    /// centers in the true remaining space instead of needing a hover-time
+    /// nudge to clear the controls. The artwork itself shrinks below its
+    /// usual 540pt when that space is tight, rather than overflowing into
+    /// the band below on the app's smallest supported window.
+    private var stage: some View {
+        GeometryReader { geometry in
+            let side = min(
+                Tokens.Layout.immersiveArt,
+                geometry.size.width - 48,
+                geometry.size.height - 48)
+
             ArtworkView(
                 artworkID: playback.currentTrack?.artworkID,
                 cornerRadius: 12,
@@ -62,24 +93,29 @@ struct ImmersiveView: View {
                     "Artwork for \($0.albumTitle)"
                 }
             )
-            .frame(width: Tokens.Layout.immersiveArt, height: Tokens.Layout.immersiveArt)
+            .frame(width: side, height: side)
             .shadow(color: .black.opacity(0.72), radius: 55, y: 30)
-            // The art lifts and shrinks to make room for the controls, rather
-            // than having them sit on top of it.
-            .scaleEffect(isHovering ? 0.87 : 1)
-            .offset(y: isHovering ? -52 : 0)
-            .animation(Tokens.Motion.artLift, value: isHovering)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
 
-            if let track = playback.currentTrack {
-                trackCaption(track)
-                formatBadges(track)
+    private var band: some View {
+        HStack(alignment: .bottom, spacing: 24) {
+            Group {
+                if let track = playback.currentTrack { trackCaption(track) }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             controls
+
+            Group {
+                if let track = playback.currentTrack { formatBadges(track) }
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .contentShape(Rectangle())
-        .onHover { isHovering = $0 }
+        .padding(.horizontal, 56)
+        .padding(.bottom, 40)
+        .frame(height: Tokens.Layout.immersiveBandHeight)
     }
 
     private func trackCaption(_ track: Track) -> some View {
@@ -107,10 +143,7 @@ struct ImmersiveView: View {
         .accessibilityElement(children: .combine)
         .accessibilityAction(named: "Go to artist") { model.show(.artist(track.artist)) }
         .accessibilityAction(named: "Go to album") { model.show(.album(track.albumKey)) }
-        .frame(maxWidth: 400, alignment: .leading)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-        .padding(.leading, 56)
-        .padding(.bottom, 46)
+        .frame(maxWidth: 350, alignment: .leading)
     }
 
     private func formatBadges(_ track: Track) -> some View {
@@ -122,9 +155,6 @@ struct ImmersiveView: View {
                 emphasis: .accent)
             QualityBadge(text: track.format.longDescription)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-        .padding(.trailing, 56)
-        .padding(.bottom, 46)
     }
 
     private var controls: some View {
@@ -151,26 +181,65 @@ struct ImmersiveView: View {
             }
             .frame(width: 420)
         }
-        .padding(.horizontal, Tokens.Space.xxl)
-        .padding(.top, Tokens.Space.l)
-        .padding(.bottom, 18)
-        .background {
-            RoundedRectangle(cornerRadius: Tokens.Radius.panel, style: .continuous)
-                .fill(Color(hex: 0x141419).opacity(0.82))
-                .background(.ultraThinMaterial,
-                            in: RoundedRectangle(cornerRadius: Tokens.Radius.panel,
-                                                 style: .continuous))
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: Tokens.Radius.panel, style: .continuous)
-                .strokeBorder(Color(hex: 0x2B2B33), lineWidth: 1)
-        }
-        .shadow(color: .black.opacity(0.5), radius: 25, y: 12)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        .padding(.bottom, 34)
         .opacity(isHovering ? 1 : 0)
         .offset(y: isHovering ? 0 : 10)
         .allowsHitTesting(isHovering)
         .animation(Tokens.Motion.controls, value: isHovering)
+    }
+
+    /// Legibility for the caption and badges, which — unlike the transport
+    /// controls — stay visible whether or not the pointer is hovering.
+    private var bottomScrim: some View {
+        LinearGradient(
+            stops: [
+                .init(color: .black.opacity(0), location: 0),
+                .init(color: .black.opacity(0.46), location: 1),
+            ],
+            startPoint: .top, endPoint: .bottom
+        )
+        .frame(height: 260)
+        .frame(maxWidth: .infinity)
+        .allowsHitTesting(false)
+    }
+}
+
+/// Two soft, slowly drifting glows lifted from the corners of the current
+/// cover, blurred into the immersive background — the room's light shifts
+/// with the track instead of staying the same flat gradient for every album.
+private struct AmbientBloom: View {
+    var primary: Color
+    var secondary: Color
+
+    @State private var drift = false
+
+    var body: some View {
+        GeometryReader { geometry in
+            let size = geometry.size
+            ZStack {
+                RadialGradient(
+                    colors: [primary.opacity(0.55), .clear],
+                    center: .center, startRadius: 0, endRadius: min(size.width, size.height) * 0.42
+                )
+                .frame(width: size.width, height: size.height)
+                .position(x: size.width * (drift ? 0.285 : 0.30),
+                          y: size.height * (drift ? 0.26 : 0.24))
+
+                RadialGradient(
+                    colors: [secondary.opacity(0.42), .clear],
+                    center: .center, startRadius: 0, endRadius: min(size.width, size.height) * 0.46
+                )
+                .frame(width: size.width, height: size.height)
+                .position(x: size.width * (drift ? 0.735 : 0.74),
+                          y: size.height * (drift ? 0.64 : 0.66))
+            }
+        }
+        .blur(radius: 90)
+        .opacity(0.85)
+        .allowsHitTesting(false)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 26).repeatForever(autoreverses: true)) {
+                drift = true
+            }
+        }
     }
 }

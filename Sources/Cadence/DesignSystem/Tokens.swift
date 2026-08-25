@@ -112,6 +112,9 @@ enum Tokens {
         /// counts, not a title that wraps.
         static let artistColumnWidth: CGFloat = 152
         static let immersiveArt: CGFloat = 540
+        /// Fixed regardless of hover, so the artwork above it never has to
+        /// move to make room for the transport controls fading in.
+        static let immersiveBandHeight: CGFloat = 176
         static let minWindow = CGSize(width: 1_060, height: 660)
         static let defaultWindow = CGSize(width: 1_280, height: 820)
     }

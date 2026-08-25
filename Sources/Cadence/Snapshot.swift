@@ -92,6 +92,15 @@ enum Snapshot {
             container.model.isImmersive = true
         },
 
+        // The artwork's stage is flexible so the bottom band never has to
+        // move it on hover, but that means the smallest supported window
+        // gives it less room than its fixed 540pt — worth a look on every
+        // change to this layout.
+        Shot(name: "10b-immersive-minimum", size: Tokens.Layout.minWindow) { container in
+            open(container, album: "Sound of the Slow Hours", year: 2023)
+            container.model.isImmersive = true
+        },
+
         // Nothing playing — the state the app actually launches in.
         Shot(name: "11-idle", size: Tokens.Layout.defaultWindow) { container in
             container.playback.stop()

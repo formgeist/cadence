@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import CoreImage
 import Observation
 import CadenceCore
 import CadenceLibrary
@@ -72,6 +73,99 @@ final class ArtworkLoader {
     private static func decodedCost(of image: NSImage) -> Int {
         guard let rep = image.representations.first else { return 0 }
         return rep.pixelsWide * rep.pixelsHigh * 4
+    }
+
+    // MARK: - Ambient bloom
+
+    private let bloomCache = NSCache<NSString, BloomPalette>()
+    private var bloomMisses: Set<String> = []
+    private var bloomInFlight: Set<String> = []
+
+    private static let ciContext = CIContext(options: [.workingColorSpace: NSNull()])
+
+    /// Two soft colors sampled from opposite corners of the cover, for the
+    /// immersive view's ambient background glow. Piggybacks on the same
+    /// decode pipeline as `image(for:size:)`, at a much smaller size —
+    /// averaging the full 600pt cover would be needlessly slow for two
+    /// numbers a heavy blur immediately smooths out anyway.
+    func bloomColors(for id: Artwork.ID?) -> (Color, Color)? {
+        _ = generation // same redraw dependency as `image(for:size:)`
+        guard let id else { return nil }
+        let key = "\(id)-bloom"
+        if let cached = bloomCache.object(forKey: key as NSString) {
+            return (cached.primary, cached.secondary)
+        }
+        guard !bloomMisses.contains(key), !bloomInFlight.contains(key) else { return nil }
+        // Requesting the thumbnail here (rather than requiring a caller to
+        // have already asked for one) both triggers the decode and shares
+        // its cache entry with any other 48pt use.
+        guard let thumbnail = image(for: id, size: 48) else { return nil }
+
+        bloomInFlight.insert(key)
+        Task { [weak self] in
+            guard let self else { return }
+            defer { self.bloomInFlight.remove(key) }
+            guard let colors = Self.extractBloomColors(from: thumbnail) else {
+                self.bloomMisses.insert(key)
+                return
+            }
+            self.bloomCache.setObject(
+                BloomPalette(primary: colors.0, secondary: colors.1),
+                forKey: key as NSString)
+            self.generation += 1
+        }
+        return nil
+    }
+
+    /// Averages over the visual top-left and bottom-right of the cover.
+    /// Core Image's Y axis runs bottom-to-top, so "visually top" is the
+    /// *upper* half of the extent, not the lower one.
+    private static func extractBloomColors(from image: NSImage) -> (Color, Color)? {
+        guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            return nil
+        }
+        let ciImage = CIImage(cgImage: cgImage)
+        let extent = ciImage.extent
+        let topLeft = CGRect(
+            x: extent.minX, y: extent.minY + extent.height * 0.35,
+            width: extent.width * 0.65, height: extent.height * 0.65)
+        let bottomRight = CGRect(
+            x: extent.minX + extent.width * 0.35, y: extent.minY,
+            width: extent.width * 0.65, height: extent.height * 0.65)
+
+        guard let primary = averageColor(of: ciImage, in: topLeft),
+              let secondary = averageColor(of: ciImage, in: bottomRight)
+        else { return nil }
+        return (primary, secondary)
+    }
+
+    private static func averageColor(of image: CIImage, in rect: CGRect) -> Color? {
+        guard let filter = CIFilter(name: "CIAreaAverage") else { return nil }
+        filter.setValue(image, forKey: kCIInputImageKey)
+        filter.setValue(CIVector(cgRect: rect), forKey: kCIInputExtentKey)
+        guard let output = filter.outputImage else { return nil }
+
+        var bitmap = [UInt8](repeating: 0, count: 4)
+        ciContext.render(
+            output, toBitmap: &bitmap, rowBytes: 4,
+            bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
+            format: .RGBA8, colorSpace: CGColorSpaceCreateDeviceRGB())
+        return Color(
+            red: Double(bitmap[0]) / 255,
+            green: Double(bitmap[1]) / 255,
+            blue: Double(bitmap[2]) / 255)
+    }
+}
+
+/// Boxes a pair of `Color`s so they can sit in an `NSCache`, which requires
+/// reference types.
+private final class BloomPalette {
+    let primary: Color
+    let secondary: Color
+
+    init(primary: Color, secondary: Color) {
+        self.primary = primary
+        self.secondary = secondary
     }
 }
 
