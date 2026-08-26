@@ -318,6 +318,7 @@ private struct ArtistCard: View {
         .plainControl()
         .focusable(false)
         .onHover { isHovering = $0 }
+        .pointingHandCursor()
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(artist.name), \(artist.summary)")
         .accessibilityAddTraits(.isButton)
@@ -498,6 +499,7 @@ struct AlbumCard: View {
         .plainControl()
         .focusable(false)
         .onHover { isHovering = $0 }
+        .pointingHandCursor()
         .background {
             GeometryReader { geometry in
                 Color.clear
@@ -601,6 +603,7 @@ private struct PlaylistShelfRow: View {
             .contentShape(Rectangle())
         }
         .plainControl()
+        .pointingHandCursor()
         .dropDestination(for: TrackSelection.self) { selections, _ in
             let ids = selections.flatMap(\.trackIDs)
             guard !ids.isEmpty else { return false }
