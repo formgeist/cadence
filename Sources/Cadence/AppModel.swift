@@ -195,6 +195,11 @@ final class AppModel {
     /// Playlists hold track ids; resolving one per row against `allTracks`
     /// would be a linear scan of the whole library for every line on screen.
     private var tracksByID: [Track.ID: Track] = [:]
+    /// `album(for:)`/`artist(named:)` back search results — one lookup per
+    /// matched track. A linear scan there turns a broad query into millions
+    /// of comparisons at library scale; see #85.
+    private var albumsByKey: [Album.Key: Album] = [:]
+    private var artistsByName: [String: Artist] = [:]
     private(set) var isLoading = true
     private(set) var loadError: String?
     /// Set when the real database could not be opened and the preview library
@@ -270,6 +275,8 @@ final class AppModel {
             artistDateAdded = Dictionary(grouping: allTracks, by: \.albumArtist)
                 .mapValues { tracks in tracks.map(\.dateAdded).max() ?? .distantPast }
             tracksByID = Dictionary(allTracks.map { ($0.id, $0) }) { first, _ in first }
+            albumsByKey = Dictionary(albums.map { ($0.key, $0) }) { first, _ in first }
+            artistsByName = Dictionary(artists.map { ($0.name, $0) }) { first, _ in first }
             // A track removed from the library should not sit in this list
             // forever, wasting one of its five slots on something
             // `recentlyPlayed` will never resolve again.
@@ -323,7 +330,7 @@ final class AppModel {
     }
 
     func album(for key: Album.Key) -> Album? {
-        albums.first { $0.key == key }
+        albumsByKey[key]
     }
 
     /// An artist has no picture of their own; the first cover they released
@@ -333,7 +340,7 @@ final class AppModel {
     }
 
     func artist(named name: String) -> Artist? {
-        artists.first { $0.name == name }
+        artistsByName[name]
     }
 
     /// Every album credited to one artist, oldest first. The store has the
