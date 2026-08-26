@@ -12,7 +12,7 @@ grouped into the Phase 6 (Depth) and Phase 7 (Release) milestones.
 
 ```bash
 make run                          # launch the app
-make test                         # 147 tests
+make test                         # 191 tests
 make app                          # assemble a signed, sandboxed Cadence.app
 make audio-check                  # can a sandboxed build go bit-perfect?
 make a11y                         # print the accessibility tree
@@ -133,14 +133,25 @@ settles the list-performance question, though not as it was posed — it asked
 whether SwiftUI `Table` stays smooth at library size, and the design uses
 `LazyVGrid` and `LazyVStack`, never `Table`.
 
-At 30,000 tracks the artists grid holds the display's frame rate. The album grid
-runs ~20 ms per frame with artwork and ~29 ms without, so a hard scroll through
-2,500 albums sits between 30 and 60 fps. No `NSCollectionView` bridge needed.
+At 30,000 tracks both grids hold the display's frame rate: 8.3 ms median with
+artwork, across 250 artists and 2,500 albums alike. p95 is 24 ms and about a
+quarter of frames run long, which is artwork decodes landing mid-scroll rather
+than layout. No `NSCollectionView` bridge needed.
 
-Scrolling is measured on a visible window with a display link. The obvious
-alternative is wrong: `cacheDisplay(in:to:)` rasterises on the CPU, where blur
-costs orders of magnitude more than on the GPU, and measured that way a drop
-shadow looks like a 1.6-second frame.
+Scrolling is measured on a visible window with a display link. Two ways of
+measuring it are wrong, and both looked plausible:
+
+- `cacheDisplay(in:to:)` rasterises on the CPU, where blur costs orders of
+  magnitude more than on the GPU. Measured that way a drop shadow looks like a
+  1.6-second frame.
+- Scrolling each list in a **fixed number of steps** makes a long list travel
+  proportionally faster. At 180 steps the album grid moved 638pt per frame
+  against the artists grid's 42pt and reported 49 ms — a fling no trackpad
+  produces — while the same grid measured at the same 40pt per step sits at
+  8.3 ms. It read as a real 2,500-album regression and sent the harness's own
+  verdict to "needs an `NSCollectionView` bridge". The step is a fixed
+  *distance* now; velocity is what has to be held constant for two lists, or
+  one list across a change, to be comparable at all.
 
 ## Folder access
 
