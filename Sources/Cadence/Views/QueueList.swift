@@ -60,6 +60,7 @@ struct QueueList: View {
                         }
                         .onTapGesture(count: 2) { playback.jump(to: track) }
                         .onTapGesture { selectedTrack = track.id }
+                        .pointingHandCursor()
                         .cadenceContextMenu(onOpen: { selectedTrack = track.id }) {
                             PlaylistMenu.queued(track, playback: playback)
                         }

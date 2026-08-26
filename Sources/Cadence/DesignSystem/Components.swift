@@ -326,9 +326,11 @@ struct PlainControlStyle: ButtonStyle {
 }
 
 extension View {
-    /// Pointer stays an arrow over controls, the way it does in a native Mac
-    /// app rather than a web page.
-    func plainControl() -> some View { buttonStyle(PlainControlStyle()) }
+    /// Bare button styling, plus the pointing-hand cursor every clickable
+    /// control in the app wants — a bezel-less `Button` reads as its content
+    /// alone, so without this it looks and feels just like inert text or
+    /// artwork until clicked.
+    func plainControl() -> some View { buttonStyle(PlainControlStyle()).pointingHandCursor() }
 }
 
 /// One glyph, a hover wash, and a name for VoiceOver. The sidebar's add
@@ -389,15 +391,6 @@ struct InlineLink: View {
         }
         .plainControl()
         .onHover { isHovering = $0 }
-        // Unlike `plainControl()`'s buttons, this reads as a hyperlink —
-        // underline and all — so the cursor should say so too (issue #76).
-        // `NSCursor.set()` inside `.onHover` looked right but wasn't: AppKit
-        // re-resolves the cursor on every `cursorUpdate` as the mouse moves,
-        // which stomps a one-shot imperative `.set()` almost immediately, so
-        // it never visibly stuck. A real cursor rect via `resetCursorRects`
-        // is what AppKit consults on those updates, so it's the only form
-        // that survives them.
-        .pointingHandCursor()
     }
 }
 

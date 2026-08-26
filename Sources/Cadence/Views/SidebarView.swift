@@ -166,7 +166,6 @@ private struct NavigationRow: View {
         }
         .plainControl()
         .onHover { isHovering = $0 }
-        .pointingHandCursor()
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 }
@@ -213,7 +212,6 @@ private struct PlaylistRow: View {
         }
         .plainControl()
         .onHover { isHovering = $0 }
-        .pointingHandCursor()
         .dropDestination(for: TrackSelection.self) { selections, _ in
             let ids = selections.flatMap(\.trackIDs)
             guard !ids.isEmpty else { return false }

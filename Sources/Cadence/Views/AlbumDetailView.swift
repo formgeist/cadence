@@ -314,6 +314,7 @@ private struct TrackRow: View {
             .onTapGesture(count: 2, perform: onPlay)
             .onTapGesture(perform: onSelect)
             .onHover { isHovering = $0 }
+            .pointingHandCursor()
             // One stop per track, reading as a sentence, instead of four stops
             // reading "01", a title, "16/44.1", "4:12".
             .accessibilityElement(children: .ignore)
