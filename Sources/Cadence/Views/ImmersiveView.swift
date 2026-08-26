@@ -34,6 +34,12 @@ struct ImmersiveView: View {
             bottomScrim
         }
         .transition(.opacity)
+        // A finished queue clears currentTrack (`PlaybackController.stop()`),
+        // which would otherwise leave this view showing an empty artwork
+        // frame over nothing to play. The library is already live behind it.
+        .onChange(of: playback.currentTrack?.id) { _, id in
+            if id == nil { model.isImmersive = false }
+        }
     }
 
     private var backgroundLayer: some View {
