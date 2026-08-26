@@ -216,6 +216,10 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
     /// Prefix-matched FTS5. Every token gets a `*` so results appear while the
     /// user is still typing, which is the only behaviour that makes a
     /// search-as-you-type field feel like one.
+    ///
+    /// Capped at `searchLimit`: the popover shows at most 3 tracks, so
+    /// fetching and decoding every matching row for a broad prefix like "a"
+    /// is pure waste — see #85.
     public func tracks(matching query: String) async throws -> [Track] {
         let pattern = Self.ftsPattern(for: query)
         guard !pattern.isEmpty else { return [] }
@@ -227,7 +231,8 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
                     JOIN trackSearch ON trackSearch.trackID = track.id
                     WHERE trackSearch MATCH ?
                     ORDER BY rank
-                    """, arguments: [pattern]).map(\.track)
+                    LIMIT ?
+                    """, arguments: [pattern, Self.searchLimit]).map(\.track)
             } catch {
                 // A malformed pattern is a user typing, not a bug. Returning
                 // nothing beats throwing into the search field.
@@ -235,6 +240,11 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
             }
         }
     }
+
+    /// Comfortably above the handful of albums/artists/tracks the popover
+    /// actually shows, so a hit that belongs in the top 3 of some category
+    /// is never pushed out by rank alone before `AppModel` gets to group it.
+    private static let searchLimit = 100
 
     /// Quotes each token and appends `*`, so punctuation a user types can't
     /// become FTS5 syntax.
