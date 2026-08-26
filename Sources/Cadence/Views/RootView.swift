@@ -20,7 +20,12 @@ struct RootView: View {
                     SidebarView()
                     content
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    NowPlayingPane()
+                    // Nothing to show and nothing coming up — an empty pane
+                    // just narrows the library for no reason (issue #75).
+                    if hasNowPlayingContent {
+                        NowPlayingPane()
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                    }
                 }
             }
 
@@ -36,6 +41,7 @@ struct RootView: View {
         // issue #15 exactly.
         .ignoresSafeArea(.container, edges: .top)
         .animation(.easeInOut(duration: 0.2), value: model.isImmersive)
+        .animation(.easeInOut(duration: 0.2), value: hasNowPlayingContent)
         .animation(.easeOut(duration: 0.2), value: playback.notice)
         .animation(.easeOut(duration: 0.2), value: model.actionError)
         .animation(.easeOut(duration: 0.2), value: model.notice)
@@ -95,6 +101,12 @@ struct RootView: View {
                  ? "The file stays on disk. It’s also removed from any playlists it’s in."
                  : "The files stay on disk. They’re also removed from any playlists they’re in.")
         }
+    }
+
+    /// Whether the Now Playing pane has anything to show — something playing,
+    /// or something queued up behind it.
+    private var hasNowPlayingContent: Bool {
+        playback.currentTrack != nil || !playback.upNext.isEmpty
     }
 
     private var deletionPrompt: String {

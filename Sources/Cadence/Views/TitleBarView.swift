@@ -89,13 +89,21 @@ struct SearchField: View {
     /// popover can still flash into existence for that one frame before it
     /// does — see #72.
     @State private var hasSettled = false
+    /// The same one-tick shield as `hasSettled`, scoped to navigation instead
+    /// of launch: true from the moment `model.screen` changes until the
+    /// deferred check below has had its say. Without it, an ambient
+    /// reassignment that lands in the same tick as the navigation would still
+    /// flash the popover in for a frame before that check clears it.
+    @State private var isSettlingAfterNavigation = false
     /// The local key monitor that answers arrow keys while search is active
     /// — see the note on `AppModel.moveSearchHighlight`.
     @State private var arrowKeyMonitor: Any?
 
     /// What the field *looks* like: focused for real, or drawn that way for a
     /// snapshot.
-    private var isActive: Bool { hasSettled && (isFocused || rendersFocused) }
+    private var isActive: Bool {
+        hasSettled && !isSettlingAfterNavigation && (isFocused || rendersFocused)
+    }
 
     var body: some View {
         @Bindable var model = model
@@ -226,6 +234,28 @@ struct SearchField: View {
         }
         .onChange(of: focusRequester?.token) { _, _ in
             isFocused = true
+        }
+        // Clicking an artist or album link inside a focused list — the track
+        // list's own click-to-select claims keyboard focus first, same as
+        // the search field does — removes that list from the screen the
+        // instant navigation lands. AppKit reassigns the keyboard to
+        // whatever key view it finds next only once it actually tears down
+        // the old view, which lags a tick behind the `screen` change itself
+        // — clearing `isFocused` synchronously here just loses the race and
+        // gets overwritten right back. Deferred the same one tick as the
+        // launch fix above, and guarded by the same token comparison so a
+        // genuine ⌘K landing in that tick is never swallowed; `isActive`
+        // stays held off for that tick too, the same reason `hasSettled` does
+        // at launch.
+        .onChange(of: model.screen) { _, _ in
+            isSettlingAfterNavigation = true
+            let tokenAtNavigation = focusRequester?.token
+            DispatchQueue.main.async {
+                if focusRequester?.token == tokenAtNavigation {
+                    isFocused = false
+                }
+                isSettlingAfterNavigation = false
+            }
         }
         .onExitCommand {
             model.endSearch()

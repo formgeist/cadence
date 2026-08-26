@@ -182,6 +182,7 @@ struct PlaylistDetailView: View {
                     }
                     .onTapGesture(count: 2) { play(entry) }
                     .onTapGesture { selectedEntry = entry.id }
+                    .pointingHandCursor()
                     .cadenceContextMenu(onOpen: { selectedEntry = entry.id }) {
                         PlaylistMenu.track(
                             entry.track,

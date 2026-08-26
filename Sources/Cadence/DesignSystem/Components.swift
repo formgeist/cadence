@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import CadenceCore
 
 // MARK: - Artwork
@@ -325,9 +326,11 @@ struct PlainControlStyle: ButtonStyle {
 }
 
 extension View {
-    /// Pointer stays an arrow over controls, the way it does in a native Mac
-    /// app rather than a web page.
-    func plainControl() -> some View { buttonStyle(PlainControlStyle()) }
+    /// Bare button styling, plus the pointing-hand cursor every clickable
+    /// control in the app wants — a bezel-less `Button` reads as its content
+    /// alone, so without this it looks and feels just like inert text or
+    /// artwork until clicked.
+    func plainControl() -> some View { buttonStyle(PlainControlStyle()).pointingHandCursor() }
 }
 
 /// One glyph, a hover wash, and a name for VoiceOver. The sidebar's add
@@ -388,6 +391,58 @@ struct InlineLink: View {
         }
         .plainControl()
         .onHover { isHovering = $0 }
+    }
+}
+
+/// A zero-size `NSView` whose only job is a cursor rect covering whatever
+/// SwiftUI overlays it on. AppKit only asks a view to declare its cursor
+/// rects — via `resetCursorRects` — when it actually needs them (layout,
+/// becoming key, entering a new window); once declared, it owns that region
+/// until the next ask, so it doesn't get re-fought on every `cursorUpdate`
+/// the way an imperative `NSCursor.set()` in `.onHover` does.
+private struct CursorRectView: NSViewRepresentable {
+    var cursor: NSCursor
+
+    func makeNSView(context: Context) -> NSView { _CursorRectNSView(cursor: cursor) }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        (nsView as? _CursorRectNSView)?.cursor = cursor
+    }
+
+    private final class _CursorRectNSView: NSView {
+        var cursor: NSCursor
+        init(cursor: NSCursor) {
+            self.cursor = cursor
+            super.init(frame: .zero)
+        }
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+        override func resetCursorRects() { addCursorRect(bounds, cursor: cursor) }
+    }
+}
+
+extension View {
+    /// Declares a pointing-hand cursor rect over this view's bounds — see
+    /// `CursorRectView` for why this, rather than a bare `NSCursor.set()` in
+    /// `.onHover`, is the form that survives AppKit's own `cursorUpdate`.
+    ///
+    /// Neither `.background` nor `.overlay` placement made a difference on a
+    /// row that is also a `.draggable` source — every track row in the app —
+    /// so something in `.draggable`'s own gesture handling keeps winning the
+    /// cursor regardless of which side of it the rect sits on, not just
+    /// which one loses a z-order hit-test the way the `.background` attempt
+    /// assumed. `.onContinuousHover` below is the fallback that does not
+    /// depend on that guess being right: it re-asserts the cursor on every
+    /// single mouse-moved event, the same event whatever is resetting it
+    /// fires on, so it wins by always being the last word rather than by
+    /// out-ranking anything.
+    func pointingHandCursor() -> some View {
+        overlay(CursorRectView(cursor: .pointingHand).allowsHitTesting(false))
+            .onContinuousHover { phase in
+                switch phase {
+                case .active: NSCursor.pointingHand.set()
+                case .ended: NSCursor.arrow.set()
+                }
+            }
     }
 }
 

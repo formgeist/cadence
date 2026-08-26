@@ -519,6 +519,35 @@ struct QueueEditingTests {
         #expect(engine.prepared.last?.lastPathComponent == "T3.flac")
     }
 
+    @Test("Clearing Up Next empties the queue and re-arms with nothing")
+    func clearUpNext() async {
+        let engine = SpyEngine()
+        let controller = PlaybackController(engine: engine)
+        let tracks = (1...4).map { makeTrack("T\($0)") }
+
+        controller.play(tracks[0], in: tracks)
+        await engine.emit(.started(tracks[0].url))
+        controller.clearUpNext()
+
+        #expect(controller.currentTrack?.title == "T1")
+        #expect(controller.upNext.isEmpty)
+        #expect(engine.clearNextCount >= 1)
+    }
+
+    @Test("Clearing an already-empty Up Next does nothing")
+    func clearUpNextWhenEmpty() {
+        let engine = SpyEngine()
+        let controller = PlaybackController(engine: engine)
+        let tracks = (1...2).map { makeTrack("T\($0)") }
+
+        controller.play(tracks[0], in: tracks)
+        controller.jump(to: tracks[1])
+        controller.clearUpNext()
+
+        #expect(controller.currentTrack?.title == "T2")
+        #expect(controller.queue.count == 2)
+    }
+
     @Test("The playing track cannot be removed from Up Next")
     func cannotRemoveCurrent() {
         let engine = SpyEngine()

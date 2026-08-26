@@ -243,6 +243,16 @@ public final class PlaybackController {
         requeueNext()
     }
 
+    /// Empties everything queued after the current track. Playback itself is
+    /// untouched — this is "forget what's next," not `stop()`.
+    public func clearUpNext() {
+        guard let currentIndex, currentIndex + 1 < queue.count else { return }
+        let removedIDs = Set(queue[(currentIndex + 1)...].map(\.id))
+        queue.removeSubrange((currentIndex + 1)...)
+        orderedQueue.removeAll { removedIDs.contains($0.id) }
+        requeueNext()
+    }
+
     /// Plays something already in the queue, without disturbing the rest of it.
     public func jump(to track: Track) {
         guard let index = queue.firstIndex(where: { $0.id == track.id }) else { return }

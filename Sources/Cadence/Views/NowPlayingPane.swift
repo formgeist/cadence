@@ -147,9 +147,15 @@ struct NowPlayingPane: View {
                 SectionLabel("Up next")
                 Spacer()
                 if !playback.upNext.isEmpty {
-                    Text("\(playback.upNext.count)")
-                        .font(Tokens.Typography.mono(10))
-                        .foregroundStyle(Tokens.Palette.textFaint)
+                    HStack(spacing: Tokens.Space.s) {
+                        Text("\(playback.upNext.count)")
+                            .font(Tokens.Typography.mono(10))
+                            .foregroundStyle(Tokens.Palette.textFaint)
+                        IconButton(systemImage: "trash", label: "Clear queue",
+                                   glyphSize: 10.5, side: 18) {
+                            playback.clearUpNext()
+                        }
+                    }
                 }
             }
             .padding(.horizontal, Tokens.Space.paneInset)
