@@ -422,19 +422,27 @@ private struct CursorRectView: NSViewRepresentable {
 
 extension View {
     /// Declares a pointing-hand cursor rect over this view's bounds — see
-    /// `CursorRectView` for why this, rather than `NSCursor.set()` in
-    /// `.onHover`, is the form that actually sticks.
+    /// `CursorRectView` for why this, rather than a bare `NSCursor.set()` in
+    /// `.onHover`, is the form that survives AppKit's own `cursorUpdate`.
     ///
-    /// `.overlay`, not `.background`: a row that is also a `.draggable`
-    /// source — every track row in the app — installs its own drag-gesture
-    /// view in front of its content to catch the mouse-down that starts a
-    /// drag, and a cursor rect declared *behind* that (via `.background`)
-    /// loses the hit-test to it and is never consulted. An overlay sits back
-    /// in front, ahead of that drag view, so its rect is what AppKit finds —
-    /// `allowsHitTesting(false)` keeps it out of the way of the clicks and
-    /// drags it now sits in front of.
+    /// Neither `.background` nor `.overlay` placement made a difference on a
+    /// row that is also a `.draggable` source — every track row in the app —
+    /// so something in `.draggable`'s own gesture handling keeps winning the
+    /// cursor regardless of which side of it the rect sits on, not just
+    /// which one loses a z-order hit-test the way the `.background` attempt
+    /// assumed. `.onContinuousHover` below is the fallback that does not
+    /// depend on that guess being right: it re-asserts the cursor on every
+    /// single mouse-moved event, the same event whatever is resetting it
+    /// fires on, so it wins by always being the last word rather than by
+    /// out-ranking anything.
     func pointingHandCursor() -> some View {
         overlay(CursorRectView(cursor: .pointingHand).allowsHitTesting(false))
+            .onContinuousHover { phase in
+                switch phase {
+                case .active: NSCursor.pointingHand.set()
+                case .ended: NSCursor.arrow.set()
+                }
+            }
     }
 }
 
