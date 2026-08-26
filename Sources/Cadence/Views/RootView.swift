@@ -47,6 +47,9 @@ struct RootView: View {
         .animation(.easeOut(duration: 0.2), value: model.notice)
         .task {
             await model.load()
+            // The queue only has ids until the library backing them exists —
+            // see #42.
+            playback.restoreQueue { model.track(id: $0) }
             // A library that already has folders rescans on launch, so files
             // added since last time appear without being asked for — but not
             // a folder whose last scan is still recent (issue #39), and not

@@ -152,6 +152,11 @@ public enum SettingsKey: String, Sendable {
     /// JSON-encoded `[String]` — recent search terms and recently played
     /// track ids, most-recent first. See #72.
     case recentSearches, recentlyPlayed
+    /// The queue across a relaunch — see #42. `queueTrackIDs` and
+    /// `queueOrderedTrackIDs` are JSON-encoded `[String]` of track ids, in
+    /// play order and in pre-shuffle order respectively; `queueCurrentTrackID`
+    /// is the one that was playing, and `queuePosition` how far into it.
+    case queueTrackIDs, queueOrderedTrackIDs, queueCurrentTrackID, queuePosition
 }
 
 /// Small pieces of state that should survive a relaunch — volume, mute,
