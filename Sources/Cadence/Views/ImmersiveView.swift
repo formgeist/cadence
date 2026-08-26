@@ -22,13 +22,14 @@ struct ImmersiveView: View {
 
             VStack(spacing: 0) {
                 topBar
-                VStack(spacing: 0) {
-                    stage
-                    band
-                }
+                stage
+                    .contentShape(Rectangle())
+                    .onHover { isHovering = $0 }
+            }
+
+            band
                 .contentShape(Rectangle())
                 .onHover { isHovering = $0 }
-            }
 
             bottomScrim
         }
@@ -69,12 +70,15 @@ struct ImmersiveView: View {
         .frame(height: 44)
     }
 
-    /// Flexible: it takes whatever height is left once the top bar and the
-    /// bottom band — fixed regardless of hover — have theirs, so the artwork
-    /// centers in the true remaining space instead of needing a hover-time
-    /// nudge to clear the controls. The artwork itself shrinks below its
-    /// usual 540pt when that space is tight, rather than overflowing into
-    /// the band below on the app's smallest supported window.
+    /// Flexible: it takes whatever height is left once the top bar and a
+    /// *fixed* bottom reservation — `immersiveBandHeight`, not band's own
+    /// (title-dependent) size — have theirs. Reserving a constant amount
+    /// keeps the artwork's size and position independent of how many lines
+    /// the track title wraps to; band itself is a separate `ZStack` layer
+    /// (see `body`), free to grow past that reservation, upward from the
+    /// window's bottom edge, without ever nudging the artwork. The artwork
+    /// still shrinks below its usual 540pt when the window itself is tight,
+    /// rather than overflowing into the reserved band space.
     private var stage: some View {
         GeometryReader { geometry in
             let side = min(
@@ -97,14 +101,32 @@ struct ImmersiveView: View {
             .shadow(color: .black.opacity(0.72), radius: 55, y: 30)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .padding(.bottom, Tokens.Layout.immersiveBandHeight)
     }
 
+    /// Anchored to the window's bottom edge as its own `ZStack` layer
+    /// (rather than flowing after `stage`), so a wrapped title grows this
+    /// upward from a fixed bottom edge instead of shifting the whole band
+    /// down or resizing the artwork above it.
+    ///
+    /// `trackCaption` is attached with `.overlay` and given a hard, fixed
+    /// height — not sized to the title, even though the title is the only
+    /// thing in it. Two things have to both be true for the transport
+    /// controls to land at a track-independent pixel: `trackCaption` can't
+    /// feed its size into whatever positions `controls` (`.overlay` never
+    /// lets overlaid content affect the base view's reported size, unlike
+    /// an `HStack`/`ZStack` sibling), *and* `trackCaption` can't need more
+    /// height than it's given in the first place (a box sized to content
+    /// still measures that content when it's asked to fit a smaller
+    /// proposal, and that measurement — not the box's nominal size — is
+    /// what every dependent alignment computation downstream actually
+    /// uses). 230pt comfortably fits the 3-line worst case `lineLimit(3)`
+    /// allows, so this box's actual height never varies by track, and nothing
+    /// downstream of it can drift.
     private var band: some View {
         HStack(alignment: .bottom, spacing: 24) {
-            Group {
-                if let track = playback.currentTrack { trackCaption(track) }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            Color.clear
+                .frame(maxWidth: .infinity)
 
             controls
 
@@ -115,7 +137,15 @@ struct ImmersiveView: View {
         }
         .padding(.horizontal, 56)
         .padding(.bottom, 40)
-        .frame(height: Tokens.Layout.immersiveBandHeight)
+        .frame(height: Tokens.Layout.immersiveBandHeight, alignment: .bottom)
+        .overlay(alignment: .bottomLeading) {
+            Group {
+                if let track = playback.currentTrack { trackCaption(track) }
+            }
+            .frame(height: 230, alignment: .bottom)
+            .padding(.leading, 56)
+            .padding(.bottom, 40)
+        }
     }
 
     private func trackCaption(_ track: Track) -> some View {
