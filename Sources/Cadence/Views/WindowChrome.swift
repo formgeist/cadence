@@ -17,6 +17,11 @@ enum WindowChrome {
         window.styleMask.insert(.fullSizeContentView)
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
+        // A restored window would skip straight to whatever frame macOS
+        // cached at last quit — including a loaded library — rather than
+        // ever showing the real, live loading state. Nothing about this app
+        // needs that continuity, so it's off rather than left to chance.
+        window.isRestorable = false
         centreTrafficLights(in: window)
     }
 

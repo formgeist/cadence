@@ -12,6 +12,50 @@ import CadenceCore
 /// against `PreviewData` — the box set, the compilation, the title long enough
 /// to wrap — is something to do on every change, and it should not require
 /// clicking through the app to find out that a layout broke.
+/// Wraps a store with a delay before its first read, long enough that a
+/// skeleton shot's capture happens while `AppModel.load()` is still
+/// in flight — see `Snapshot.Shot.loadsBeforeConfigure`.
+private struct SlowStore: LibraryStore {
+    var wrapped: any LibraryStore
+    var delay: Duration
+
+    func allTracks() async throws -> [Track] {
+        try await Task.sleep(for: delay)
+        return try await wrapped.allTracks()
+    }
+    func albums() async throws -> [Album] { try await wrapped.albums() }
+    func album(for key: Album.Key) async throws -> Album? { try await wrapped.album(for: key) }
+    func artists() async throws -> [Artist] { try await wrapped.artists() }
+    func albums(byArtist name: String) async throws -> [Album] {
+        try await wrapped.albums(byArtist: name)
+    }
+    func playlists() async throws -> [Playlist] { try await wrapped.playlists() }
+    @discardableResult
+    func createPlaylist(named name: String) async throws -> Playlist {
+        try await wrapped.createPlaylist(named: name)
+    }
+    func addTracks(_ trackIDs: [Track.ID], to playlistID: Playlist.ID) async throws {
+        try await wrapped.addTracks(trackIDs, to: playlistID)
+    }
+    func removeTracks(atOffsets offsets: IndexSet, from playlistID: Playlist.ID) async throws {
+        try await wrapped.removeTracks(atOffsets: offsets, from: playlistID)
+    }
+    func moveTracks(fromOffsets source: IndexSet, toOffset destination: Int,
+                    in playlistID: Playlist.ID) async throws {
+        try await wrapped.moveTracks(fromOffsets: source, toOffset: destination, in: playlistID)
+    }
+    func renamePlaylist(_ id: Playlist.ID, to name: String) async throws {
+        try await wrapped.renamePlaylist(id, to: name)
+    }
+    func deletePlaylist(_ id: Playlist.ID) async throws { try await wrapped.deletePlaylist(id) }
+    func tracks(matching query: String) async throws -> [Track] {
+        try await wrapped.tracks(matching: query)
+    }
+    func upsert(_ tracks: [Track]) async throws { try await wrapped.upsert(tracks) }
+    func remove(trackIDs: [Track.ID]) async throws { try await wrapped.remove(trackIDs: trackIDs) }
+    func librarySize() async throws -> Int64 { try await wrapped.librarySize() }
+}
+
 @MainActor
 enum Snapshot {
 
@@ -26,16 +70,22 @@ enum Snapshot {
         /// The suggestions only appear while the field holds focus, which an
         /// off-screen window cannot take.
         var focusesSearchField: Bool
+        /// False for the skeleton shots: `AppModel` starts `isLoading`, and
+        /// awaiting `load()` first — as every other shot needs, to have
+        /// anything to show — is exactly the state that would erase.
+        var loadsBeforeConfigure: Bool
         var configure: (AppContainer) -> Void
 
         init(name: String, size: CGSize,
              store: (@Sendable () -> any LibraryStore)? = nil,
              focusesSearchField: Bool = false,
+             loadsBeforeConfigure: Bool = true,
              configure: @escaping (AppContainer) -> Void) {
             self.name = name
             self.size = size
             self.store = store
             self.focusesSearchField = focusesSearchField
+            self.loadsBeforeConfigure = loadsBeforeConfigure
             self.configure = configure
         }
     }
@@ -115,6 +165,32 @@ enum Snapshot {
         Shot(name: "14-empty-library", size: Tokens.Layout.defaultWindow,
              store: { PreviewData.emptyStore() }) { container in
             container.playback.stop()
+        },
+
+        // Before that: the moment between launch and `load()` returning —
+        // see issue #23. `RootView`'s own `.task` calls `load()` regardless
+        // of `loadsBeforeConfigure`; `SlowStore` is what keeps it in flight
+        // long enough for the capture below to land mid-load.
+        Shot(name: "20-skeleton-artists", size: Tokens.Layout.defaultWindow,
+             store: { SlowStore(wrapped: PreviewData.store(), delay: .seconds(2)) },
+             loadsBeforeConfigure: false) { container in
+            container.model.tab = .artists
+        },
+        Shot(name: "21-skeleton-albums", size: Tokens.Layout.defaultWindow,
+             store: { SlowStore(wrapped: PreviewData.store(), delay: .seconds(2)) },
+             loadsBeforeConfigure: false) { container in
+            container.model.tab = .albums
+        },
+        Shot(name: "22-skeleton-playlists", size: Tokens.Layout.defaultWindow,
+             store: { SlowStore(wrapped: PreviewData.store(), delay: .seconds(2)) },
+             loadsBeforeConfigure: false) { container in
+            container.model.tab = .playlists
+        },
+        Shot(name: "23-skeleton-album", size: Tokens.Layout.defaultWindow,
+             store: { SlowStore(wrapped: PreviewData.store(), delay: .seconds(2)) },
+             loadsBeforeConfigure: false) { container in
+            container.model.show(.album(
+                Album.Key(albumArtist: "placeholder", title: "placeholder", year: nil)))
         },
 
         // A library with records but no playlists, which is most of them.
@@ -197,9 +273,11 @@ enum Snapshot {
 
         for shot in shots {
             let container = AppContainer(mode: .preview, store: shot.store?())
-            await container.model.load()
-            container.playback.play(PreviewData.slowHours[2], in: PreviewData.slowHours)
-            container.playback.seek(to: 88)
+            if shot.loadsBeforeConfigure {
+                await container.model.load()
+                container.playback.play(PreviewData.slowHours[2], in: PreviewData.slowHours)
+                container.playback.seek(to: 88)
+            }
             shot.configure(container)
 
             let view = RootView()
