@@ -98,7 +98,23 @@ public final class PlaybackController {
     /// Set when the output device disappeared and the engine has to be handed
     /// the file again before it can play. Resuming a dead graph silently does
     /// nothing, which is exactly the "silently stall" PLAN.md §6 rules out.
+    ///
+    /// Also set by `restoreQueue(resolving:)`: a restored queue is paused at
+    /// a track the engine has never actually been handed, so the same reload
+    /// — rather than `engine.resume()` on nothing — is what has to happen
+    /// the first time the user presses Play. See #42.
     private var needsReloadAtPosition: TimeInterval?
+    /// Read from settings at init, but not applied — `PlaybackController` has
+    /// no reach into the library (PLAN.md §5), so an id is all it can hold
+    /// onto until the composition root calls `restoreQueue(resolving:)` with
+    /// real `Track`s. See #42.
+    private var pendingRestoreQueueIDs: [Track.ID] = []
+    private var pendingRestoreOrderedQueueIDs: [Track.ID] = []
+    private var pendingRestoreCurrentTrackID: Track.ID?
+    private var pendingRestorePosition: TimeInterval = 0
+    /// Throttles `persistPositionIfDue`, so a five-second gap between writes
+    /// survives a position stream that ticks ten times a second.
+    private var lastPersistedPositionSecond: Int?
 
     // MARK: Private
 
@@ -149,6 +165,13 @@ public final class PlaybackController {
         } else {
             engine.volume = volume
         }
+        pendingRestoreQueueIDs = Self.decode(settings.string(forKey: .queueTrackIDs))
+            .compactMap(UUID.init)
+        pendingRestoreOrderedQueueIDs = Self.decode(settings.string(forKey: .queueOrderedTrackIDs))
+            .compactMap(UUID.init)
+        pendingRestoreCurrentTrackID = settings.string(forKey: .queueCurrentTrackID)
+            .flatMap(UUID.init)
+        pendingRestorePosition = settings.double(forKey: .queuePosition) ?? 0
     }
 
     private func observe() {
@@ -162,6 +185,7 @@ public final class PlaybackController {
             for await time in positions {
                 guard let self else { return }
                 self.progress.elapsed = time
+                self.persistPositionIfDue(time)
             }
         }
     }
@@ -230,6 +254,7 @@ public final class PlaybackController {
         if !shuffleMode.isOn { orderedQueue = queue }
 
         requeueNext()
+        persistQueue()
     }
 
     /// Removes a track from what is coming up. Removing the playing track is
@@ -241,6 +266,7 @@ public final class PlaybackController {
         queue.remove(at: index)
         orderedQueue.removeAll { $0.id == track.id }
         requeueNext()
+        persistQueue()
     }
 
     /// Empties everything queued after the current track. Playback itself is
@@ -251,6 +277,7 @@ public final class PlaybackController {
         queue.removeSubrange((currentIndex + 1)...)
         orderedQueue.removeAll { removedIDs.contains($0.id) }
         requeueNext()
+        persistQueue()
     }
 
     /// Plays something already in the queue, without disturbing the rest of it.
@@ -282,6 +309,7 @@ public final class PlaybackController {
         // A track appended after the current one may now be the gapless
         // candidate the engine hasn't been told about.
         prepareNextIfNeeded()
+        persistQueue()
     }
 
     /// Loops rather than recurses on failure. A queue of thirty thousand tracks
@@ -302,6 +330,7 @@ public final class PlaybackController {
             do {
                 try engine.play(url: track.url, duration: track.duration,
                                 gain: gain(for: track))
+                persistQueue()
                 return
             } catch {
                 // A file that will not open is the ordinary failure for a
@@ -393,6 +422,7 @@ public final class PlaybackController {
         preparedNext = nil
         needsReloadAtPosition = nil
         pendingSeek = nil
+        persistQueue()
     }
 
     public func toggleShuffle() { shuffleMode = shuffleMode.toggled }
@@ -479,6 +509,7 @@ public final class PlaybackController {
     }
 
     private func reshuffleAroundCurrent() {
+        defer { persistQueue() }
         guard let current = currentTrack else {
             queue = shuffleMode.isOn ? orderedQueue.shuffled() : orderedQueue
             return
@@ -563,6 +594,10 @@ public final class PlaybackController {
     // MARK: - Engine events
 
     private func handle(_ event: EngineEvent) {
+        // Every branch below changes something worth surviving a relaunch —
+        // which track is current, or how far into it — so one `defer` covers
+        // every exit rather than a call at the end of each case. See #42.
+        defer { persistQueue() }
         switch event {
         case .started:
             if let track = currentTrack {
@@ -637,5 +672,100 @@ public final class PlaybackController {
             }
             start(at: next)
         }
+    }
+
+    // MARK: - Persisting and restoring across launches
+
+    /// Writes the queue, its pre-shuffle order, the current track and the
+    /// position into it — everything `restoreQueue(resolving:)` needs to put
+    /// it all back. `state` itself is deliberately not part of this: a
+    /// relaunch always comes back paused, never mid-song. See #42.
+    private func persistQueue() {
+        settings.set(Self.encode(queue.map { $0.id.uuidString }), forKey: .queueTrackIDs)
+        settings.set(Self.encode(orderedQueue.map { $0.id.uuidString }),
+                     forKey: .queueOrderedTrackIDs)
+        settings.set(currentTrack?.id.uuidString, forKey: .queueCurrentTrackID)
+        settings.set(progress.elapsed, forKey: .queuePosition)
+    }
+
+    /// The position ticks ten times a second; writing it out on every tick
+    /// would be ten `UserDefaults` writes a second for no benefit over one
+    /// every few seconds. Every other change already goes through
+    /// `persistQueue()` in full — this only exists so a crash mid-song loses
+    /// at most a few seconds of position rather than all of it.
+    private func persistPositionIfDue(_ time: TimeInterval) {
+        let second = Int(time)
+        guard second != lastPersistedPositionSecond, second % 5 == 0 else { return }
+        lastPersistedPositionSecond = second
+        settings.set(time, forKey: .queuePosition)
+    }
+
+    /// Flushes the exact position immediately. A normal quit fires no engine
+    /// event for `persistQueue()` to ride along with, so the composition root
+    /// calls this from `applicationWillTerminate` — otherwise the position
+    /// restored next launch is only as fresh as the last five-second tick.
+    public func flushQueueState() { persistQueue() }
+
+    /// Puts the queue back the way it was at the last quit — paused at the
+    /// right track, never playing, per #42. `PlaybackController` has no reach
+    /// into the library (PLAN.md §5), so the composition root calls this once
+    /// the library has loaded, resolving each persisted id to a real `Track`.
+    ///
+    /// An id that no longer resolves at all — a track removed from the
+    /// library outright since last launch — is skipped over the same way the
+    /// queue walks past a dead file during ordinary playback. A file that
+    /// still has a library row but moved or vanished on disk is a different
+    /// failure and surfaces later, from `start(at:)`, the moment the user
+    /// presses Play — see #30.
+    public func restoreQueue(resolving resolve: (Track.ID) -> Track?) {
+        let queueIDs = pendingRestoreQueueIDs
+        let orderedIDs = pendingRestoreOrderedQueueIDs
+        let currentID = pendingRestoreCurrentTrackID
+        let position = pendingRestorePosition
+        pendingRestoreQueueIDs = []
+        pendingRestoreOrderedQueueIDs = []
+        pendingRestoreCurrentTrackID = nil
+        pendingRestorePosition = 0
+
+        // Nothing to restore onto, or something already queued in the
+        // meantime — the latter shouldn't happen given when the composition
+        // root calls this, but clobbering a queue already in progress would
+        // be a worse failure than silently skipping the restore.
+        guard queue.isEmpty else { return }
+        let restoredQueue = queueIDs.compactMap(resolve)
+        guard !restoredQueue.isEmpty else { return }
+
+        let searchStart = currentID.flatMap { queueIDs.firstIndex(of: $0) } ?? 0
+        guard let resumeID = queueIDs[searchStart...].first(where: { resolve($0) != nil }),
+              let index = restoredQueue.firstIndex(where: { $0.id == resumeID })
+        else { return }
+
+        let restoredOrdered = orderedIDs.compactMap(resolve)
+        queue = restoredQueue
+        orderedQueue = restoredOrdered.isEmpty ? restoredQueue : restoredOrdered
+        currentIndex = index
+        let track = restoredQueue[index]
+        // Only the track that was actually playing gets its position back;
+        // one fallen through to starts at the top, the same rule
+        // `start(at:)` already applies when a failure forces the same choice.
+        let resumedAtOriginalPosition = resumeID == currentID
+        state = .paused(track.id)
+        progress = PlaybackProgress(
+            elapsed: resumedAtOriginalPosition ? position : 0, duration: track.duration)
+        // The engine has never been handed this track — `togglePlayPause`
+        // reloads it at this position instead of calling `resume()` on a
+        // graph that was never started, the same fallback `.outputDeviceLost`
+        // already relies on.
+        needsReloadAtPosition = resumedAtOriginalPosition ? position : 0
+    }
+
+    private static func encode(_ values: [String]) -> String? {
+        guard !values.isEmpty else { return nil }
+        return (try? JSONEncoder().encode(values)).flatMap { String(data: $0, encoding: .utf8) }
+    }
+
+    private static func decode(_ raw: String?) -> [String] {
+        guard let raw, let data = raw.data(using: .utf8) else { return [] }
+        return (try? JSONDecoder().decode([String].self, from: data)) ?? []
     }
 }

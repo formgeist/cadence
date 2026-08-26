@@ -405,6 +405,11 @@ final class AppModel {
         playlist.trackIDs.compactMap { tracksByID[$0] }
     }
 
+    /// Resolves a bare id against the loaded library — what
+    /// `PlaybackController.restoreQueue(resolving:)` calls to turn the ids it
+    /// persisted back into real `Track`s. See #42.
+    func track(id: Track.ID) -> Track? { tracksByID[id] }
+
     /// `New Playlist`, then `New Playlist 2` — what the sheet opens with.
     /// Duplicate names are allowed; suggesting one is just rude.
     var suggestedPlaylistName: String {

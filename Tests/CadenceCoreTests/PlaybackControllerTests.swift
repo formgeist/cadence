@@ -854,6 +854,143 @@ struct SettingsPersistenceTests {
     }
 }
 
+@MainActor
+@Suite("Queue persistence")
+struct QueuePersistenceTests {
+
+    private func encode(_ ids: [Track.ID]) -> String {
+        let data = try! JSONEncoder().encode(ids.map(\.uuidString))
+        return String(data: data, encoding: .utf8)!
+    }
+
+    @Test("Playing a track writes the queue, its order and the current track")
+    func playingWritesQueue() {
+        let settings = InMemorySettingsStore()
+        let controller = PlaybackController(engine: SpyEngine(), settings: settings)
+        let tracks = [makeTrack("A"), makeTrack("B"), makeTrack("C")]
+
+        controller.play(tracks[1], in: tracks)
+
+        #expect(settings.string(forKey: .queueTrackIDs) == encode(tracks.map(\.id)))
+        #expect(settings.string(forKey: .queueOrderedTrackIDs) == encode(tracks.map(\.id)))
+        #expect(settings.string(forKey: .queueCurrentTrackID) == tracks[1].id.uuidString)
+    }
+
+    @Test("Editing the queue re-writes what's persisted")
+    func editingWritesQueue() {
+        let settings = InMemorySettingsStore()
+        let controller = PlaybackController(engine: SpyEngine(), settings: settings)
+        let tracks = (1...3).map { makeTrack("T\($0)") }
+
+        controller.play(tracks[0], in: tracks)
+        controller.removeFromUpNext(tracks[1])
+
+        #expect(settings.string(forKey: .queueTrackIDs) == encode([tracks[0].id, tracks[2].id]))
+    }
+
+    @Test("flushQueueState writes the exact position immediately, for the app to call on quit")
+    func flushWritesPosition() {
+        let settings = InMemorySettingsStore()
+        let controller = PlaybackController(engine: SpyEngine(), settings: settings)
+        let track = makeTrack("A", seconds: 200)
+
+        controller.play(track, in: [track])
+        controller.seek(to: 42)
+        controller.flushQueueState()
+
+        #expect(settings.double(forKey: .queuePosition) == 42)
+    }
+
+    @Test("Restoring puts the queue back paused at the right track, without touching the engine")
+    func restoresQueue() {
+        let settings = InMemorySettingsStore()
+        let tracks = (1...3).map { makeTrack("T\($0)") }
+        settings.set(encode(tracks.map(\.id)), forKey: .queueTrackIDs)
+        settings.set(encode(tracks.map(\.id)), forKey: .queueOrderedTrackIDs)
+        settings.set(tracks[1].id.uuidString, forKey: .queueCurrentTrackID)
+        settings.set(65.0, forKey: .queuePosition)
+
+        let engine = SpyEngine()
+        let controller = PlaybackController(engine: engine, settings: settings)
+        let byID = Dictionary(uniqueKeysWithValues: tracks.map { ($0.id, $0) })
+        controller.restoreQueue { byID[$0] }
+
+        #expect(controller.queue == tracks)
+        #expect(controller.currentTrack?.id == tracks[1].id)
+        #expect(controller.state == .paused(tracks[1].id))
+        #expect(controller.progress.elapsed == 65)
+        // Nothing was actually handed to the engine — the engine only sees
+        // this track once the user presses Play.
+        #expect(engine.played.isEmpty)
+    }
+
+    @Test("Pressing Play after a restore reloads the engine at the saved position")
+    func resumingAfterRestorePlaysTheEngine() async {
+        let settings = InMemorySettingsStore()
+        let track = makeTrack("A", seconds: 200)
+        settings.set(encode([track.id]), forKey: .queueTrackIDs)
+        settings.set(encode([track.id]), forKey: .queueOrderedTrackIDs)
+        settings.set(track.id.uuidString, forKey: .queueCurrentTrackID)
+        settings.set(80.0, forKey: .queuePosition)
+
+        let engine = SpyEngine()
+        let controller = PlaybackController(engine: engine, settings: settings)
+        controller.restoreQueue { $0 == track.id ? track : nil }
+
+        controller.togglePlayPause()
+        #expect(engine.played.last?.lastPathComponent == "A.flac")
+
+        await engine.emit(.started(track.url))
+        #expect(engine.seeks.contains(80))
+    }
+
+    @Test("A track removed from the library since is skipped, landing on the next one")
+    func skipsATrackThatNoLongerResolves() {
+        let settings = InMemorySettingsStore()
+        let tracks = (1...3).map { makeTrack("T\($0)") }
+        settings.set(encode(tracks.map(\.id)), forKey: .queueTrackIDs)
+        settings.set(encode(tracks.map(\.id)), forKey: .queueOrderedTrackIDs)
+        // T2 was playing, but has since left the library outright.
+        settings.set(tracks[1].id.uuidString, forKey: .queueCurrentTrackID)
+        settings.set(50.0, forKey: .queuePosition)
+
+        let controller = PlaybackController(engine: SpyEngine(), settings: settings)
+        var byID = Dictionary(uniqueKeysWithValues: tracks.map { ($0.id, $0) })
+        byID[tracks[1].id] = nil
+        controller.restoreQueue { byID[$0] }
+
+        #expect(controller.queue.map(\.title) == ["T1", "T3"])
+        #expect(controller.currentTrack?.title == "T3")
+        // The fallen-through track starts at the top, not at T2's position.
+        #expect(controller.progress.elapsed == 0)
+    }
+
+    @Test("With nothing persisted, restoring does nothing")
+    func restoringWithNothingPersistedDoesNothing() {
+        let controller = PlaybackController(engine: SpyEngine(), settings: InMemorySettingsStore())
+        controller.restoreQueue { _ in nil }
+
+        #expect(controller.queue.isEmpty)
+        #expect(controller.currentTrack == nil)
+    }
+
+    @Test("A queue already in progress is left alone rather than clobbered")
+    func restoringDoesNotClobberAnActiveQueue() {
+        let settings = InMemorySettingsStore()
+        let persisted = makeTrack("Persisted")
+        settings.set(encode([persisted.id]), forKey: .queueTrackIDs)
+        settings.set(persisted.id.uuidString, forKey: .queueCurrentTrackID)
+
+        let controller = PlaybackController(engine: SpyEngine(), settings: settings)
+        let live = makeTrack("Live")
+        controller.play(live, in: [live])
+
+        controller.restoreQueue { $0 == persisted.id ? persisted : nil }
+
+        #expect(controller.currentTrack?.id == live.id)
+    }
+}
+
 extension SpyEngine {
     func clearSeeks() { seeks.removeAll() }
 }

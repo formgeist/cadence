@@ -94,6 +94,9 @@ final class AppContainer {
             playback = PlaybackController(engine: MockPlayerEngine(), settings: settings)
             isSilentPlayback = true
         }
+        // Lets the dock menu drive playback, and lets `applicationWillTerminate`
+        // flush the queue's position before quit — see #42.
+        AppDelegate.playback = playback
 
         switch mode {
         case .live:
@@ -532,5 +535,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
+    }
+
+    /// A normal quit fires no engine event for `PlaybackController`'s own
+    /// persistence to ride along with, so the position at the moment of
+    /// quitting is flushed here instead — see #42.
+    func applicationWillTerminate(_ notification: Notification) {
+        AppDelegate.playback?.flushQueueState()
     }
 }
