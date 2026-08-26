@@ -160,7 +160,7 @@ struct NowPlayingPane: View {
                         }
                         .plainControl()
                         .accessibilityLabel("Clear queue")
-                        .help("Clear the queue")
+                        .help("Clear queue")
                     }
                 }
             }
