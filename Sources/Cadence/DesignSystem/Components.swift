@@ -424,8 +424,17 @@ extension View {
     /// Declares a pointing-hand cursor rect over this view's bounds — see
     /// `CursorRectView` for why this, rather than `NSCursor.set()` in
     /// `.onHover`, is the form that actually sticks.
+    ///
+    /// `.overlay`, not `.background`: a row that is also a `.draggable`
+    /// source — every track row in the app — installs its own drag-gesture
+    /// view in front of its content to catch the mouse-down that starts a
+    /// drag, and a cursor rect declared *behind* that (via `.background`)
+    /// loses the hit-test to it and is never consulted. An overlay sits back
+    /// in front, ahead of that drag view, so its rect is what AppKit finds —
+    /// `allowsHitTesting(false)` keeps it out of the way of the clicks and
+    /// drags it now sits in front of.
     func pointingHandCursor() -> some View {
-        background(CursorRectView(cursor: .pointingHand))
+        overlay(CursorRectView(cursor: .pointingHand).allowsHitTesting(false))
     }
 }
 
