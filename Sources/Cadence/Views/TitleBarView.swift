@@ -76,6 +76,7 @@ private struct NavigationChevron: View {
 
 struct SearchField: View {
     @Environment(AppModel.self) private var model
+    @Environment(PlaybackController.self) private var playback
     @Environment(\.rendersSearchFocused) private var rendersFocused
     // Optional so the snapshot, a11y and benchmark harnesses can host this
     // view without one — same reasoning as `TextEntryMonitor`'s environment.
@@ -94,6 +95,9 @@ struct SearchField: View {
     /// reassignment that lands in the same tick as the navigation would still
     /// flash the popover in for a frame before that check clears it.
     @State private var isSettlingAfterNavigation = false
+    /// The local key monitor that answers arrow keys while search is active
+    /// — see the note on `AppModel.moveSearchHighlight`.
+    @State private var arrowKeyMonitor: Any?
 
     /// What the field *looks* like: focused for real, or drawn that way for a
     /// snapshot.
@@ -117,7 +121,14 @@ struct SearchField: View {
                     .foregroundStyle(Color(hex: 0xF0F0F5))
                     .focused($isFocused)
                     .textEntryFocus(isFocused)
-                    .onSubmit { model.commitCurrentSearch(); isFocused = false }
+                    .onSubmit {
+                        if let highlight = model.searchEffectiveHighlight {
+                            activate(highlight)
+                        } else {
+                            model.commitCurrentSearch()
+                            isFocused = false
+                        }
+                    }
                     .accessibilityLabel("Search library")
 
                 if !model.searchText.isEmpty {
@@ -155,7 +166,8 @@ struct SearchField: View {
                     // already says what to do, so there's nothing this
                     // popover would add.
                     if !model.recentlyPlayed.isEmpty || !model.recentSearches.isEmpty {
-                        SearchSuggestionsPopover(onPick: { isFocused = false })
+                        SearchSuggestionsPopover(highlightedIndex: model.searchEffectiveHighlight,
+                                                  onPick: { isFocused = false })
                             .offset(y: 38)
                     }
                     // No query has answered yet and there's nothing left
@@ -165,7 +177,8 @@ struct SearchField: View {
                     // stale result to hold onto, or the debounce settling —
                     // this reads the same as the branch above.
                 } else if !model.searchResults.isEmpty || !model.isSearchPending {
-                    SearchResultsPopover(onPick: { isFocused = false })
+                    SearchResultsPopover(highlightedIndex: model.searchEffectiveHighlight,
+                                          onPick: { isFocused = false })
                         .offset(y: 38)
                 }
             }
@@ -190,6 +203,31 @@ struct SearchField: View {
                 }
                 hasSettled = true
             }
+
+            // Arrow keys, not `.onMoveCommand`: the search field's own text
+            // editor answers `moveUp:`/`moveDown:` itself — the same conflict
+            // `LibraryView` has with `ScrollView`'s line-scrolling, except
+            // here nothing further up the responder chain ever gets a turn,
+            // so `.onMoveCommand` on an ancestor never fires either. A local
+            // key monitor sees the event before AppKit dispatches it to that
+            // responder chain at all, and only while search is actually
+            // showing something to navigate — see
+            // `AppModel.moveSearchHighlight`.
+            if arrowKeyMonitor == nil {
+                arrowKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak model] event in
+                    guard let model, model.isSearching,
+                          let direction = GridNavigation.Direction(keyCode: event.keyCode),
+                          direction == .up || direction == .down else {
+                        return event
+                    }
+                    model.moveSearchHighlight(direction)
+                    return nil
+                }
+            }
+        }
+        .onDisappear {
+            if let arrowKeyMonitor { NSEvent.removeMonitor(arrowKeyMonitor) }
+            arrowKeyMonitor = nil
         }
         .onChange(of: isFocused) { _, focused in
             model.isSearching = focused
@@ -224,15 +262,83 @@ struct SearchField: View {
             isFocused = false
         }
     }
+
+    /// Runs whatever a click on row `index` would — same flat order as
+    /// `model.searchNavigableCount`.
+    private func activate(_ index: Int) {
+        guard !model.searchText.isEmpty else {
+            let recentlyPlayed = model.recentlyPlayed
+            if index < recentlyPlayed.count {
+                play(recentlyPlayed[index])
+                return
+            }
+            let searchIndex = index - recentlyPlayed.count
+            guard model.recentSearches.indices.contains(searchIndex) else { return }
+            model.searchText = model.recentSearches[searchIndex]
+            return
+        }
+
+        let results = model.searchResults
+        var offset = 0
+        if let topHit = results.topHit {
+            if index == offset { open(topHit); return }
+            offset += 1
+        }
+        if index < offset + results.artists.count {
+            open(results.artists[index - offset]); return
+        }
+        offset += results.artists.count
+        if index < offset + results.albums.count {
+            open(results.albums[index - offset]); return
+        }
+        offset += results.albums.count
+        if index < offset + results.tracks.count {
+            play(results.tracks[index - offset])
+        }
+    }
+
+    private func open(_ album: Album) {
+        model.commitCurrentSearch()
+        model.show(.album(album.key))
+        model.endSearch()
+        isFocused = false
+    }
+
+    private func open(_ artist: Artist) {
+        model.commitCurrentSearch()
+        model.show(.artist(artist.name))
+        model.endSearch()
+        isFocused = false
+    }
+
+    private func play(_ track: Track) {
+        guard let album = model.album(for: track.albumKey) else { return }
+        // Only a real search's pick is worth remembering as a recent search
+        // — same rule `SearchResultsPopover`/`SearchSuggestionsPopover`
+        // followed before this moved here.
+        if !model.searchText.isEmpty { model.commitCurrentSearch() }
+        playback.play(track, in: album.discs.flatMap(\.tracks))
+        model.endSearch()
+        isFocused = false
+    }
 }
 
 private struct SearchResultsPopover: View {
     @Environment(AppModel.self) private var model
     @Environment(PlaybackController.self) private var playback
+    /// Which row arrow keys currently sit on, in the same flat order this
+    /// view renders: top hit, then artists, then albums, then tracks. Owned
+    /// by `SearchField`, since that's what's actually focused and sees the
+    /// key events.
+    var highlightedIndex: Int?
     var onPick: () -> Void
 
     var body: some View {
         let results = model.searchResults
+        let topHitCount = results.topHit != nil ? 1 : 0
+        let artistsStart = topHitCount
+        let albumsStart = artistsStart + results.artists.count
+        let tracksStart = albumsStart + results.albums.count
 
         VStack(alignment: .leading, spacing: 0) {
             if results.isEmpty {
@@ -243,7 +349,7 @@ private struct SearchResultsPopover: View {
                     .padding(.vertical, 14)
             } else {
                 if let topHit = results.topHit {
-                    TopHitRow(album: topHit) { open(topHit) }
+                    TopHitRow(album: topHit, isHighlighted: highlightedIndex == 0) { open(topHit) }
                 }
                 if !results.artists.isEmpty {
                     popoverGroup("Artists", results.artists.map { artist in
@@ -254,7 +360,7 @@ private struct SearchResultsPopover: View {
                                    isRound: true,
                                    artworkID: model.artworkID(forArtist: artist.name),
                                    action: { open(artist) })
-                    })
+                    }, startIndex: artistsStart, highlightedIndex: highlightedIndex)
                 }
                 if !results.albums.isEmpty {
                     popoverGroup("Albums", results.albums.map { album in
@@ -265,7 +371,7 @@ private struct SearchResultsPopover: View {
                                    isRound: false,
                                    artworkID: album.artworkID,
                                    action: { open(album) })
-                    })
+                    }, startIndex: albumsStart, highlightedIndex: highlightedIndex)
                 }
                 if !results.tracks.isEmpty {
                     popoverGroup("Tracks", results.tracks.map { track in
@@ -275,21 +381,8 @@ private struct SearchResultsPopover: View {
                                    isRound: false,
                                    artworkID: track.artworkID,
                                    action: { play(track) })
-                    })
+                    }, startIndex: tracksStart, highlightedIndex: highlightedIndex)
                 }
-
-                Divider().overlay(Color(hex: 0x24242B)).padding(.top, Tokens.Space.s)
-                HStack {
-                    Text("See all results for “\(model.searchText)”")
-                        .font(Tokens.Typography.sans(11.5, .semibold))
-                        .foregroundStyle(Color(hex: 0x8A8A94))
-                    Spacer()
-                    Text("↵")
-                        .font(Tokens.Typography.mono(10))
-                        .foregroundStyle(Tokens.Palette.textFaint)
-                }
-                .padding(.horizontal, Tokens.Space.xl)
-                .padding(.vertical, 9)
             }
         }
         .padding(.vertical, 6)
@@ -336,10 +429,16 @@ private struct SearchResultsPopover: View {
 private struct SearchSuggestionsPopover: View {
     @Environment(AppModel.self) private var model
     @Environment(PlaybackController.self) private var playback
+    /// Which row arrow keys currently sit on, in the same flat order this
+    /// view renders: recently played, then recent searches. Owned by
+    /// `SearchField`, since that's what's actually focused and sees the key
+    /// events.
+    var highlightedIndex: Int?
     var onPick: () -> Void
 
     var body: some View {
         @Bindable var model = model
+        let recentSearchesStart = model.recentlyPlayed.count
 
         // The caller only shows this popover once there is at least one
         // group to put in it — an empty field with no history yet already
@@ -352,14 +451,14 @@ private struct SearchSuggestionsPopover: View {
                                trailing: DurationFormat.clock(track.duration),
                                artworkID: track.artworkID,
                                action: { play(track) })
-                })
+                }, startIndex: 0, highlightedIndex: highlightedIndex)
             }
             if !model.recentSearches.isEmpty {
                 popoverGroup("Recent Searches", model.recentSearches.map { query in
                     PopoverRow(title: query, subtitle: "", trailing: "",
                                icon: "magnifyingglass",
                                action: { model.searchText = query })
-                })
+                }, startIndex: recentSearchesStart, highlightedIndex: highlightedIndex)
             }
         }
         .padding(.vertical, 6)
@@ -405,13 +504,15 @@ private struct PopoverRow: Identifiable {
 
 @MainActor
 @ViewBuilder
-private func popoverGroup(_ label: String, _ rows: [PopoverRow]) -> some View {
+private func popoverGroup(_ label: String, _ rows: [PopoverRow],
+                          startIndex: Int, highlightedIndex: Int?) -> some View {
     VStack(alignment: .leading, spacing: 0) {
         SectionLabel(label, size: 9.5)
             .padding(.horizontal, Tokens.Space.xl)
             .padding(.top, Tokens.Space.m)
             .padding(.bottom, 6)
-        ForEach(rows) { row in
+        ForEach(Array(rows.enumerated()), id: \.element.id) { offset, row in
+            let isHighlighted = highlightedIndex == startIndex + offset
             Button(action: row.action) {
                 HStack(spacing: Tokens.Space.m) {
                     if let icon = row.icon {
@@ -446,8 +547,9 @@ private func popoverGroup(_ label: String, _ rows: [PopoverRow]) -> some View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 6)
-                .hoverHighlight(radius: Tokens.Radius.control,
-                                hoverColor: Color(hex: 0x1F1F26))
+                .hoverHighlight(isActive: isHighlighted, radius: Tokens.Radius.control,
+                                hoverColor: Color(hex: 0x1F1F26),
+                                activeColor: Color(hex: 0x1F1F26))
                 .padding(.horizontal, 6)
             }
             .plainControl()
@@ -457,6 +559,11 @@ private func popoverGroup(_ label: String, _ rows: [PopoverRow]) -> some View {
 
 private struct TopHitRow: View {
     var album: Album
+    /// The row's fill is already the same tone the rest of the popover uses
+    /// for hover, so a plain background swap wouldn't read as "selected"
+    /// here the way it does for `popoverGroup`'s rows — this needs its own
+    /// ring, same idea as `keyboardFocusRing` elsewhere in the app.
+    var isHighlighted: Bool = false
     var action: () -> Void
 
     var body: some View {
@@ -487,6 +594,12 @@ private struct TopHitRow: View {
             .background {
                 RoundedRectangle(cornerRadius: Tokens.Radius.row, style: .continuous)
                     .fill(Color(hex: 0x1F1F26))
+            }
+            .overlay {
+                if isHighlighted {
+                    RoundedRectangle(cornerRadius: Tokens.Radius.row, style: .continuous)
+                        .strokeBorder(Tokens.Palette.accent, lineWidth: 1.5)
+                }
             }
             .padding(.horizontal, 6)
         }
