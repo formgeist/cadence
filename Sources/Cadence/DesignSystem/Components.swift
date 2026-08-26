@@ -388,15 +388,51 @@ struct InlineLink: View {
                 .lineLimit(lineLimit)
         }
         .plainControl()
-        .onHover { hovering in
-            isHovering = hovering
-            // Unlike `plainControl()`'s buttons, this reads as a hyperlink —
-            // underline and all — so the cursor should say so too (issue
-            // #76). `.set()` rather than `.push()`/`.pop()`: a click here
-            // navigates away and unmounts the view mid-hover, which would
-            // skip the matching pop and leave the hand cursor stuck.
-            if hovering { NSCursor.pointingHand.set() } else { NSCursor.arrow.set() }
+        .onHover { isHovering = $0 }
+        // Unlike `plainControl()`'s buttons, this reads as a hyperlink —
+        // underline and all — so the cursor should say so too (issue #76).
+        // `NSCursor.set()` inside `.onHover` looked right but wasn't: AppKit
+        // re-resolves the cursor on every `cursorUpdate` as the mouse moves,
+        // which stomps a one-shot imperative `.set()` almost immediately, so
+        // it never visibly stuck. A real cursor rect via `resetCursorRects`
+        // is what AppKit consults on those updates, so it's the only form
+        // that survives them.
+        .pointingHandCursor()
+    }
+}
+
+/// A zero-size `NSView` whose only job is a cursor rect covering whatever
+/// SwiftUI overlays it on. AppKit only asks a view to declare its cursor
+/// rects — via `resetCursorRects` — when it actually needs them (layout,
+/// becoming key, entering a new window); once declared, it owns that region
+/// until the next ask, so it doesn't get re-fought on every `cursorUpdate`
+/// the way an imperative `NSCursor.set()` in `.onHover` does.
+private struct CursorRectView: NSViewRepresentable {
+    var cursor: NSCursor
+
+    func makeNSView(context: Context) -> NSView { _CursorRectNSView(cursor: cursor) }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        (nsView as? _CursorRectNSView)?.cursor = cursor
+    }
+
+    private final class _CursorRectNSView: NSView {
+        var cursor: NSCursor
+        init(cursor: NSCursor) {
+            self.cursor = cursor
+            super.init(frame: .zero)
         }
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+        override func resetCursorRects() { addCursorRect(bounds, cursor: cursor) }
+    }
+}
+
+extension View {
+    /// Declares a pointing-hand cursor rect over this view's bounds — see
+    /// `CursorRectView` for why this, rather than `NSCursor.set()` in
+    /// `.onHover`, is the form that actually sticks.
+    func pointingHandCursor() -> some View {
+        background(CursorRectView(cursor: .pointingHand))
     }
 }
 
