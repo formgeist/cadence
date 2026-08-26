@@ -21,6 +21,11 @@ import CadenceLibrary
 @MainActor
 enum BenchHarness {
 
+    /// How far each scroll step travels. Roughly a fifth of an album card, so
+    /// a row takes several frames to cross the viewport the way it does under
+    /// a trackpad — see the scroll loop in `measureScrolling`.
+    private static let pointsPerScrollStep: Double = 40
+
     struct Options {
         var trackCount: Int
         /// Give every album cover art. Without this every card draws the
@@ -138,7 +143,16 @@ enum BenchHarness {
 
         // Scroll the way a trackpad does — many small steps, not a few jumps —
         // so every frame has new rows to materialise.
-        let steps = 180
+        //
+        // The step is a fixed *distance*, not a fixed step count. A fixed
+        // count makes every list take the same number of frames to cross,
+        // so a long one is scrolled proportionally faster: at 180 steps the
+        // album grid moved 638pt per frame against the artists grid's 42pt,
+        // and reported 49ms a frame for what is a fling no trackpad
+        // produces. Measured at the same 40pt per step, the same grid sits
+        // at 9ms. Holding velocity constant is what makes two lists — or the
+        // same list before and after a change — comparable at all.
+        let steps = max(60, min(4000, Int(travel / Self.pointsPerScrollStep)))
         for step in 1...steps {
             let y = travel * Double(step) / Double(steps)
             scrollView.contentView.scroll(to: NSPoint(x: 0, y: y))
