@@ -151,16 +151,10 @@ struct NowPlayingPane: View {
                         Text("\(playback.upNext.count)")
                             .font(Tokens.Typography.mono(10))
                             .foregroundStyle(Tokens.Palette.textFaint)
-                        Button {
+                        IconButton(systemImage: "trash", label: "Clear queue",
+                                   glyphSize: 10.5, side: 18) {
                             playback.clearUpNext()
-                        } label: {
-                            Image(systemName: "trash")
-                                .font(.system(size: 10.5, weight: .medium))
-                                .foregroundStyle(Tokens.Palette.textFaint)
                         }
-                        .plainControl()
-                        .accessibilityLabel("Clear queue")
-                        .help("Clear queue")
                     }
                 }
             }

@@ -189,6 +189,19 @@ struct SearchField: View {
         .onChange(of: focusRequester?.token) { _, _ in
             isFocused = true
         }
+        // Clicking an artist or album link inside a focused list — the track
+        // list's own click-to-select claims keyboard focus first, same as
+        // the search field does — removes that list from the screen the
+        // instant navigation lands. AppKit then hands the keyboard to
+        // whatever key view it finds next, which is this field: the
+        // suggestions popover would pop open over a destination the user
+        // never asked to search from. Every *intentional* search-driven
+        // navigation already clears `isFocused` itself (`onSubmit`, each
+        // popover row's `onPick`) before the screen changes, so forcing it
+        // false here on every navigation only ever cancels the ambient one.
+        .onChange(of: model.screen) { _, _ in
+            isFocused = false
+        }
         .onExitCommand {
             model.endSearch()
             isFocused = false
