@@ -840,6 +840,47 @@ struct SettingsPersistenceTests {
         #expect(controller.volume == 0.8)
     }
 
+    @Test("Restoring muted leaves the settings a second launch reads unchanged")
+    func restoringMutedDoesNotRewriteWhatItRead() {
+        let settings = InMemorySettingsStore()
+        settings.set(0.0, forKey: .volume)
+        settings.set(true, forKey: .isMuted)
+        settings.set(0.8, forKey: .volumeBeforeMute)
+
+        // Restoring is not a mute: it must not derive `volumeBeforeMute` from
+        // the level it just read. Launching twice without touching anything
+        // used to walk the saved level up to the compiled-in default, so the
+        // second launch had already lost it before the user unmuted.
+        _ = PlaybackController(engine: SpyEngine(), settings: settings)
+
+        #expect(settings.double(forKey: .volumeBeforeMute) == 0.8)
+        #expect(settings.double(forKey: .volume) == 0.0)
+        #expect(settings.bool(forKey: .isMuted) == true)
+
+        let relaunched = PlaybackController(engine: SpyEngine(), settings: settings)
+        relaunched.isMuted = false
+        #expect(relaunched.volume == 0.8)
+    }
+
+    @Test("Muting after an unmuted launch still remembers the restored level")
+    func mutingAfterAnUnmutedLaunchKeepsTheRestoredLevel() {
+        let settings = InMemorySettingsStore()
+        settings.set(0.65, forKey: .volume)
+        settings.set(false, forKey: .isMuted)
+
+        // The other direction through `restore`: suppressing the derivation
+        // must not leave a controller that cannot derive when the user does
+        // reach for the button.
+        let controller = PlaybackController(engine: SpyEngine(), settings: settings)
+        #expect(controller.volume == 0.65)
+
+        controller.isMuted = true
+        #expect(controller.volume == 0)
+
+        controller.isMuted = false
+        #expect(controller.volume == 0.65)
+    }
+
     @Test("With nothing persisted, a controller starts at its compiled-in defaults")
     func defaultsWithNothingPersisted() {
         let engine = SpyEngine()

@@ -138,12 +138,14 @@ public final class PlaybackController {
         observe()
     }
 
-    /// Order matters here: `isMuted`'s own `didSet` recomputes `volume` and
-    /// `volumeBeforeMute` from whatever they currently hold, so it has to run
-    /// first, while both are still at their compiled-in defaults — restoring
-    /// `volumeBeforeMute` and then `volume` afterwards overwrites whatever
-    /// that recomputation did with the real persisted values.
+    /// Assigns the persisted values without letting `isMuted`'s `didSet`
+    /// derive any of them — see `isRestoringSettings`. Every value here is
+    /// already known, so nothing needs recomputing from anything else, and
+    /// the order these run in does not matter.
     private func restore(from settings: any SettingsStore) {
+        isRestoringSettings = true
+        defer { isRestoringSettings = false }
+
         if let raw = settings.string(forKey: .repeatMode), let mode = RepeatMode(rawValue: raw) {
             repeatMode = mode
         }
@@ -494,7 +496,7 @@ public final class PlaybackController {
     public var isMuted: Bool = false {
         didSet {
             settings.set(isMuted, forKey: .isMuted)
-            guard oldValue != isMuted else { return }
+            guard !isRestoringSettings, oldValue != isMuted else { return }
             if isMuted {
                 volumeBeforeMute = volume
                 volume = 0
@@ -507,6 +509,19 @@ public final class PlaybackController {
     private var volumeBeforeMute: Double = 1.0 {
         didSet { settings.set(volumeBeforeMute, forKey: .volumeBeforeMute) }
     }
+
+    /// True only while `restore(from:)` runs.
+    ///
+    /// Muting is a *derivation*: it moves the current level into
+    /// `volumeBeforeMute` and drops `volume` to zero, so unmuting has
+    /// somewhere to return to. That is right when the user hits the button
+    /// and wrong on restore, where all three values were persisted and are
+    /// authoritative — deriving there overwrote the saved `volumeBeforeMute`
+    /// with the compiled-in default before `restore` could read it back, so
+    /// launching muted and then unmuting jumped to full volume instead of the
+    /// level you left. Suppressing the derivation fixes that without making
+    /// the fix depend on the order the three assignments happen to run in.
+    private var isRestoringSettings = false
 
     private func reshuffleAroundCurrent() {
         defer { persistQueue() }
