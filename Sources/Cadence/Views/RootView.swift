@@ -145,6 +145,8 @@ struct RootView: View {
         case .album(let key):
             if let album = model.album(for: key) {
                 AlbumDetailView(album: album)
+            } else if model.isInitialLoading {
+                SkeletonAlbumDetail()
             } else {
                 missing("That album is no longer in your library")
             }

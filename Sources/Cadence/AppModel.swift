@@ -213,6 +213,13 @@ final class AppModel {
     /// library that is still loading, which should not flash an empty state.
     var isEmpty: Bool { !isLoading && allTracks.isEmpty }
 
+    /// The moment before anything has loaded at all — what the skeleton
+    /// screens are for. Distinct from `isLoading` alone: a background
+    /// rescan (see `RootView`'s `.task`) also sets that while the library
+    /// already has content on screen, and should leave it there rather than
+    /// covering it with a skeleton again.
+    var isInitialLoading: Bool { isLoading && allTracks.isEmpty }
+
     let store: any LibraryStore
     private let settings: any SettingsStore
 
@@ -242,6 +249,12 @@ final class AppModel {
     }
 
     func load() async {
+        // Whether the skeleton screens are on screen for this call — see
+        // `isInitialLoading`. Read before anything below changes `allTracks`.
+        let showsSkeleton = isInitialLoading
+        let clock = ContinuousClock()
+        let start = clock.now
+
         isLoading = true
         defer { isLoading = false }
         do {
@@ -263,6 +276,19 @@ final class AppModel {
             recentlyPlayedIDs.removeAll { tracksByID[$0] == nil }
             sortArtists()
             sortAlbums()
+            // A local library reads fast enough that the skeleton can finish
+            // and disappear inside a single frame — never actually visible.
+            // Padding only the first load out to a minimum is what makes it
+            // read as a loading state rather than a flash of nothing; a
+            // background rescan already has content on screen and has no
+            // skeleton to hold, so it isn't slowed down by this at all.
+            if showsSkeleton {
+                let minimum = Duration.milliseconds(400)
+                let elapsed = clock.now - start
+                if elapsed < minimum {
+                    try? await Task.sleep(for: minimum - elapsed)
+                }
+            }
         } catch {
             loadError = error.localizedDescription
         }

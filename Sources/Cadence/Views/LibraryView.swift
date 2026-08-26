@@ -12,13 +12,24 @@ struct LibraryView: View {
             header
             switch model.tab {
             case .albums:
-                // Brings its own scroll view: the column count depends on the
-                // width, which needs a GeometryReader outside the scrolling.
-                AlbumGrid(albums: model.albums)
+                if model.isInitialLoading {
+                    SkeletonAlbumGrid()
+                } else {
+                    // Brings its own scroll view: the column count depends on
+                    // the width, which needs a GeometryReader outside the
+                    // scrolling.
+                    AlbumGrid(albums: model.albums)
+                }
             case .artists:
-                ArtistGrid()
+                if model.isInitialLoading {
+                    SkeletonArtistGrid()
+                } else {
+                    ArtistGrid()
+                }
             case .playlists:
-                if model.playlists.isEmpty {
+                if model.isInitialLoading {
+                    SkeletonPlaylistList()
+                } else if model.playlists.isEmpty {
                     PlaylistsEmptyState()
                 } else {
                     ScrollView { PlaylistList() }
@@ -41,12 +52,18 @@ struct LibraryView: View {
             Spacer()
 
             HStack(spacing: Tokens.Space.l) {
-                if model.tab != .playlists {
+                if model.tab != .playlists && !model.isInitialLoading {
                     LibraryActionsMenu()
                 }
-                Text(model.screenCount)
-                    .font(Tokens.Typography.mono(11))
-                    .foregroundStyle(Color(hex: 0x63636D))
+                if model.isInitialLoading {
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(Tokens.Palette.placeholderDark)
+                        .frame(width: 64, height: 9)
+                } else {
+                    Text(model.screenCount)
+                        .font(Tokens.Typography.mono(11))
+                        .foregroundStyle(Color(hex: 0x63636D))
+                }
             }
             .padding(.bottom, 6)
         }
