@@ -42,6 +42,19 @@ library and is what let import ship before the audio layer existed. Everything
 else SFB decodes — ALAC, AIFF, WAV, MP3, AAC, Opus, Vorbis, WavPack, Monkey's
 Audio — goes to `SFBMetadataReader`. `MetadataRouter` composes the two.
 
+### What Cadence does not decode
+
+**DSD (`.dsf`, `.dff`) and any hi-res path beyond PCM FLAC are out of scope for
+the first release** — a documented Phase 7 non-goal, tracked in
+[#96](https://github.com/formgeist/cadence/issues/96). SFBAudioEngine can open a
+DSD stream, but bit-perfect DSD needs DSD-over-PCM packing or a native-DSD
+device path, and both rest on the exclusive device access and sample-rate
+switching that are
+[probed but not implemented](https://github.com/formgeist/cadence/issues/34)
+and [not yet re-verified on a real DAC](https://github.com/formgeist/cadence/issues/12).
+Listing DSD as a supported format while silently resampling it to 88.2 kHz
+would be worse than not listing it at all.
+
 ### Diagnostics
 
 ```bash
