@@ -74,18 +74,23 @@ enum Snapshot {
         /// awaiting `load()` first — as every other shot needs, to have
         /// anything to show — is exactly the state that would erase.
         var loadsBeforeConfigure: Bool
+        /// The screen to render. Defaults to `RootView`; the Preferences
+        /// window (#71) is a different root, so shots can name their own.
+        var makeRoot: (AppContainer) -> AnyView
         var configure: (AppContainer) -> Void
 
         init(name: String, size: CGSize,
              store: (@Sendable () -> any LibraryStore)? = nil,
              focusesSearchField: Bool = false,
              loadsBeforeConfigure: Bool = true,
+             makeRoot: @escaping (AppContainer) -> AnyView = { _ in AnyView(RootView()) },
              configure: @escaping (AppContainer) -> Void) {
             self.name = name
             self.size = size
             self.store = store
             self.focusesSearchField = focusesSearchField
             self.loadsBeforeConfigure = loadsBeforeConfigure
+            self.makeRoot = makeRoot
             self.configure = configure
         }
     }
@@ -241,6 +246,11 @@ enum Snapshot {
             container.model.commitCurrentSearch()
             container.model.searchText = ""
         },
+
+        // The Preferences window — issue #71. A different root view, so it
+        // renders at its own size rather than the main window's.
+        Shot(name: "24-settings", size: CGSize(width: 460, height: 260),
+             makeRoot: { AnyView(SettingsView().environment($0.playback)) }) { _ in },
     ]
 
     private static func open(_ container: AppContainer, album title: String,
@@ -280,7 +290,7 @@ enum Snapshot {
             }
             shot.configure(container)
 
-            let view = RootView()
+            let view = shot.makeRoot(container)
                 .environment(container.model)
                 .environment(container.playback)
                 .environment(container.importer)
