@@ -25,6 +25,20 @@ Some behaviour only exists with a real bundle identity — Now Playing, media
 keys, the app sandbox, security-scoped bookmarks, window restoration. Verify
 those with `make app` and the assembled bundle, not `make run`.
 
+### Last.fm credentials
+
+Working on scrobbling needs a Last.fm API key and shared secret
+([register an app](https://www.last.fm/api/account/create)). This repository is
+public, so put them in `Sources/Cadence/LastFMCredentials.swift` and tell git to
+ignore your copy:
+
+```bash
+git update-index --skip-worktree Sources/Cadence/LastFMCredentials.swift
+```
+
+With the fields left empty the app still builds and runs; the Preferences window
+just shows scrobbling as unavailable.
+
 ## The layering rule
 
 Cadence is four targets, and the dependency direction is the design:

@@ -109,6 +109,20 @@ rather than calling `resume()` on a graph that is no longer connected to
 anything. That call appears to succeed and produces silence, which is the silent
 stall that losing a device must never produce.
 
+### Scrobbling
+
+`ScrobbleController` observes playback the same way `NowPlayingCoordinator`
+does — nothing about Last.fm reaches `PlaybackController`. It sends a "now
+playing" update when a track starts and scrobbles once the track passes
+Last.fm's threshold (half its length, or four minutes, whichever is sooner;
+never under 30 seconds). Paused time and seeks don't count toward it.
+
+A scrobble that can't be sent is held in a queue persisted through
+`SettingsStore` and retried on the next success, on a timer, and at launch.
+The session key lives in the keychain; enable it and sign in from
+**Preferences** (`⌘,`). Off by default. It lives in `CadenceCore` behind a
+`Scrobbler` protocol so a second target — ListenBrainz — fits the same shape.
+
 ## Accessibility
 
 ```bash

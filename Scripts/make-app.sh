@@ -144,6 +144,18 @@ if [ "${SANDBOX:-1}" = "1" ]; then
     <!-- Without this the user's music folder is inaccessible on the second
          launch, and there is no workaround. PLAN.md §5. -->
     <key>com.apple.security.files.bookmarks.app-scope</key>           <true/>
+    <!-- Scrobbling talks to Last.fm — issue #95. A sandboxed build makes no
+         outbound connection without this. -->
+    <key>com.apple.security.network.client</key>                      <true/>
+    <!-- The Last.fm session key goes in the keychain. Ad-hoc signing
+         (SIGN_IDENTITY=-) has no team prefix for the access group, so
+         keychain reads/writes are reliable only with a real Developer ID;
+         an ad-hoc build falls back to "signed out" if the keychain refuses.
+         `swift run` is unaffected — it uses the login keychain. Spelled out
+         rather than built from $BUNDLE_ID: this heredoc does not expand, and
+         the group must match the bundle id above. -->
+    <key>keychain-access-groups</key>
+    <array><string>com.formgeist.cadence</string></array>
 </dict>
 </plist>
 ENTITLEMENTS

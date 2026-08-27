@@ -22,6 +22,103 @@ public final class InMemorySettingsStore: SettingsStore {
     public func set(_ value: String?, forKey key: SettingsKey) { strings[key] = value }
 }
 
+// MARK: - In-memory keychain
+
+/// A `KeychainStore` that keeps secrets in a dictionary — previews and tests,
+/// same role `InMemorySettingsStore` plays. Never touches the real keychain.
+public final class InMemoryKeychainStore: KeychainStore, @unchecked Sendable {
+    private let lock = NSLock()
+    private var secrets: [String: String] = [:]
+
+    public init(secrets: [String: String] = [:]) { self.secrets = secrets }
+
+    public func string(forAccount account: String) -> String? {
+        lock.withLock { secrets[account] }
+    }
+
+    public func set(_ value: String?, forAccount account: String) {
+        lock.withLock { secrets[account] = value }
+    }
+}
+
+// MARK: - Mock scrobbler
+
+/// Records what the controller asked it to do, and can be told to fail. Drives
+/// `ScrobbleControllerTests` without a network. An `actor` so the recorded
+/// calls are safe to read from a test while the controller writes them.
+public actor MockScrobbler: Scrobbler {
+    public nonisolated let serviceName: String
+    public nonisolated var isConfigured: Bool { configuredBox.value }
+
+    /// `nonisolated` needs a synchronous store; a tiny locked box gives one.
+    private nonisolated let configuredBox: LockedBox<Bool>
+
+    public private(set) var nowPlaying: [ScrobblePlay] = []
+    public private(set) var submitted: [ScrobblePlay] = []
+    public private(set) var submitCallCount = 0
+
+    /// Set to throw from the next `submit` / `updateNowPlaying`. Cleared after
+    /// it fires once unless `stickyFailure` is true.
+    public var nextError: ScrobbleError?
+    public var stickyFailure = false
+
+    /// The session the fake auth flow hands back once approved. `nil` means
+    /// every `completeAuthorization` reports the token as still unapproved.
+    public var pendingApproval: ScrobbleSession?
+
+    public init(serviceName: String = "Mock", configured: Bool = true) {
+        self.serviceName = serviceName
+        self.configuredBox = LockedBox(configured)
+    }
+
+    public func setConfigured(_ value: Bool) { configuredBox.value = value }
+    public func setNextError(_ error: ScrobbleError?, sticky: Bool = false) {
+        nextError = error
+        stickyFailure = sticky
+    }
+    public func approve(_ session: ScrobbleSession) { pendingApproval = session }
+
+    public func beginAuthorization() async throws -> (url: URL, token: String) {
+        guard isConfigured else { throw ScrobbleError.notConfigured }
+        return (URL(string: "https://example.com/auth?token=tok")!, "tok")
+    }
+
+    public func completeAuthorization(token: String) async throws -> ScrobbleSession {
+        guard let pendingApproval else { throw ScrobbleError.authorizationPending }
+        return pendingApproval
+    }
+
+    public func updateNowPlaying(_ play: ScrobblePlay, session: ScrobbleSession) async throws {
+        try failIfAsked()
+        nowPlaying.append(play)
+    }
+
+    public func submit(_ plays: [ScrobblePlay], session: ScrobbleSession) async throws {
+        submitCallCount += 1
+        try failIfAsked()
+        submitted.append(contentsOf: plays)
+    }
+
+    private func failIfAsked() throws {
+        guard let error = nextError else { return }
+        if !stickyFailure { nextError = nil }
+        throw error
+    }
+}
+
+/// A synchronous, `Sendable` one-value box. Just enough for the couple of
+/// fields `MockScrobbler` and `InMemoryKeychainStore` need to touch without
+/// actor hops.
+public final class LockedBox<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: Value
+    public init(_ value: Value) { stored = value }
+    public var value: Value {
+        get { lock.withLock { stored } }
+        set { lock.withLock { stored = newValue } }
+    }
+}
+
 // MARK: - Mock engine
 
 /// Advances a clock instead of decoding anything. Everything in the interface
