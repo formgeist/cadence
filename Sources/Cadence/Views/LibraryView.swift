@@ -247,14 +247,13 @@ private struct ArtistGrid: View {
                         proxy: proxy)
                 }
                 .onKeyPress { handleKeyPress($0, proxy: proxy) }
-                // A plain default, not `move(to:)`: gaining focus happens on
-                // the very first scroll or click in a fresh grid, not just a
-                // deliberate Tab-in, so scrolling here yanked the list to the
-                // top from under a click already landing somewhere else —
-                // see `ArtistCard.onSelect`.
-                .onChange(of: isFocused) { _, focused in
-                    if focused, focusedIndex == nil, !model.artists.isEmpty { focusedIndex = 0 }
-                }
+                // No default focused index on gaining focus: the grid picks up
+                // focus on the very first scroll or click in a fresh grid, not
+                // just a deliberate Tab-in, so seeding index 0 here painted a
+                // focus ring on the first card whenever the pointer merely
+                // passed through — e.g. clicking a card, which navigates away
+                // and back. The first arrow key starts at 0 on its own
+                // (`GridNavigation.move(from: nil)`), as does type-ahead.
             }
         }
     }
@@ -409,10 +408,9 @@ struct AlbumGrid<Header: View>: View {
                         proxy: proxy)
                 }
                 .onKeyPress { handleKeyPress($0, proxy: proxy) }
-                // A plain default, not `move(to:)` — see `ArtistGrid` above.
-                .onChange(of: isFocused) { _, focused in
-                    if focused, focusedIndex == nil, !albums.isEmpty { focusedIndex = 0 }
-                }
+                // No default focused index on gaining focus — see `ArtistGrid`
+                // above. Seeding index 0 here lit the first card's focus ring
+                // after clicking any album (which navigates away and back).
             }
         }
         // The grid's identity changes with its data — an artist screen swaps
