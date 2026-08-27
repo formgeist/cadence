@@ -249,8 +249,10 @@ enum Snapshot {
 
         // The Preferences window — issue #71. A different root view, so it
         // renders at its own size rather than the main window's.
-        Shot(name: "24-settings", size: CGSize(width: 460, height: 260),
-             makeRoot: { AnyView(SettingsView().environment($0.playback)) }) { _ in },
+        Shot(name: "24-settings", size: CGSize(width: 460, height: 380),
+             makeRoot: { AnyView(SettingsView()
+                .environment($0.playback)
+                .environment($0.scrobble)) }) { _ in },
     ]
 
     private static func open(_ container: AppContainer, album title: String,

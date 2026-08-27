@@ -21,6 +21,9 @@ final class AppContainer {
     let model: AppModel
     let importer: LibraryImporter
     let artworkLoader: ArtworkLoader
+    /// Scrobbles what gets listened to — issue #95. Observes `playback`; the
+    /// controller stays unaware of it, same as `nowPlaying`.
+    let scrobble: ScrobbleController
     /// Whether a text field has the keyboard, so the menu bar can get out of
     /// its way — see `TextEntryMonitor`.
     let textEntry: TextEntryMonitor
@@ -98,6 +101,28 @@ final class AppContainer {
         // flush the queue's position before quit — see #42.
         AppDelegate.playback = playback
 
+        // Scrobbling — see #95. Preview mode gets a mock so snapshots and
+        // design review never reach the network or the keychain.
+        let scrobbler: any Scrobbler
+        let keychain: any CadenceCore.KeychainStore
+        switch mode {
+        case .live:
+            scrobbler = LastFMScrobbler(apiKey: LastFMCredentials.apiKey,
+                                        sharedSecret: LastFMCredentials.sharedSecret)
+            keychain = KeychainStore()
+        case .preview:
+            // Signed in to a fake service, so design review and SwiftUI
+            // previews see the connected state rather than "not configured".
+            scrobbler = MockScrobbler(serviceName: "Last.fm", configured: true)
+            let previewKeychain = InMemoryKeychainStore()
+            previewKeychain.set("preview-session", forAccount: "Last.fm")
+            keychain = previewKeychain
+            settings.set(true, forKey: .scrobblingEnabled)
+            settings.set("preview-listener", forKey: .scrobbleUsername)
+        }
+        scrobble = ScrobbleController(scrobbler: scrobbler, keychain: keychain, settings: settings)
+        AppDelegate.scrobble = scrobble
+
         switch mode {
         case .live:
             // A database that cannot be opened must not take the app down with
@@ -140,10 +165,15 @@ final class AppContainer {
         }
 
         // Play history is recorded here, not inside `PlaybackController`,
-        // which knows nothing about `AppModel` or persistence — see #72.
-        playback.onTrackStarted = { [weak model = self.model] track in
+        // which knows nothing about `AppModel` or persistence — see #72. The
+        // same start event feeds the scrobbler's "now playing" update (#95).
+        playback.onTrackStarted = { [weak model = self.model, weak scrobble = self.scrobble] track in
             model?.recordPlayed(track)
+            scrobble?.trackStarted(track)
         }
+
+        // Starts the poll loop and retries anything held from last launch.
+        scrobble.observe(playback)
     }
 }
 
@@ -183,6 +213,7 @@ struct CadenceApp: App {
                 .environment(container.artworkLoader)
                 .environment(container.textEntry)
                 .environment(container.searchFocus)
+                .environment(container.scrobble)
                 .environment(\.isSilentPlayback, container.isSilentPlayback)
                 .frame(minWidth: Tokens.Layout.minWindow.width,
                        minHeight: Tokens.Layout.minWindow.height)
@@ -199,6 +230,7 @@ struct CadenceApp: App {
         Settings {
             SettingsView()
                 .environment(container.playback)
+                .environment(container.scrobble)
                 .preferredColorScheme(.dark)
         }
     }
@@ -344,6 +376,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Set by the app so the dock menu can drive playback. Main-actor
     /// isolated: AppKit only ever asks for the dock menu on the main thread.
     @MainActor static weak var playback: PlaybackController?
+
+    /// Set by the app so `applicationWillTerminate` can scrobble a track
+    /// that's already past the threshold at quit — see #95.
+    @MainActor static weak var scrobble: ScrobbleController?
 
     /// Held for the process lifetime — an unretained monitor is removed
     /// immediately. See `applicationDidFinishLaunching`.
@@ -551,5 +587,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// quitting is flushed here instead — see #42.
     func applicationWillTerminate(_ notification: Notification) {
         AppDelegate.playback?.flushQueueState()
+        AppDelegate.scrobble?.flushOnTermination()
     }
 }

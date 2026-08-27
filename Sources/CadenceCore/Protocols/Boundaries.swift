@@ -157,6 +157,12 @@ public enum SettingsKey: String, Sendable {
     /// play order and in pre-shuffle order respectively; `queueCurrentTrackID`
     /// is the one that was playing, and `queuePosition` how far into it.
     case queueTrackIDs, queueOrderedTrackIDs, queueCurrentTrackID, queuePosition
+    /// Scrobbling — see #95. `scrobblingEnabled` is the on/off switch;
+    /// `scrobbleService` and `scrobbleUsername` name the connected account
+    /// (the session key itself lives in the keychain, not here);
+    /// `pendingScrobbles` is a JSON-encoded `[ScrobblePlay]` held for retry
+    /// when the network is down.
+    case scrobblingEnabled, scrobbleService, scrobbleUsername, pendingScrobbles
 }
 
 /// Small pieces of state that should survive a relaunch — volume, mute,

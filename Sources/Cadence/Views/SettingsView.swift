@@ -11,6 +11,8 @@ import CadenceCore
 /// program. The shape follows `TrackInfoSheet` and `PlaylistNameSheet`.
 struct SettingsView: View {
     @Environment(PlaybackController.self) private var playback
+    @Environment(ScrobbleController.self) private var scrobble
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         @Bindable var playback = playback
@@ -32,11 +34,108 @@ struct SettingsView: View {
                     )
                 }
             }
+
+            SettingsSection("Scrobbling") {
+                ScrobbleSettings()
+            }
         }
         .padding(Tokens.Space.xxl)
         .frame(width: 460, alignment: .leading)
         .background(Tokens.Palette.surface)
         .preferredColorScheme(.dark)
+        // `connect()` asks for a browser via this property; open it and clear.
+        .onChange(of: scrobble.pendingAuthorizationURL) { _, url in
+            guard let url else { return }
+            openURL(url)
+            scrobble.pendingAuthorizationURL = nil
+        }
+    }
+}
+
+/// The Last.fm rows — issue #95. Enable, connect / sign out, and whatever the
+/// offline queue and the last error have to say.
+private struct ScrobbleSettings: View {
+    @Environment(ScrobbleController.self) private var scrobble
+
+    var body: some View {
+        @Bindable var scrobble = scrobble
+
+        VStack(alignment: .leading, spacing: Tokens.Space.l) {
+            SettingsRow(
+                "Scrobble to \(scrobble.serviceName)",
+                caption: caption
+            ) {
+                Toggle("", isOn: $scrobble.isEnabled)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .tint(Tokens.Palette.accent)
+                    .disabled(!scrobble.isConfigured)
+            }
+
+            if scrobble.isConfigured {
+                accountRow
+            }
+
+            if scrobble.pendingCount > 0 {
+                statusLine("\(scrobble.pendingCount) "
+                    + (scrobble.pendingCount == 1 ? "scrobble" : "scrobbles")
+                    + " waiting to send", icon: "clock")
+            }
+            if let error = scrobble.lastError {
+                statusLine(error, icon: "exclamationmark.triangle")
+            }
+        }
+    }
+
+    private var caption: String {
+        if !scrobble.isConfigured {
+            return "No \(scrobble.serviceName) API key is configured in this build."
+        }
+        return "Send “now playing” updates and log tracks you finish."
+    }
+
+    @ViewBuilder
+    private var accountRow: some View {
+        if let account = scrobble.account {
+            HStack(spacing: Tokens.Space.m) {
+                Text("Signed in as \(account.username)")
+                    .font(Tokens.Typography.caption)
+                    .foregroundStyle(Tokens.Palette.textSecondary)
+                Spacer(minLength: Tokens.Space.l)
+                CapsuleButton(title: "Sign Out") { scrobble.signOut() }
+            }
+        } else {
+            HStack(spacing: Tokens.Space.m) {
+                Text(connectPrompt)
+                    .font(Tokens.Typography.caption)
+                    .foregroundStyle(Tokens.Palette.textTertiary)
+                Spacer(minLength: Tokens.Space.l)
+                CapsuleButton(title: "Connect…", kind: .filled) { scrobble.connect() }
+                    .disabled(scrobble.authState == .waitingForApproval)
+            }
+        }
+    }
+
+    private var connectPrompt: String {
+        switch scrobble.authState {
+        case .idle:
+            "Not connected."
+        case .waitingForApproval:
+            "Waiting for approval on \(scrobble.serviceName)…"
+        case .failed(let message):
+            message
+        }
+    }
+
+    private func statusLine(_ text: String, icon: String) -> some View {
+        HStack(spacing: Tokens.Space.s) {
+            Image(systemName: icon)
+                .font(.system(size: 10))
+                .foregroundStyle(Tokens.Palette.textMuted)
+            Text(text)
+                .font(Tokens.Typography.captionSmall)
+                .foregroundStyle(Tokens.Palette.textTertiary)
+        }
     }
 }
 
