@@ -371,6 +371,14 @@ speakers with an ad-hoc signature, so it is worth re-running against an external
 DAC — which is where bit-perfect actually matters — and under a Developer ID
 build.
 
+## Contributing
+
+Cadence is community-run. [`CONTRIBUTING.md`](CONTRIBUTING.md) covers building
+and testing, the target-layering rule the codebase is organised around, the
+diagnostic tools, and how a change gets reviewed and merged. Issues tagged
+[`good first issue`](https://github.com/formgeist/cadence/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+are scoped and carry enough context to start from the issue alone.
+
 ## Licence
 
 **MIT** — see [LICENSE](LICENSE). This settles the licence question and keeps
