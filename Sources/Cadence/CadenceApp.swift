@@ -192,6 +192,15 @@ struct CadenceApp: App {
         .windowStyle(.hiddenTitleBar)
         .defaultSize(Tokens.Layout.defaultWindow)
         .commands { CadenceCommands(container: container) }
+
+        // Gives the "Settings…" ⌘, item under the app menu for free — see #71.
+        // The window keeps its own standard title bar rather than the main
+        // window's chrome, so `WindowChromeConfigurator` is deliberately absent.
+        Settings {
+            SettingsView()
+                .environment(container.playback)
+                .preferredColorScheme(.dark)
+        }
     }
 }
 
