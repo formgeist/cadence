@@ -1,0 +1,66 @@
+name: Bug report
+description: Something in Cadence doesn't work the way it should
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file this. A bug that reproduces from a
+        clear set of steps gets fixed; one that doesn't usually can't.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you see, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: >
+        Number them. Include the kind of file or library involved if it
+        matters — a box set, a compilation, a track with no artwork, a
+        specific format.
+      placeholder: |
+        1. Point Cadence at a folder containing…
+        2. …
+        3. …
+    validations:
+      required: true
+  - type: input
+    id: macos-version
+    attributes:
+      label: macOS version
+      placeholder: "14.5"
+    validations:
+      required: true
+  - type: dropdown
+    id: build
+    attributes:
+      label: Which build
+      options:
+        - "make run (unsandboxed SwiftPM executable)"
+        - "make app (signed, sandboxed bundle)"
+        - "A downloaded release"
+        - "Not sure"
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Commit / version
+      description: Output of `git rev-parse --short HEAD`, or the release version.
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console output or logs
+      description: >
+        Anything the app printed to the terminal, or relevant lines from
+        Console.app. For playback issues, the output of
+        `swift run Cadence --play <album>` is often the fastest signal.
+      render: shell
+    validations:
+      required: false
