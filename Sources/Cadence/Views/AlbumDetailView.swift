@@ -163,7 +163,11 @@ struct AlbumDetailView: View {
     // MARK: Tracks
 
     private var trackList: some View {
-        VStack(spacing: 0) {
+        // Lazy so a box set or a 200-track classical box doesn't instantiate
+        // every row on open — only what the shared `ScrollView` can show. The
+        // header scrolls away with the list, so this is the inner list only;
+        // `PlaylistDetailView` does the same for its rows. See #87.
+        LazyVStack(spacing: 0) {
             columnHeader
             ForEach(album.discs) { disc in
                 if let number = disc.number {
