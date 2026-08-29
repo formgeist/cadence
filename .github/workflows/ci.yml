@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      # The package needs swift-tools 6.0; pin to a known-good Xcode rather
+      # than whatever the runner image defaults to this month.
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      # Record the toolchain so the cache key misses when the runner's Swift
+      # changes — a .build from another compiler is not reusable.
+      - name: Record Swift version
+        run: swift --version | tee .swift-version
+
+      - name: Cache SwiftPM build
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: spm-${{ runner.os }}-${{ hashFiles('.swift-version', 'Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+
+      # Run swift-testing directly — the Makefile's TESTING_LIB flags point at
+      # a Command Line Tools path that does not exist under a full Xcode.
+      - name: Test
+        run: swift test
+
+      # release-only compile failures are a real category; make bench runs
+      # release too.
+      - name: Build (release)
+        run: swift build -c release
