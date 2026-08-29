@@ -33,6 +33,11 @@ jobs:
           key: spm-${{ runner.os }}-${{ hashFiles('.swift-version', 'Package.resolved') }}
           restore-keys: spm-${{ runner.os }}-
 
+      # LastFMCredentials.swift is git-ignored; write the empty stub so the app
+      # target compiles. Scrobbling stays "unavailable" — tests don't need it.
+      - name: Generate Last.fm credentials stub
+        run: ./Scripts/gen-lastfm-credentials.sh
+
       # Run swift-testing directly — the Makefile's TESTING_LIB flags point at
       # a Command Line Tools path that does not exist under a full Xcode.
       - name: Test

@@ -27,17 +27,17 @@ those with `make app` and the assembled bundle, not `make run`.
 
 ### Last.fm credentials
 
-Working on scrobbling needs a Last.fm API key and shared secret
-([register an app](https://www.last.fm/api/account/create)). This repository is
-public, so put them in `Sources/Cadence/LastFMCredentials.swift` and tell git to
-ignore your copy:
+`Sources/Cadence/LastFMCredentials.swift` holds a Last.fm API key and shared
+secret. It is **git-ignored and generated**: every `make` build target runs
+`Scripts/gen-lastfm-credentials.sh` first, which writes an empty stub if the
+file is missing. A bare `swift build` skips that — run `make build` once on a
+fresh clone, or run the script by hand.
 
-```bash
-git update-index --skip-worktree Sources/Cadence/LastFMCredentials.swift
-```
-
-With the fields left empty the app still builds and runs; the Preferences window
-just shows scrobbling as unavailable.
+With the fields empty the app builds and runs; the Preferences window shows
+scrobbling as unavailable. To work on scrobbling, register an app
+([here](https://www.last.fm/api/account/create)) and fill the two fields in;
+git ignores the file, so your copy stays local. Official release builds
+overwrite it with real values injected from CI secrets.
 
 ## The layering rule
 

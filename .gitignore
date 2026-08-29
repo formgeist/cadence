@@ -5,3 +5,7 @@ Snapshots/
 *.xcodeproj
 .DS_Store
 PLAN.md
+
+# Generated, and carries a Last.fm API key + shared secret — see
+# Scripts/gen-lastfm-credentials.sh.
+Sources/Cadence/LastFMCredentials.swift
