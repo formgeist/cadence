@@ -56,7 +56,10 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
     }
 
     public func artists() async throws -> [Artist] {
-        let rows = try await pool.read { db in
+        // Map to `Artist` inside the read: GRDB's `Row` is not `Sendable`, so
+        // returning `[Row]` from the async `read` fails the closure's
+        // `T: Sendable` bound (silently, as a `()` inference, on Swift 6.2).
+        let artists = try await pool.read { db in
             try Row.fetchAll(db, sql: """
                 SELECT albumArtist AS name,
                        COUNT(DISTINCT albumTitle || '\u{1}' || IFNULL(year, '')) AS albumCount,
@@ -64,17 +67,16 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
                        GROUP_CONCAT(DISTINCT codec) AS codecs
                 FROM track
                 GROUP BY albumArtist
-                """)
+                """).map { row in
+                Artist(
+                    name: row["name"],
+                    albumCount: row["albumCount"],
+                    trackCount: row["trackCount"],
+                    formats: ((row["codecs"] as String?) ?? "")
+                        .split(separator: ",").map(String.init).sorted())
+            }
         }
-        return rows.map { row in
-            Artist(
-                name: row["name"],
-                albumCount: row["albumCount"],
-                trackCount: row["trackCount"],
-                formats: ((row["codecs"] as String?) ?? "")
-                    .split(separator: ",").map(String.init).sorted())
-        }
-        .sorted {
+        return artists.sorted {
             Artist.stripArticle($0.name)
                 .localizedStandardCompare(Artist.stripArticle($1.name)) == .orderedAscending
         }
