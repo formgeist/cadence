@@ -12,7 +12,7 @@ grouped into the Phase 6 (Depth) and Phase 7 (Release) milestones.
 
 ```bash
 make run                          # launch the app
-make test                         # 191 tests
+make test                         # 232 tests
 make app                          # assemble a signed, sandboxed Cadence.app
 make audio-check                  # can a sandboxed build go bit-perfect?
 make a11y                         # print the accessibility tree
@@ -356,7 +356,7 @@ looks only beside the executable or at the `.app` root — never in
 resolves its own bundle instead, and degrades to system fonts rather than dying.
 
 Also temporary: neither `Testing` nor `XCTest` is in the CLT SDK, so
-swift-testing is an explicit package dependency scoped to the test target, and
+swift-testing is an explicit package dependency scoped to the test targets, and
 `make test` passes the linker the path to `lib_TestingInterop.dylib`.
 
 ## Bit-perfect output
