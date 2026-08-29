@@ -54,7 +54,7 @@ Two things follow that a change must not break:
 
 - **`CadenceCore` stays free of third-party dependencies.** Previews and design
   prototypes import it directly; a dependency added here forfeits that. The
-  `swift-testing` package is the one exception, scoped to the test target only.
+  `swift-testing` package is the one exception, scoped to the test targets only.
 - **Nothing above [`Boundaries.swift`](Sources/CadenceCore/Protocols/Boundaries.swift)
   knows SFBAudioEngine exists.** Audio reaches the rest of the app through
   protocols; only the composition root names the concrete engine, in one line.

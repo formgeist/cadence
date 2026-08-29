@@ -75,5 +75,19 @@ let package = Package(
                 .product(name: "Testing", package: "swift-testing"),
             ]
         ),
+
+        // The app layer. `Cadence` is an executable, not a library, so this
+        // target depends on it directly and reaches in with `@testable` — see
+        // #44. Scoped to logic over injected state (`AppModel` takes `any
+        // LibraryStore`); the rendered layer stays covered by `make shots` and
+        // `make a11y`.
+        .testTarget(
+            name: "CadenceTests",
+            dependencies: [
+                "Cadence",
+                "CadenceCore",
+                .product(name: "Testing", package: "swift-testing"),
+            ]
+        ),
     ]
 )
