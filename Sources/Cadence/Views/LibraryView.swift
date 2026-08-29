@@ -631,7 +631,10 @@ private struct PlaylistShelfRow: View {
         .accessibilityAddTraits(.isButton)
     }
 
+    /// Lazily, so a 500-track playlist stops at the first cover rather than
+    /// resolving every id and allocating the whole array to take `.first` —
+    /// on every body pass, for every row. See #86.
     private var artworkID: Artwork.ID? {
-        model.tracks(in: playlist).compactMap(\.artworkID).first
+        playlist.trackIDs.lazy.compactMap { model.track(id: $0)?.artworkID }.first
     }
 }

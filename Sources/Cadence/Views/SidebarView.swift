@@ -232,8 +232,10 @@ private struct PlaylistRow: View {
     }
 
     /// The first cover in the playlist, so a full one is recognisable at a
-    /// glance rather than being one of five identical placeholders.
+    /// glance rather than being one of five identical placeholders. Lazy so a
+    /// long playlist stops at that first hit instead of resolving every id on
+    /// every body pass. See #86.
     private var artworkID: Artwork.ID? {
-        model.tracks(in: playlist).compactMap(\.artworkID).first
+        playlist.trackIDs.lazy.compactMap { model.track(id: $0)?.artworkID }.first
     }
 }
