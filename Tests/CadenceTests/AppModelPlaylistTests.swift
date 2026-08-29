@@ -93,6 +93,40 @@ struct AppModelPlaylistTests {
         #expect(model.screen == .playlist(shown.id))
     }
 
+    // MARK: moveInPlaylist / removeFromPlaylist
+
+    @Test("Reordering rewrites the playlist with SwiftUI's onMove semantics")
+    func moveReordersThePlaylist() async throws {
+        let tracks = (1...4).map { stubTrack("Track \($0)") }
+        let playlist = Playlist(name: "Late Desk",
+                                trackIDs: tracks.map(\.id), duration: 400)
+        let model = AppModel(store: StubLibraryStore(tracks: tracks, playlists: [playlist]))
+        await model.load()
+
+        await model.moveInPlaylist(playlist, fromOffsets: IndexSet([0]), toOffset: 3)
+
+        let reordered = try #require(model.playlist(id: playlist.id))
+        #expect(reordered.trackIDs
+                == [tracks[1].id, tracks[2].id, tracks[0].id, tracks[3].id])
+        #expect(model.actionError == nil)
+    }
+
+    @Test("Removing by offset takes one of two identical entries and reloads")
+    func removeTakesOneOffset() async throws {
+        let track = stubTrack("Slow Hours")
+        let playlist = Playlist(name: "Late Desk",
+                                trackIDs: [track.id, track.id], duration: 200)
+        let model = AppModel(store: StubLibraryStore(tracks: [track], playlists: [playlist]))
+        await model.load()
+
+        await model.removeFromPlaylist(playlist, atOffsets: IndexSet([0]))
+
+        let trimmed = try #require(model.playlist(id: playlist.id))
+        #expect(trimmed.trackIDs == [track.id])
+        #expect(model.entries(in: trimmed).count == 1)
+        #expect(model.actionError == nil)
+    }
+
     // MARK: edit(_:failing:)
 
     @Test("A failed rename names the playlist and the verb in actionError")

@@ -12,7 +12,7 @@ grouped into the Phase 6 (Depth) and Phase 7 (Release) milestones.
 
 ```bash
 make run                          # launch the app
-make test                         # 230 tests
+make test                         # 232 tests
 make app                          # assemble a signed, sandboxed Cadence.app
 make audio-check                  # can a sandboxed build go bit-perfect?
 make a11y                         # print the accessibility tree
