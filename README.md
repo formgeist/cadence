@@ -1,5 +1,7 @@
 # Cadence
 
+[![CI](https://github.com/formgeist/cadence/actions/workflows/ci.yml/badge.svg)](https://github.com/formgeist/cadence/actions/workflows/ci.yml)
+
 A native macOS FLAC player built with SwiftUI. Local library, real metadata,
 gapless playback, and an interface that isn't a reskin of iTunes.
 
@@ -12,7 +14,7 @@ grouped into the Phase 6 (Depth) and Phase 7 (Release) milestones.
 
 ```bash
 make run                          # launch the app
-make test                         # 232 tests
+make test                         # 235 tests
 make app                          # assemble a signed, sandboxed Cadence.app
 make audio-check                  # can a sandboxed build go bit-perfect?
 make a11y                         # print the accessibility tree
@@ -357,7 +359,10 @@ resolves its own bundle instead, and degrades to system fonts rather than dying.
 
 Also temporary: neither `Testing` nor `XCTest` is in the CLT SDK, so
 swift-testing is an explicit package dependency scoped to the test targets, and
-`make test` passes the linker the path to `lib_TestingInterop.dylib`.
+`make test` passes the linker the path to `lib_TestingInterop.dylib`. CI runs on
+a full-Xcode runner where that path does not exist, so
+[`ci.yml`](.github/workflows/ci.yml) calls `swift test` directly and skips the
+Makefile.
 
 ## Bit-perfect output
 

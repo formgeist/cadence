@@ -101,8 +101,10 @@ wrong.
 - If your change makes a claim in the README wrong, update the README in the
   same PR.
 
-There is no CI yet ([#41](https://github.com/formgeist/cadence/issues/41)), so
-`make test` passing locally is the bar. A maintainer reviews and merges.
+[CI](.github/workflows/ci.yml) runs `swift test` and a release build on every
+push and pull request, on a macOS runner with full Xcode. Green CI plus a
+maintainer review is the bar for merge; `make test` passing locally is how you
+get there without waiting on the runner.
 
 ## Good first issues
 
