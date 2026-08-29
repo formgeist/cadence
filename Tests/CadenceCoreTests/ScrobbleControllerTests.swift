@@ -71,6 +71,19 @@ struct ScrobbleControllerTests {
         try? await Task.sleep(for: .milliseconds(30))
     }
 
+    /// Spin until `condition` holds or `timeout` elapses. `connect()` finishes
+    /// on its own `Task` after an unpredictable number of actor hops — a fixed
+    /// sleep that is long enough on one machine is a flake on a slower CI
+    /// runner.
+    func until(
+        _ condition: () -> Bool, timeout: Duration = .seconds(5)
+    ) async {
+        let deadline = ContinuousClock().now + timeout
+        while !condition(), ContinuousClock().now < deadline {
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+    }
+
     func start(_ rig: Rig, _ track: Track) async {
         rig.playback.play(track, in: [track])
         await rig.engine.emit(.started(track.url))
@@ -260,7 +273,7 @@ struct ScrobbleControllerTests {
 
         rig.controller.connect()
         // beginAuthorization → pendingAuthorizationURL, then the poll succeeds.
-        try? await Task.sleep(for: .milliseconds(60))
+        await until { rig.controller.account != nil }
 
         #expect(rig.controller.account?.username == "vera")
         #expect(rig.keychain.string(forAccount: "Mock") == "fresh-key")
