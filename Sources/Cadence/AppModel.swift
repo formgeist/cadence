@@ -200,6 +200,11 @@ final class AppModel {
     /// of comparisons at library scale; see #85.
     private var albumsByKey: [Album.Key: Album] = [:]
     private var artistsByName: [String: Artist] = [:]
+    /// One artist's discography, oldest first — the artist screen's whole
+    /// content. Computed once here next to `artistArtwork` rather than
+    /// filtering and sorting the full album list on every body pass; see #86.
+    /// Independent of `albumSort`, which only reorders the flat `albums` grid.
+    private var albumsByArtist: [String: [Album]] = [:]
     private(set) var isLoading = true
     private(set) var loadError: String?
     /// Set when the real database could not be opened and the preview library
@@ -277,6 +282,13 @@ final class AppModel {
             tracksByID = Dictionary(allTracks.map { ($0.id, $0) }) { first, _ in first }
             albumsByKey = Dictionary(albums.map { ($0.key, $0) }) { first, _ in first }
             artistsByName = Dictionary(artists.map { ($0.name, $0) }) { first, _ in first }
+            albumsByArtist = Dictionary(grouping: albums, by: \.albumArtist)
+                .mapValues { group in
+                    group.sorted {
+                        ($0.year ?? 0, $0.title.localizedLowercase)
+                            < ($1.year ?? 0, $1.title.localizedLowercase)
+                    }
+                }
             // A track removed from the library should not sit in this list
             // forever, wasting one of its five slots on something
             // `recentlyPlayed` will never resolve again.
@@ -343,16 +355,12 @@ final class AppModel {
         artistsByName[name]
     }
 
-    /// Every album credited to one artist, oldest first. The store has the
-    /// same query, but the whole library is already in memory and the artist
-    /// screen should not wait on a round trip to draw.
+    /// Every album credited to one artist, oldest first. Resolved once in
+    /// `load()` — the store has the same query, but the whole library is
+    /// already in memory and the artist screen should not wait on a round
+    /// trip, nor re-filter and re-sort it on every body pass. See #86.
     func albums(byArtist name: String) -> [Album] {
-        albums
-            .filter { $0.albumArtist == name }
-            .sorted {
-                ($0.year ?? 0, $0.title.localizedLowercase)
-                    < ($1.year ?? 0, $1.title.localizedLowercase)
-            }
+        albumsByArtist[name] ?? []
     }
 
     var currentAlbum: Album? {

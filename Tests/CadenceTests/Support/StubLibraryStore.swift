@@ -88,7 +88,8 @@ actor StubLibraryStore: LibraryStore {
 /// A bare track with a distinct title; everything else is filler. Enough for
 /// the model's id-mapping and name logic, which never look past those fields.
 func stubTrack(_ title: String, artist: String = "Vera Lindqvist",
-               album: String = "Sound of the Slow Hours", seconds: TimeInterval = 100) -> Track {
+               album: String = "Sound of the Slow Hours", year: Int? = nil,
+               seconds: TimeInterval = 100) -> Track {
     Track(url: URL(fileURLWithPath: "/music/\(title).flac"),
-          title: title, artist: artist, albumTitle: album, duration: seconds)
+          title: title, artist: artist, albumTitle: album, year: year, duration: seconds)
 }
