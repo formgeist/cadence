@@ -157,7 +157,7 @@ struct SearchField: View {
                 }
             }
             .padding(.horizontal, 14)
-            .frame(height: 30)
+            .frame(height: 40)
             .background {
                 RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous)
                     .fill(isActive
@@ -180,7 +180,7 @@ struct SearchField: View {
                     if !model.recentlyPlayed.isEmpty || !model.recentSearches.isEmpty {
                         SearchSuggestionsPopover(highlightedIndex: model.searchEffectiveHighlight,
                                                   onPick: { isFocused = false })
-                            .offset(y: 38)
+                            .offset(y: 48)
                     }
                     // No query has answered yet and there's nothing left
                     // over from a moment ago to show in the meantime: wait
@@ -191,7 +191,7 @@ struct SearchField: View {
                 } else if !model.searchResults.isEmpty || !model.isSearchPending {
                     SearchResultsPopover(highlightedIndex: model.searchEffectiveHighlight,
                                           onPick: { isFocused = false })
-                        .offset(y: 38)
+                        .offset(y: 48)
                 }
             }
         }
@@ -355,7 +355,7 @@ private struct SearchResultsPopover: View {
         VStack(alignment: .leading, spacing: 0) {
             if results.isEmpty {
                 Text("No results for “\(model.searchText)”")
-                    .font(Tokens.Typography.sans(11.5, .semibold))
+                    .font(Tokens.Typography.sans(13, .semibold))
                     .foregroundStyle(Color(hex: 0x8A8A94))
                     .padding(.horizontal, Tokens.Space.xl)
                     .padding(.vertical, 14)
@@ -519,7 +519,7 @@ private struct PopoverRow: Identifiable {
 private func popoverGroup(_ label: String, _ rows: [PopoverRow],
                           startIndex: Int, highlightedIndex: Int?) -> some View {
     VStack(alignment: .leading, spacing: 0) {
-        SectionLabel(label, size: 9.5)
+        SectionLabel(label, size: 10.5)
             .padding(.horizontal, Tokens.Space.xl)
             .padding(.top, Tokens.Space.m)
             .padding(.bottom, 6)
@@ -529,36 +529,36 @@ private func popoverGroup(_ label: String, _ rows: [PopoverRow],
                 HStack(spacing: Tokens.Space.m) {
                     if let icon = row.icon {
                         Image(systemName: icon)
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.system(size: 13, weight: .medium))
                             .foregroundStyle(Color(hex: 0x7A7A85))
-                            .frame(width: 26, height: 26)
+                            .frame(width: 28, height: 28)
                     } else {
                         ArtworkView(artworkID: row.artworkID,
                                     cornerRadius: 3,
                                     isCircular: row.isRound,
                                     stripe: 4,
-                                    displaySize: 32)
-                            .frame(width: 26, height: 26)
+                                    displaySize: 36)
+                            .frame(width: 28, height: 28)
                     }
-                    VStack(alignment: .leading, spacing: 1) {
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(row.title)
-                            .font(Tokens.Typography.sans(12.5, .semibold))
+                            .font(Tokens.Typography.sans(14, .semibold))
                             .foregroundStyle(Color(hex: 0xDCDCE3))
                             .lineLimit(1)
                         if !row.subtitle.isEmpty {
                             Text(row.subtitle)
-                                .font(Tokens.Typography.sans(10.5, .medium))
+                                .font(Tokens.Typography.sans(12, .medium))
                                 .foregroundStyle(Color(hex: 0x6A6A74))
                                 .lineLimit(1)
                         }
                     }
                     Spacer(minLength: Tokens.Space.s)
                     Text(row.trailing)
-                        .font(Tokens.Typography.mono(10))
+                        .font(Tokens.Typography.mono(11))
                         .foregroundStyle(Tokens.Palette.textFaint)
                 }
                 .padding(.horizontal, 14)
-                .padding(.vertical, 6)
+                .padding(.vertical, 7)
                 .hoverHighlight(isActive: isHighlighted, radius: Tokens.Radius.control,
                                 hoverColor: Color(hex: 0x1F1F26),
                                 activeColor: Color(hex: 0x1F1F26))
@@ -582,22 +582,22 @@ private struct TopHitRow: View {
         Button(action: action) {
             HStack(spacing: Tokens.Space.m) {
                 ArtworkView(artworkID: album.artworkID, cornerRadius: Tokens.Radius.thumb,
-                                displaySize: 48)
-                    .frame(width: 40, height: 40)
+                                displaySize: 52)
+                    .frame(width: 44, height: 44)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(album.title)
-                        .font(Tokens.Typography.sans(13, .bold))
+                        .font(Tokens.Typography.sans(14.5, .bold))
                         .foregroundStyle(Color(hex: 0xF1F1F5))
                         .lineLimit(1)
                     Text([("Album"), album.albumArtist, album.year.map(String.init)]
                         .compactMap { $0 }.joined(separator: " · "))
-                        .font(Tokens.Typography.sans(11, .medium))
+                        .font(Tokens.Typography.sans(12.5, .medium))
                         .foregroundStyle(Color(hex: 0x7C7C86))
                         .lineLimit(1)
                 }
                 Spacer(minLength: Tokens.Space.s)
                 Text("TOP HIT")
-                    .font(Tokens.Typography.mono(9.5, .medium))
+                    .font(Tokens.Typography.mono(10, .medium))
                     .tracking(0.8)
                     .foregroundStyle(Tokens.Palette.accent)
             }

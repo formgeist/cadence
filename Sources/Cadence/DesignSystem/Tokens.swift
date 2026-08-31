@@ -105,7 +105,7 @@ enum Tokens {
         /// window with `.hiddenTitleBar` already has them, so this is reserved
         /// space rather than three painted circles.
         static let trafficLightInset: CGFloat = 78
-        static let searchFieldMaxWidth: CGFloat = 420
+        static let searchFieldMaxWidth: CGFloat = 480
         static let albumHeaderArt: CGFloat = 248
         static let artistHeaderArt: CGFloat = 156
         /// Narrower than an album card: an artist card carries a name and two

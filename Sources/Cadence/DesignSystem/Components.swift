@@ -169,6 +169,9 @@ struct Wordmark: View {
     var isPlaying: Bool
     @State private var angle: Double = 0
 
+    /// One turn every 1.8s — 33⅓ RPM, the speed of an LP.
+    private static let secondsPerTurn: Double = 60.0 / (100.0 / 3.0)
+
     var body: some View {
         HStack(spacing: 9) {
             ZStack {
@@ -192,7 +195,7 @@ struct Wordmark: View {
             }
             .rotationEffect(.degrees(angle))
             .animation(isPlaying
-                       ? .linear(duration: 3).repeatForever(autoreverses: false)
+                       ? .linear(duration: Self.secondsPerTurn).repeatForever(autoreverses: false)
                        : .default,
                        value: angle)
             .onAppear { if isPlaying { angle = 360 } }

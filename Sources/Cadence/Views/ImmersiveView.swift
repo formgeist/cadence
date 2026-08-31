@@ -73,7 +73,10 @@ struct ImmersiveView: View {
             .keyboardShortcut(.escape, modifiers: [])
         }
         .padding(.horizontal, Tokens.Space.l)
-        .frame(height: 44)
+        // Matches the library's title bar so the wordmark and Close button
+        // sit on the same line as the traffic lights, which AppKit centres in
+        // a title bar this tall — see `WindowChrome`.
+        .frame(height: Tokens.Layout.titleBarHeight)
     }
 
     /// Flexible: it takes whatever height is left once the top bar and a
