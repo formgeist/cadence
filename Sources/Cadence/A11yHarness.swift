@@ -41,6 +41,7 @@ enum A11yHarness {
                 .environment(container.artworkLoader)
                 .environment(container.textEntry)
                 .environment(container.searchFocus)
+                .environment(container.scrobble)
                 .environment(\.isSilentPlayback, container.isSilentPlayback)
                 .preferredColorScheme(.dark)
 
@@ -80,7 +81,7 @@ enum A11yHarness {
     }
 
     private enum Screen: CaseIterable {
-        case artists, artist, album, playlist, immersive
+        case artists, artist, album, playlist, settings, immersive
 
         var title: String {
             switch self {
@@ -88,6 +89,7 @@ enum A11yHarness {
             case .artist: "Artist detail"
             case .album: "Album detail"
             case .playlist: "Playlist detail"
+            case .settings: "Preferences"
             case .immersive: "Immersive"
             }
         }
@@ -114,6 +116,9 @@ enum A11yHarness {
                 if let playlist = container.model.playlists.first {
                     container.model.show(.playlist(playlist.id))
                 }
+            case .settings:
+                container.model.isImmersive = false
+                container.model.show(.settings)
             case .immersive:
                 container.model.isImmersive = true
             }

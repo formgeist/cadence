@@ -3,14 +3,16 @@ import AppKit
 import CadenceCore
 import CadenceLibrary
 
-/// The Preferences window — issue #71. `CadenceApp` had only a `WindowGroup`, so
-/// there was nowhere for a setting to live even once one existed. This is the
-/// window and its wiring; each row's own behaviour is the concern of the issue
-/// that adds it.
+/// The Preferences page — issue #71 gave it a home, and it started life as a
+/// separate `Settings` window. It is a full page inside the main window now:
+/// three settings and a stock `Settings` pane both looked cramped against the
+/// rest of the app, and a page has room to let them breathe. Each row's own
+/// behaviour is the concern of the issue that adds it.
 ///
 /// Built from `Tokens` rather than a stock `Form`: the app is one custom dark
 /// surface end to end, and a system-drawn settings pane reads as a different
-/// program. The shape follows `TrackInfoSheet` and `PlaylistNameSheet`.
+/// program. The header follows `LibraryView`; the grouped cards follow the
+/// detail screens.
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @Environment(PlaybackController.self) private var playback
@@ -21,36 +23,42 @@ struct SettingsView: View {
         @Bindable var playback = playback
         @Bindable var model = model
 
-        return VStack(alignment: .leading, spacing: Tokens.Space.xxl) {
-            Text("Preferences")
-                .font(Tokens.Typography.sans(16, .bold))
-                .foregroundStyle(Tokens.Palette.textPrimary)
+        return VStack(spacing: 0) {
+            header
 
-            SettingsSection("Library") {
-                LibrarySettings()
-            }
+            ScrollView {
+                VStack(alignment: .leading, spacing: Tokens.Space.contentInset) {
+                    SettingsSection("Library") {
+                        LibrarySettings()
+                    }
 
-            SettingsSection("Playback") {
-                SettingsRow(
-                    "ReplayGain",
-                    caption: "Even out loudness differences between tracks and albums."
-                ) {
-                    SegmentedPicker(
-                        selection: $playback.replayGainMode,
-                        options: ReplayGainMode.allCases,
-                        label: \.label
-                    )
+                    SettingsSection("Playback") {
+                        SettingsRow(
+                            "ReplayGain",
+                            caption: "Even out loudness differences between tracks and albums."
+                        ) {
+                            SegmentedPicker(
+                                selection: $playback.replayGainMode,
+                                options: ReplayGainMode.allCases,
+                                label: \.label
+                            )
+                        }
+                    }
+
+                    SettingsSection("Scrobbling") {
+                        ScrobbleSettings()
+                    }
                 }
+                .frame(maxWidth: Tokens.Layout.settingsContentWidth, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, Tokens.Space.contentInset)
+                .padding(.top, Tokens.Space.xxl)
+                .padding(.bottom, Tokens.Space.contentInset)
             }
-
-            SettingsSection("Scrobbling") {
-                ScrobbleSettings()
-            }
+            .scrollContentBackground(.hidden)
         }
-        .padding(Tokens.Space.xxl)
-        .frame(width: 460, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Tokens.Palette.surface)
-        .preferredColorScheme(.dark)
         // `connect()` asks for a browser via this property; open it and clear.
         .onChange(of: scrobble.pendingAuthorizationURL) { _, url in
             guard let url else { return }
@@ -74,6 +82,25 @@ struct SettingsView: View {
                  ? "The files stay on disk."
                  : "\(count == 1 ? "1 track" : "\(count) tracks") "
                     + "will leave your library and any playlists. The files stay on disk.")
+        }
+    }
+
+    /// The same fixed screen header the library and detail pages carry, so
+    /// Preferences reads as another destination rather than a modal.
+    private var header: some View {
+        HStack(alignment: .bottom) {
+            Text("Preferences")
+                .font(Tokens.Typography.screenTitle)
+                .tracking(Tokens.Typography.Tracking.screenTitle)
+                .foregroundStyle(Tokens.Palette.textPrimary)
+            Spacer()
+        }
+        .padding(.horizontal, Tokens.Space.contentInset)
+        .padding(.top, Tokens.Space.xxl)
+        .padding(.bottom, Tokens.Space.xl)
+        .background(Tokens.Palette.surface)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Color(hex: 0x1C1C21)).frame(height: 1)
         }
     }
 
@@ -366,8 +393,10 @@ private struct ScrobbleSettings: View {
 
 // MARK: - Building blocks
 
-/// A titled group of rows. The heading is the same mono, wide-tracked label the
-/// rest of the app uses for sections.
+/// A titled group of rows, drawn as a bordered card on the panel tone. The
+/// heading is the same mono, wide-tracked label the rest of the app uses for
+/// sections; the card is what keeps three unlike settings from running
+/// together the way they did in the old fixed-width pane.
 struct SettingsSection<Content: View>: View {
     var title: String
     @ViewBuilder var content: Content
@@ -380,8 +409,18 @@ struct SettingsSection<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.Space.m) {
             SectionLabel(title)
-            VStack(alignment: .leading, spacing: Tokens.Space.l) {
+            VStack(alignment: .leading, spacing: Tokens.Space.xl) {
                 content
+            }
+            .padding(Tokens.Space.xl)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous)
+                    .fill(Tokens.Palette.card)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous)
+                    .strokeBorder(Tokens.Palette.border, lineWidth: 1)
             }
         }
     }

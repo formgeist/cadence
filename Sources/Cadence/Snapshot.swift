@@ -247,14 +247,12 @@ enum Snapshot {
             container.model.searchText = ""
         },
 
-        // The Preferences window — issue #71. A different root view, so it
-        // renders at its own size rather than the main window's.
-        Shot(name: "24-settings", size: CGSize(width: 460, height: 560),
-             makeRoot: { AnyView(SettingsView()
-                .environment($0.model)
-                .environment($0.importer)
-                .environment($0.playback)
-                .environment($0.scrobble)) }) { _ in },
+        // Preferences — issue #71. A full page in the window now, so it
+        // renders through `RootView` at the main window's size like every
+        // other screen.
+        Shot(name: "24-settings", size: Tokens.Layout.defaultWindow) { container in
+            container.model.show(.settings)
+        },
     ]
 
     private static func open(_ container: AppContainer, album title: String,
@@ -301,6 +299,7 @@ enum Snapshot {
                 .environment(container.artworkLoader)
                 .environment(container.textEntry)
                 .environment(container.searchFocus)
+                .environment(container.scrobble)
                 .environment(\.isSilentPlayback, container.isSilentPlayback)
                 .environment(\.rendersSearchFocused, shot.focusesSearchField)
                 .preferredColorScheme(.dark)
@@ -401,6 +400,7 @@ enum Snapshot {
                 .environment(container.artworkLoader)
                 .environment(container.textEntry)
                 .environment(container.searchFocus)
+                .environment(container.scrobble)
                 .environment(\.isSilentPlayback, container.isSilentPlayback)
                 .preferredColorScheme(.dark)
                 .background(Tokens.Palette.surface)

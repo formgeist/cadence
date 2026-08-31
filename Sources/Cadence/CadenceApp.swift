@@ -231,18 +231,6 @@ struct CadenceApp: App {
         .windowStyle(.hiddenTitleBar)
         .defaultSize(Tokens.Layout.defaultWindow)
         .commands { CadenceCommands(container: container) }
-
-        // Gives the "Settings…" ⌘, item under the app menu for free — see #71.
-        // The window keeps its own standard title bar rather than the main
-        // window's chrome, so `WindowChromeConfigurator` is deliberately absent.
-        Settings {
-            SettingsView()
-                .environment(container.model)
-                .environment(container.importer)
-                .environment(container.playback)
-                .environment(container.scrobble)
-                .preferredColorScheme(.dark)
-        }
     }
 }
 
@@ -253,6 +241,19 @@ struct CadenceCommands: Commands {
     let container: AppContainer
 
     var body: some Commands {
+        // Preferences is a page in the window now, not a separate `Settings`
+        // scene — but the app menu's ⌘, item should still land on it. Replacing
+        // `.appSettings` keeps the item where macOS users expect it and points
+        // it at the navigation instead.
+        CommandGroup(replacing: .appSettings) {
+            Button("Settings…") {
+                if container.model.screen != .settings {
+                    container.model.show(.settings)
+                }
+            }
+            .keyboardShortcut(",", modifiers: .command)
+        }
+
         CommandGroup(after: .newItem) {
             // ⇧⌘N rather than Music.app's ⌘N: a WindowGroup gives SwiftUI a
             // free New Window on ⌘N, and it wins the binding, so a New

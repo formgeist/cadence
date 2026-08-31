@@ -20,6 +20,10 @@ final class AppModel {
         case artist(String)
         /// By id, never by name: two playlists may share one.
         case playlist(Playlist.ID)
+        /// Preferences, as a full page inside the window rather than the
+        /// separate `Settings` window it started as. Reached from the title
+        /// bar's gear or ⌘, and left with Back.
+        case settings
     }
 
     enum Tab: String, CaseIterable, Identifiable {

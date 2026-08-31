@@ -345,6 +345,9 @@ struct IconButton: View {
     var label: String
     var glyphSize: CGFloat = 11
     var side: CGFloat = 20
+    /// Held lit while the thing it toggles is showing — e.g. the title bar's
+    /// gear while Preferences is the open screen.
+    var isActive: Bool = false
     var action: () -> Void
 
     @State private var isHovering = false
@@ -353,18 +356,21 @@ struct IconButton: View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.system(size: glyphSize, weight: .semibold))
-                .foregroundStyle(isHovering
+                .foregroundStyle(isHovering || isActive
                                  ? Color(hex: 0xEDEDF2) : Color(hex: 0x6E6E78))
                 .frame(width: side, height: side)
                 .background {
                     RoundedRectangle(cornerRadius: Tokens.Radius.control,
                                      style: .continuous)
-                        .fill(isHovering ? Tokens.Palette.navHover : .clear)
+                        .fill(isActive
+                              ? Tokens.Palette.navActive
+                              : (isHovering ? Tokens.Palette.navHover : .clear))
                 }
         }
         .plainControl()
         .onHover { isHovering = $0 }
         .accessibilityLabel(label)
+        .accessibilityAddTraits(isActive ? [.isButton, .isSelected] : .isButton)
         .help(label)
     }
 }

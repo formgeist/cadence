@@ -139,7 +139,9 @@ struct RootView: View {
 
     @ViewBuilder
     private var content: some View {
-        if model.isEmpty {
+        // Preferences is reachable even before a note of music has been added,
+        // so the empty-library placeholder gives way to it.
+        if model.isEmpty && model.screen != .settings {
             EmptyLibraryView()
         } else {
             libraryContent
@@ -151,6 +153,8 @@ struct RootView: View {
         switch model.screen {
         case .library:
             LibraryView()
+        case .settings:
+            SettingsView()
         case .album(let key):
             if let album = model.album(for: key) {
                 AlbumDetailView(album: album)

@@ -7,10 +7,6 @@ import CadenceCore
 struct TitleBarView: View {
     @Environment(AppModel.self) private var model
     @Environment(PlaybackController.self) private var playback
-    /// macOS 14+. Opens the `Settings` scene declared in `CadenceApp` — the
-    /// same window ⌘, reaches. Present but inert in the snapshot and a11y
-    /// harnesses, which host this view without an app scene.
-    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         @Bindable var model = model
@@ -31,12 +27,13 @@ struct TitleBarView: View {
                 .zIndex(30)
 
             // Balances the chevrons on the left so the field stays optically
-            // centred, and gives the Preferences window a way in besides ⌘,.
+            // centred, and gives Preferences a way in besides ⌘,.
             HStack(spacing: Tokens.Space.xs) {
                 Spacer(minLength: 0)
                 IconButton(systemImage: "gearshape", label: "Preferences",
-                           glyphSize: 13, side: 26) {
-                    openSettings()
+                           glyphSize: 13, side: 26,
+                           isActive: model.screen == .settings) {
+                    if model.screen != .settings { model.show(.settings) }
                 }
             }
             .frame(width: 92)
