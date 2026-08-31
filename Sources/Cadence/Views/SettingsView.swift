@@ -10,17 +10,23 @@ import CadenceCore
 /// surface end to end, and a system-drawn settings pane reads as a different
 /// program. The shape follows `TrackInfoSheet` and `PlaylistNameSheet`.
 struct SettingsView: View {
+    @Environment(AppModel.self) private var model
     @Environment(PlaybackController.self) private var playback
     @Environment(ScrobbleController.self) private var scrobble
     @Environment(\.openURL) private var openURL
 
     var body: some View {
         @Bindable var playback = playback
+        @Bindable var model = model
 
         return VStack(alignment: .leading, spacing: Tokens.Space.xxl) {
             Text("Preferences")
                 .font(Tokens.Typography.sans(16, .bold))
                 .foregroundStyle(Tokens.Palette.textPrimary)
+
+            SettingsSection("Library") {
+                LibrarySettings()
+            }
 
             SettingsSection("Playback") {
                 SettingsRow(
@@ -48,6 +54,109 @@ struct SettingsView: View {
             guard let url else { return }
             openURL(url)
             scrobble.pendingAuthorizationURL = nil
+        }
+        .confirmationDialog(
+            folderRemovalPrompt,
+            isPresented: Binding(get: { model.folderPendingRemoval != nil },
+                                 set: { if !$0 { model.folderPendingRemoval = nil } }),
+            presenting: model.folderPendingRemoval
+        ) { folder in
+            Button("Remove Folder", role: .destructive) {
+                model.folderPendingRemoval = nil
+                Task { await model.removeFolder(folder) }
+            }
+            Button("Cancel", role: .cancel) { model.folderPendingRemoval = nil }
+        } message: { folder in
+            let count = model.tracks(under: folder).count
+            Text(count == 0
+                 ? "The files stay on disk."
+                 : "\(count == 1 ? "1 track" : "\(count) tracks") "
+                    + "will leave your library and any playlists. The files stay on disk.")
+        }
+    }
+
+    private var folderRemovalPrompt: String {
+        guard let folder = model.folderPendingRemoval else { return "Remove folder?" }
+        return "Remove “\(folder.lastPathComponent)” from your library?"
+    }
+}
+
+/// The music folders that have been added, each with a way out — issue #33.
+/// Adding is here too, so this row is the whole story of what the library is
+/// built from rather than a list you can only shrink.
+private struct LibrarySettings: View {
+    @Environment(AppModel.self) private var model
+    @Environment(LibraryImporter.self) private var importer
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Tokens.Space.l) {
+            if importer.folders.isEmpty {
+                Text("No music folders have been added yet.")
+                    .font(Tokens.Typography.caption)
+                    .foregroundStyle(Tokens.Palette.textTertiary)
+            } else {
+                VStack(alignment: .leading, spacing: Tokens.Space.s) {
+                    ForEach(importer.folders, id: \.self) { folder in
+                        folderRow(folder)
+                    }
+                }
+            }
+
+            CapsuleButton(title: "Add Music Folder…", systemImage: "plus") {
+                guard let folder = importer.chooseFolder() else { return }
+                importer.importFolders([folder]) {
+                    Task { await model.load() }
+                }
+            }
+
+            if let error = importer.errorMessage {
+                HStack(spacing: Tokens.Space.s) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Tokens.Palette.textMuted)
+                    Text(error)
+                        .font(Tokens.Typography.captionSmall)
+                        .foregroundStyle(Tokens.Palette.textTertiary)
+                }
+            }
+        }
+    }
+
+    private func folderRow(_ folder: URL) -> some View {
+        HStack(spacing: Tokens.Space.m) {
+            VStack(alignment: .leading, spacing: Tokens.Space.xxs) {
+                Text(folder.lastPathComponent)
+                    .font(Tokens.Typography.sans(13, .semibold))
+                    .foregroundStyle(Tokens.Palette.textPrimary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text((folder.path as NSString).abbreviatingWithTildeInPath)
+                    .font(Tokens.Typography.captionSmall)
+                    .foregroundStyle(Tokens.Palette.textTertiary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            Spacer(minLength: Tokens.Space.m)
+            Button {
+                model.folderPendingRemoval = folder
+            } label: {
+                Image(systemName: "minus.circle")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Tokens.Palette.textSecondary)
+            }
+            .plainControl()
+            .help("Remove this folder from the library")
+            .accessibilityLabel("Remove \(folder.lastPathComponent)")
+        }
+        .padding(.vertical, Tokens.Space.xs)
+        .padding(.horizontal, Tokens.Space.m)
+        .background {
+            RoundedRectangle(cornerRadius: Tokens.Radius.control, style: .continuous)
+                .fill(Tokens.Palette.fieldBackground)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: Tokens.Radius.control, style: .continuous)
+                .strokeBorder(Tokens.Palette.fieldBorder, lineWidth: 1)
         }
     }
 }

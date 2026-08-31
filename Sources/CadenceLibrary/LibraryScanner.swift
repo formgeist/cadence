@@ -272,7 +272,7 @@ public actor LibraryScanner {
 
     /// Containment by path component, not by string prefix. `/Music` is not a
     /// parent of `/Music Backup`, however much their paths look alike.
-    static func isDescendant(_ url: URL, of root: URL) -> Bool {
+    public static func isDescendant(_ url: URL, of root: URL) -> Bool {
         let child = normalize(url).pathComponents
         let parent = normalize(root).pathComponents
         guard child.count > parent.count else { return false }

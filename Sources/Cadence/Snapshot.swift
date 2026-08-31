@@ -249,8 +249,10 @@ enum Snapshot {
 
         // The Preferences window — issue #71. A different root view, so it
         // renders at its own size rather than the main window's.
-        Shot(name: "24-settings", size: CGSize(width: 460, height: 380),
+        Shot(name: "24-settings", size: CGSize(width: 460, height: 560),
              makeRoot: { AnyView(SettingsView()
+                .environment($0.model)
+                .environment($0.importer)
                 .environment($0.playback)
                 .environment($0.scrobble)) }) { _ in },
     ]

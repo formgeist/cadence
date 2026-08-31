@@ -20,6 +20,11 @@ actor StubLibraryStore: LibraryStore {
     private let inner: InMemoryLibraryStore
     private var failing: Set<Operation>
 
+    /// Every track id passed to `remove(trackIDs:)` that got past the failure
+    /// guard. `InMemoryLibraryStore.remove` is a no-op, so a caller that wants
+    /// to check what a removal actually asked for reads this.
+    private(set) var removedTrackIDs: [Track.ID] = []
+
     init(tracks: [Track] = [], playlists: [Playlist] = [], failing: Set<Operation> = []) {
         self.inner = InMemoryLibraryStore(tracks: tracks, playlists: playlists)
         self.failing = failing
@@ -81,6 +86,7 @@ actor StubLibraryStore: LibraryStore {
 
     func remove(trackIDs: [Track.ID]) async throws {
         try guardAgainst(.remove)
+        removedTrackIDs.append(contentsOf: trackIDs)
         try await inner.remove(trackIDs: trackIDs)
     }
 }
