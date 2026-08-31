@@ -20,6 +20,10 @@ enum Tokens {
         static let chrome = Color(hex: 0x131317)
         /// Sidebar and now-playing pane — a step darker than the content.
         static let panel = Color(hex: 0x101014)
+        /// A grouped card sitting *on* the content surface — the Preferences
+        /// sections. A step lighter than `surface`, so the group reads as
+        /// raised rather than cut into the background.
+        static let card = Color(hex: 0x141418)
         /// Behind the immersive view.
         static let immersiveTop = Color(hex: 0x171315)
         static let immersiveBottom = Color(hex: 0x08080A)
@@ -115,6 +119,10 @@ enum Tokens {
         /// Fixed regardless of hover, so the artwork above it never has to
         /// move to make room for the transport controls fading in.
         static let immersiveBandHeight: CGFloat = 176
+        /// Preferences is a full page now, but its rows are a name, a caption
+        /// and one control — a measure this wide keeps them readable rather
+        /// than stretching the control halfway across the window.
+        static let settingsContentWidth: CGFloat = 620
         static let minWindow = CGSize(width: 1_060, height: 660)
         static let defaultWindow = CGSize(width: 1_280, height: 820)
     }
