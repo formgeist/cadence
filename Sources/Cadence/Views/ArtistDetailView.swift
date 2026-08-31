@@ -10,6 +10,11 @@ struct ArtistDetailView: View {
 
     var artist: Artist
 
+    /// Hover state for the header image's edit affordance. The picture is
+    /// derived by default — the first album cover — and this is where the user
+    /// gets to override it, so the control lives on the image itself.
+    @State private var isHoveringArt = false
+
     private var albums: [Album] { model.albums(byArtist: artist.name) }
 
     /// Album order, so Play works through the discography the way the screen
@@ -32,7 +37,9 @@ struct ArtistDetailView: View {
                         displaySize: 320)
                 .frame(width: Tokens.Layout.artistHeaderArt,
                        height: Tokens.Layout.artistHeaderArt)
+                .overlay { editArtOverlay }
                 .shadow(color: .black.opacity(0.55), radius: 25, y: 12)
+                .onHover { isHoveringArt = $0 }
 
             VStack(alignment: .leading, spacing: 12) {
                 SectionLabel("Artist", size: 10.5, color: Color(hex: 0x8D8D98))
@@ -72,6 +79,31 @@ struct ArtistDetailView: View {
         }
         .overlay(alignment: .bottom) {
             Rectangle().fill(Color(hex: 0x1C1C21)).frame(height: 1)
+        }
+    }
+
+    /// Appears over the header image on hover: a scrim behind an "Edit" pill
+    /// that opens the image editor. Hidden entirely when editing isn't
+    /// available (the real artwork store failed to open, or preview mode), so
+    /// there is never a control that leads nowhere.
+    @ViewBuilder
+    private var editArtOverlay: some View {
+        if model.canEditArtistImage {
+            ZStack {
+                Circle()
+                    .fill(.black.opacity(isHoveringArt ? 0.55 : 0))
+                    .allowsHitTesting(false)
+
+                if isHoveringArt {
+                    CapsuleButton(title: "Edit", systemImage: "pencil.circle.fill",
+                                  accessibilityLabel: "Edit artist image") {
+                        model.editingArtist = artist
+                    }
+                    .scaleEffect(0.82)
+                    .transition(.opacity)
+                }
+            }
+            .animation(.easeOut(duration: 0.12), value: isHoveringArt)
         }
     }
 

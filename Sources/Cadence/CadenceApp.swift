@@ -135,7 +135,7 @@ final class AppContainer {
                 let artwork = try DiskArtworkStore.makeDefault()
                 let scanner = LibraryScanner(
                     store: store, artwork: artwork, router: Self.metadataRouter)
-                model = AppModel(store: store, settings: settings)
+                model = AppModel(store: store, settings: settings, artwork: artwork)
                 // Removing a track from the library can orphan its cover the
                 // same way a deleted file does — see pruneOrphanedArtwork's
                 // own reasoning (#40). AppModel only knows the store

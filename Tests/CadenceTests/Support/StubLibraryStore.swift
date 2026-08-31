@@ -49,6 +49,14 @@ actor StubLibraryStore: LibraryStore {
     }
     func librarySize() async throws -> Int64 { try await inner.librarySize() }
 
+    func customArtistImages() async throws -> [String: Artwork.ID] {
+        try await inner.customArtistImages()
+    }
+
+    func setCustomArtistImage(_ id: Artwork.ID?, forArtist name: String) async throws {
+        try await inner.setCustomArtistImage(id, forArtist: name)
+    }
+
     @discardableResult
     func createPlaylist(named name: String) async throws -> Playlist {
         try guardAgainst(.createPlaylist)

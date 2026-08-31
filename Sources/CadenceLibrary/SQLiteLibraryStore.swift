@@ -341,12 +341,42 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
         }
     }
 
-    /// Every artwork id a track still points at, so `DiskArtworkStore.prune`
-    /// knows what is safe to delete.
+    /// Every artwork id still spoken for — by a track's cover or by a custom
+    /// artist image — so `DiskArtworkStore.prune` knows what is safe to delete.
+    /// A user upload that no track references would otherwise look like an
+    /// orphan and be swept the next time an import prunes.
     public func referencedArtworkIDs() async throws -> Set<Artwork.ID> {
         try await pool.read { db in
-            try Set(String.fetchAll(
+            var ids = try Set(String.fetchAll(
                 db, sql: "SELECT DISTINCT artworkID FROM track WHERE artworkID IS NOT NULL"))
+            ids.formUnion(try String.fetchAll(
+                db, sql: "SELECT DISTINCT artworkID FROM artistImage"))
+            return ids
+        }
+    }
+
+    // MARK: - Custom artist images
+
+    public func customArtistImages() async throws -> [String: Artwork.ID] {
+        try await pool.read { db in
+            try Row.fetchAll(db, sql: "SELECT artistName, artworkID FROM artistImage")
+                .reduce(into: [String: Artwork.ID]()) { result, row in
+                    result[row["artistName"]] = row["artworkID"]
+                }
+        }
+    }
+
+    public func setCustomArtistImage(_ id: Artwork.ID?, forArtist name: String) async throws {
+        try await pool.write { db in
+            if let id {
+                try db.execute(sql: """
+                    INSERT INTO artistImage (artistName, artworkID) VALUES (?, ?)
+                    ON CONFLICT(artistName) DO UPDATE SET artworkID = excluded.artworkID
+                    """, arguments: [name, id])
+            } else {
+                try db.execute(sql: "DELETE FROM artistImage WHERE artistName = ?",
+                               arguments: [name])
+            }
         }
     }
 

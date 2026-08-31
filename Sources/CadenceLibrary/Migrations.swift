@@ -132,6 +132,18 @@ public enum Migrations {
                 """)
         }
 
+        // An artist is an aggregate, not a row, so a picture the user sets for
+        // one is stored by the same name `Artist` is identified by. The
+        // `artworkID` points into the same content-addressed `DiskArtworkStore`
+        // as cover art; `referencedArtworkIDs` unions this column so the pruner
+        // never treats a user upload as an orphan.
+        migrator.registerMigration("v3-artist-images") { db in
+            try db.create(table: "artistImage") { t in
+                t.primaryKey("artistName", .text)
+                t.column("artworkID", .text).notNull()
+            }
+        }
+
         return migrator
     }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import Observation
 import CadenceCore
 import CadenceLibrary
@@ -173,6 +174,9 @@ final class AppModel {
     /// One cover per artist, chosen once at load. Asking for it per card meant
     /// scanning every album in the library on each row the grid drew.
     private var artistArtwork: [String: Artwork.ID] = [:]
+    /// Artist name → the image the user set for them, which wins over
+    /// `artistArtwork`'s first-album-cover default. Loaded in `load()`.
+    private var customArtistImages: [String: Artwork.ID] = [:]
     /// An artist has no `dateAdded` of its own — it is an aggregate the store
     /// hands back, not a row with tracks attached — so "recently added" is the
     /// latest addition among everything credited to them, computed once here
@@ -233,6 +237,11 @@ final class AppModel {
 
     let store: any LibraryStore
     private let settings: any SettingsStore
+    /// Where a user-chosen artist image's bytes are put — the same
+    /// content-addressed store cover art uses. Nil when the real store could
+    /// not be opened (see the composition root's catch branch) or in preview
+    /// mode, which is what `canEditArtistImage` reports.
+    private let artwork: (any ArtworkStore)?
 
     /// Set by the composition root. `AppModel` only holds the store protocol
     /// and has no reach into `LibraryScanner`/`DiskArtworkStore`, but a track
@@ -247,9 +256,11 @@ final class AppModel {
     /// widening this type's reach, the same shape as `pruneArtwork`. See #33.
     var forgetFolder: ((URL) -> Void)?
 
-    init(store: any LibraryStore, settings: any SettingsStore = InMemorySettingsStore()) {
+    init(store: any LibraryStore, settings: any SettingsStore = InMemorySettingsStore(),
+         artwork: (any ArtworkStore)? = nil) {
         self.store = store
         self.settings = settings
+        self.artwork = artwork
         if let raw = settings.string(forKey: .tab), let restored = Tab(rawValue: raw) {
             tab = restored
         }
@@ -285,6 +296,7 @@ final class AppModel {
                 guard let artworkID = album.artworkID else { return }
                 result[album.albumArtist] = result[album.albumArtist] ?? artworkID
             }
+            customArtistImages = try await store.customArtistImages()
             artistDateAdded = Dictionary(grouping: allTracks, by: \.albumArtist)
                 .mapValues { tracks in tracks.map(\.dateAdded).max() ?? .distantPast }
             tracksByID = Dictionary(allTracks.map { ($0.id, $0) }) { first, _ in first }
@@ -353,10 +365,80 @@ final class AppModel {
         albumsByKey[key]
     }
 
-    /// An artist has no picture of their own; the first cover they released
-    /// stands in, which is what every other music app does too.
+    /// An artist has no picture of their own. The user's own choice wins;
+    /// failing that, the first cover they released stands in, which is what
+    /// every other music app does too.
     func artworkID(forArtist name: String) -> Artwork.ID? {
-        artistArtwork[name]
+        customArtistImages[name] ?? artistArtwork[name]
+    }
+
+    /// Whether the user has set an image for this artist, as opposed to the
+    /// album-cover fallback — what the editor's "Remove" control keys off.
+    func hasCustomImage(forArtist name: String) -> Bool {
+        customArtistImages[name] != nil
+    }
+
+    /// Whether artist images can be edited at all. False when the real artwork
+    /// store could not be opened, or in preview mode — the editor's entry point
+    /// hides rather than offering a control that cannot land anywhere.
+    var canEditArtistImage: Bool { artwork != nil }
+
+    /// The artist whose image editor is open, if any — drives the sheet in
+    /// `RootView`.
+    var editingArtist: Artist?
+
+    /// Reads `fileURL`, checks it decodes as an image, stores the bytes in the
+    /// artwork store and records the artist's override. The previous custom
+    /// image, if any, is left for the next prune to sweep — it is no longer
+    /// referenced once the row is rewritten.
+    func setArtistImage(fromFile fileURL: URL, forArtist name: String) async {
+        guard let artwork else { return }
+        let data: Data
+        do {
+            data = try Data(contentsOf: fileURL)
+        } catch {
+            actionError = "Could not read that file: \(error.localizedDescription)"
+            return
+        }
+        guard Self.isReadableImage(data) else {
+            actionError = "“\(fileURL.lastPathComponent)” isn’t an image Cadence can read."
+            return
+        }
+        do {
+            let id = try await artwork.store(data)
+            try await store.setCustomArtistImage(id, forArtist: name)
+            customArtistImages = try await store.customArtistImages()
+            await pruneArtwork?()
+            notice = "Updated the image for “\(name)”"
+        } catch {
+            actionError = "Could not set the image for “\(name)”: "
+                + error.localizedDescription
+        }
+    }
+
+    /// Drops the artist's override so the album-cover fallback shows again, and
+    /// prunes the now-orphaned upload.
+    func removeArtistImage(forArtist name: String) async {
+        guard hasCustomImage(forArtist: name) else { return }
+        do {
+            try await store.setCustomArtistImage(nil, forArtist: name)
+            customArtistImages = try await store.customArtistImages()
+            await pruneArtwork?()
+            notice = "Reset the image for “\(name)”"
+        } catch {
+            actionError = "Could not reset the image for “\(name)”: "
+                + error.localizedDescription
+        }
+    }
+
+    /// A cheap gate before handing bytes to the artwork store: ImageIO can name
+    /// a type for them and there is at least one frame. Keeps a renamed text
+    /// file or a truncated download from becoming an artist's blank avatar.
+    private static func isReadableImage(_ data: Data) -> Bool {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              CGImageSourceGetType(source) != nil,
+              CGImageSourceGetCount(source) > 0 else { return false }
+        return CGImageSourceCreateImageAtIndex(source, 0, nil) != nil
     }
 
     func artist(named name: String) -> Artist? {
