@@ -57,7 +57,11 @@ final class ArtworkLoader {
             // Retina: ask for twice the point size so the thumbnail is sharp.
             let data = try? await store.thumbnail(for: id, maxPixelSize: size * 2)
             guard let self else { return }
-            self.inFlight.remove(key)
+            // A `forget(_:)` while this was in flight has already dropped the
+            // key and likely kicked off a fresh attempt — this one must not
+            // land its result, least of all resurrect a miss the retry is
+            // meant to clear.
+            guard self.inFlight.remove(key) != nil else { return }
             if let data, let image = NSImage(data: data) {
                 self.images.setObject(image, forKey: key as NSString, cost: Self.decodedCost(of: image))
                 self.generation += 1
@@ -66,6 +70,24 @@ final class ArtworkLoader {
             }
         }
         return nil
+    }
+
+    /// Drops every cached trace of one artwork id — a decoded image, a recorded
+    /// miss, the in-flight guard — so the next request starts over.
+    ///
+    /// The miss set exists because a track with no embedded cover never grows
+    /// one mid-session, so re-asking on every redraw is pure waste. A custom
+    /// artist image breaks that assumption: the id lands in the library the
+    /// same instant its bytes are written, and a redraw that raced the write
+    /// (or a launch rescan's prune briefly sweeping the fresh file) would
+    /// otherwise cache the miss and leave the header on the placeholder until
+    /// the app is relaunched. `AppModel` calls this once the write has settled.
+    func forget(_ id: Artwork.ID) {
+        let prefix = "\(id)-"
+        misses = misses.filter { !$0.hasPrefix(prefix) }
+        inFlight = inFlight.filter { !$0.hasPrefix(prefix) }
+        bloomMisses = bloomMisses.filter { !$0.hasPrefix(prefix) }
+        generation += 1
     }
 
     /// Resident bitmap size, not the encoded byte count `data` arrived as —

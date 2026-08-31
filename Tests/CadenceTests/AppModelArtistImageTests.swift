@@ -70,6 +70,27 @@ struct AppModelArtistImageTests {
         #expect(model.actionError == nil)
     }
 
+    @Test("Setting an image nudges the artwork loader to drop any stale miss")
+    func setFromImageFileRefreshesLoader() async throws {
+        let store = StubLibraryStore(tracks: [artistTrack(artwork: "album-cover")])
+        let model = AppModel(store: store, artwork: InMemoryArtworkStore())
+        await model.load()
+
+        // The loader records a permanent miss for an id it once failed to load;
+        // the id lands in the library the instant its bytes are written, so a
+        // redraw that raced the write leaves the header stuck on the placeholder
+        // until relaunch unless the model clears that entry afterwards — #110.
+        var refreshed: [Artwork.ID] = []
+        model.refreshArtwork = { refreshed.append($0) }
+
+        let file = try tempFile(Self.onePixelPNG, ext: "png")
+        defer { try? FileManager.default.removeItem(at: file) }
+        await model.setArtistImage(fromFile: file, forArtist: "Vera Lindqvist")
+
+        #expect(refreshed.count == 1)
+        #expect(refreshed.first == model.artworkID(forArtist: "Vera Lindqvist"))
+    }
+
     @Test("A file that isn't an image is refused with a banner, not stored")
     func rejectsNonImage() async throws {
         let store = StubLibraryStore(tracks: [artistTrack(artwork: "album-cover")])
