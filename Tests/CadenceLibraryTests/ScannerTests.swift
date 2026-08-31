@@ -119,7 +119,8 @@ struct ScannerTests {
         // considered.
         #expect(summary.failed == 1)
         #expect(summary.failures.count == 1)
-        #expect(summary.failures[0].contains("10-broken.flac"))
+        #expect(summary.failures[0].fileName == "10-broken.flac")
+        #expect(summary.failures[0].path.hasSuffix("10-broken.flac"))
 
         let tracks = try await harness.store.allTracks()
         #expect(tracks.count == Self.corpus.count)

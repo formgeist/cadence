@@ -5,6 +5,10 @@ struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(PlaybackController.self) private var playback
     @Environment(LibraryImporter.self) private var importer
+    /// Opens the Settings scene — the same window ⌘, reaches. Present but inert
+    /// in the snapshot and a11y harnesses, which host this view without an app
+    /// scene.
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         @Bindable var model = model
@@ -218,12 +222,15 @@ struct RootView: View {
         } else if let scan = importer.notice {
             // A scan that couldn't read some files. The tracks it did add are
             // in the library already; this is the part that would otherwise
-            // pass silently.
+            // pass silently. No timer when there's something to go and look
+            // at: the file list lives in Preferences, and "Review" opens it.
             Banner(text: scan, icon: "exclamationmark.triangle.fill",
                    tint: Tokens.Palette.accent,
-                   autoDismissAfter: Banner.noticeLifetime) {
-                importer.clearNotice()
-            }
+                   autoDismissAfter: importer.scanFailures.isEmpty
+                       ? Banner.noticeLifetime : nil,
+                   actionLabel: importer.scanFailures.isEmpty ? nil : "Review",
+                   action: { openSettings() },
+                   onDismiss: { importer.clearNotice() })
         }
     }
 }
@@ -239,6 +246,11 @@ private struct Banner: View {
     /// over the window so the countdown is visible. Nil leaves it up until
     /// dismissed.
     var autoDismissAfter: Duration?
+    /// An optional call to action, shown as a text button before the dismiss
+    /// control — e.g. "Review" to open the Preferences list behind a scan
+    /// warning.
+    var actionLabel: String?
+    var action: (() -> Void)?
     var onDismiss: (() -> Void)?
 
     /// How long a success notice sits before it clears itself. Long enough to
@@ -263,6 +275,14 @@ private struct Banner: View {
                 .font(Tokens.Typography.caption)
                 .foregroundStyle(Tokens.Palette.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
+            if let actionLabel, let action {
+                Button(action: action) {
+                    Text(actionLabel)
+                        .font(Tokens.Typography.sans(11.5, .bold))
+                        .foregroundStyle(tint)
+                }
+                .plainControl()
+            }
             if let onDismiss {
                 Button(action: onDismiss) {
                     Image(systemName: "xmark")

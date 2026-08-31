@@ -1,5 +1,7 @@
 import SwiftUI
+import AppKit
 import CadenceCore
+import CadenceLibrary
 
 /// The Preferences window — issue #71. `CadenceApp` had only a `WindowGroup`, so
 /// there was nowhere for a setting to live even once one existed. This is the
@@ -119,6 +121,12 @@ private struct LibrarySettings: View {
                         .foregroundStyle(Tokens.Palette.textTertiary)
                 }
             }
+
+            if !importer.scanFailures.isEmpty {
+                UnreadableFiles(failures: importer.scanFailures) {
+                    importer.rescanAll { Task { await model.load() } }
+                }
+            }
         }
     }
 
@@ -158,6 +166,114 @@ private struct LibrarySettings: View {
             RoundedRectangle(cornerRadius: Tokens.Radius.control, style: .continuous)
                 .strokeBorder(Tokens.Palette.fieldBorder, lineWidth: 1)
         }
+    }
+}
+
+/// The files a scan found but couldn't turn into tracks — what the "N files
+/// couldn't be read" banner was counting, with no way through to the list
+/// itself. Each row names the file, says why, and reveals it in Finder;
+/// "Rescan" re-checks them all once the underlying files have been fixed.
+private struct UnreadableFiles: View {
+    var failures: [LibraryScanner.ScanFailure]
+    var onRescan: () -> Void
+
+    @Environment(LibraryImporter.self) private var importer
+
+    private var countLabel: String {
+        failures.count == 1 ? "1 file couldn’t be read"
+                            : "\(failures.count) files couldn’t be read"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Tokens.Space.s) {
+            HStack(spacing: Tokens.Space.s) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Tokens.Palette.accent)
+                Text(countLabel)
+                    .font(Tokens.Typography.sans(12, .semibold))
+                    .foregroundStyle(Tokens.Palette.textSecondary)
+                Spacer(minLength: Tokens.Space.m)
+                Button(action: onRescan) {
+                    Text("Rescan")
+                        .font(Tokens.Typography.captionSmall)
+                        .foregroundStyle(importer.isImporting
+                                         ? Tokens.Palette.textMuted : Tokens.Palette.accent)
+                }
+                .plainControl()
+                .disabled(importer.isImporting)
+            }
+
+            Group {
+                if failures.count > Self.maxInlineRows {
+                    ScrollView {
+                        rows
+                    }
+                    .frame(height: CGFloat(Self.maxInlineRows) * Self.rowHeight)
+                } else {
+                    rows
+                }
+            }
+            .background {
+                RoundedRectangle(cornerRadius: Tokens.Radius.control, style: .continuous)
+                    .fill(Tokens.Palette.fieldBackground)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: Tokens.Radius.control, style: .continuous)
+                    .strokeBorder(Tokens.Palette.fieldBorder, lineWidth: 1)
+            }
+
+            Text("The files are still on disk — nothing was removed. "
+                 + "Re-tag or replace them, then rescan.")
+                .font(Tokens.Typography.captionSmall)
+                .foregroundStyle(Tokens.Palette.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// Show a few rows in full; past that, scroll rather than run the window long.
+    private static let maxInlineRows = 5
+    private static let rowHeight: CGFloat = 44
+
+    private var rows: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            ForEach(failures, id: \.path) { failure in
+                row(failure)
+            }
+        }
+    }
+
+    private func row(_ failure: LibraryScanner.ScanFailure) -> some View {
+        HStack(spacing: Tokens.Space.m) {
+            VStack(alignment: .leading, spacing: Tokens.Space.xxs) {
+                Text(failure.fileName)
+                    .font(Tokens.Typography.sans(13, .semibold))
+                    .foregroundStyle(Tokens.Palette.textPrimary)
+                    .lineLimit(1)
+                    // Middle: keeps both the artist at the front and the track
+                    // number and title at the end, dropping only the album in
+                    // between when the name can't fit.
+                    .truncationMode(.middle)
+                Text(failure.reason)
+                    .font(Tokens.Typography.captionSmall)
+                    .foregroundStyle(Tokens.Palette.textTertiary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: Tokens.Space.s)
+            Button {
+                NSWorkspace.shared.activateFileViewerSelecting(
+                    [URL(fileURLWithPath: failure.path)])
+            } label: {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Tokens.Palette.textSecondary)
+            }
+            .plainControl()
+            .help("Reveal in Finder")
+            .accessibilityLabel("Reveal \(failure.fileName) in Finder")
+        }
+        .padding(.vertical, Tokens.Space.s)
+        .padding(.horizontal, Tokens.Space.m)
     }
 }
 

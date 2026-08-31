@@ -27,6 +27,26 @@ final class LibraryImporter {
 
     func clearNotice() { notice = nil }
 
+    /// The files the last scan of each folder found but couldn't read, kept
+    /// across launches so Preferences can list them any time — a banner is
+    /// gone in seconds and the tracks' absence from the library looks the
+    /// same as never having added them. Keyed by the same normalised folder
+    /// path `lastScanned` uses; a folder's entry is replaced whole every time
+    /// it finishes scanning, so a file that now reads fine, or is gone, drops
+    /// off on the next scan.
+    private var failuresByFolder: [String: [LibraryScanner.ScanFailure]]
+    private static let failuresKey = "CadenceScanFailures"
+
+    /// Every folder's unreadable files, flattened and ordered by path. Folders
+    /// no longer in the library are left out even if their record lingers.
+    var scanFailures: [LibraryScanner.ScanFailure] {
+        let live = Set(folders.map(Self.scanKey(for:)))
+        return failuresByFolder
+            .filter { live.contains($0.key) }
+            .values.flatMap { $0 }
+            .sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
+    }
+
     var isImporting: Bool { progress != nil }
 
     /// The folders the user has added.
@@ -62,6 +82,9 @@ final class LibraryImporter {
         self.bookmarks = bookmarks
         self.defaults = defaults
         lastScanned = (defaults.dictionary(forKey: Self.lastScannedKey) as? [String: Date]) ?? [:]
+        failuresByFolder = (defaults.data(forKey: Self.failuresKey))
+            .flatMap { try? JSONDecoder().decode([String: [LibraryScanner.ScanFailure]].self, from: $0) }
+            ?? [:]
         // Resolving on launch is what re-opens access to the music folder. A
         // folder that has moved gets its bookmark re-made rather than lost.
         folders = bookmarks.restoreAll().map(\.url)
@@ -97,8 +120,11 @@ final class LibraryImporter {
     func forget(_ url: URL) {
         folders.removeAll { $0 == url }
         bookmarks.forget(url)
-        lastScanned[Self.scanKey(for: url)] = nil
+        let key = Self.scanKey(for: url)
+        lastScanned[key] = nil
         defaults.set(lastScanned, forKey: Self.lastScannedKey)
+        failuresByFolder[key] = nil
+        saveFailures()
         onFolderForgotten?(url)
     }
 
@@ -133,6 +159,7 @@ final class LibraryImporter {
                     combined.removed += summary.removed
                     combined.failures += summary.failures
                     self.recordScanned(url)
+                    self.recordFailures(summary.failures, for: url)
                 } catch is CancellationError {
                     break
                 } catch {
@@ -204,6 +231,28 @@ final class LibraryImporter {
     private func recordScanned(_ url: URL) {
         lastScanned[Self.scanKey(for: url)] = Date()
         defaults.set(lastScanned, forKey: Self.lastScannedKey)
+    }
+
+    /// Replaces the folder's failure record with this scan's — a scan sees
+    /// every file in the folder, so its list is the whole truth for that
+    /// folder, not something to append to. An empty result clears the entry.
+    private func recordFailures(_ failures: [LibraryScanner.ScanFailure], for url: URL) {
+        let key = Self.scanKey(for: url)
+        if failures.isEmpty {
+            guard failuresByFolder[key] != nil else { return }
+            failuresByFolder[key] = nil
+        } else {
+            failuresByFolder[key] = failures
+        }
+        saveFailures()
+    }
+
+    private func saveFailures() {
+        if failuresByFolder.isEmpty {
+            defaults.removeObject(forKey: Self.failuresKey)
+        } else if let data = try? JSONEncoder().encode(failuresByFolder) {
+            defaults.set(data, forKey: Self.failuresKey)
+        }
     }
 
     /// One spelling per folder, the same way `SecurityScopedFolders` files
