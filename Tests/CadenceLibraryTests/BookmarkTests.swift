@@ -37,6 +37,28 @@ struct SecurityScopedFolderTests {
         #expect(folders.rememberedPaths.isEmpty)
     }
 
+    @Test("Forgetting a folder ends its open access, not just its bookmark")
+    func forgetReleasesAccess() throws {
+        let (defaults, suite) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let folder = try tempFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+
+        let folders = SecurityScopedFolders(defaultsKey: "bookmarks", defaults: defaults)
+        try folders.remember(folder)
+        let first = folders.beginAccess(to: folder)
+
+        folders.forget(folder)
+
+        // A live access is handed back on request; after forget the token is
+        // gone, so the next request has to mint a fresh one. Same object back
+        // would mean the scope from before forget is still open — the leak §7
+        // is about.
+        let second = folders.beginAccess(to: folder)
+        #expect(first !== second)
+        folders.releaseAll()
+    }
+
     @Test("Bookmarks survive a new instance — this is what relaunch does")
     func survivesRelaunch() throws {
         let (defaults, suite) = makeDefaults()

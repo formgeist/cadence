@@ -214,6 +214,11 @@ parallelism, and writes in batched transactions. Re-importing a path updates
 that row and keeps its id, so playlists pointing at it survive a rescan. A file
 that fails to parse is reported and the import continues.
 
+**Preferences ▸ Library** lists the folders that have been added, and removes
+one. Removing a folder drops its bookmark and takes every track the library
+held from inside it — out of playlists too, through the same cascade as any
+other library removal. The files on disk are never touched.
+
 Tags are read directly rather than through an audio library — FLAC's metadata
 blocks are simple enough that import works before the audio layer compiles,
 which is what the protocol boundary is for. Other formats wait for
@@ -356,6 +361,13 @@ One consequence to know about: SwiftPM's generated `Bundle.module` accessor
 looks only beside the executable or at the `.app` root — never in
 `Contents/Resources` — and calls `fatalError` when it finds nothing. `FontLoader`
 resolves its own bundle instead, and degrades to system fonts rather than dying.
+
+Another: `keychain-access-groups` is validated against the signature's team
+identifier, which an ad-hoc signature does not have. Current macOS does not
+treat an unvalidatable access group as a soft keychain failure — it kills the
+process at spawn (`Launchd job spawn failed`). So the ad-hoc bundle ships
+without that entitlement and the scrobble key uses the app's own default access
+group; the team-prefixed group comes back with a Developer ID build (issue #8).
 
 Also temporary: neither `Testing` nor `XCTest` is in the CLT SDK, so
 swift-testing is an explicit package dependency scoped to the test targets, and

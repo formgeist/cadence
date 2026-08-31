@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import CadenceCore
+import CadenceLibrary
 
 /// Navigation and library state for the window. Deliberately separate from
 /// `PlaybackController`: what you are looking at and what you are listening to
@@ -239,6 +240,13 @@ final class AppModel {
     /// closed for a track leaving because its file did.
     var pruneArtwork: (() async -> Void)?
 
+    /// Set by the composition root to `LibraryImporter.forget`. `AppModel` owns
+    /// the library mutation and the reload that a folder removal needs, but the
+    /// folder list and its security-scoped bookmarks live on `LibraryImporter`
+    /// — so dropping the bookmark is handed over as a closure rather than
+    /// widening this type's reach, the same shape as `pruneArtwork`. See #33.
+    var forgetFolder: ((URL) -> Void)?
+
     init(store: any LibraryStore, settings: any SettingsStore = InMemorySettingsStore()) {
         self.store = store
         self.settings = settings
@@ -401,6 +409,10 @@ final class AppModel {
     var tracksPendingRemoval: [Track]?
     /// Non-nil while the Get Info sheet is up.
     var infoTrack: Track?
+    /// The music folder the Preferences confirmation dialog is asking about.
+    /// Removing a folder takes its tracks out of the library with it, which is
+    /// not undoable — see #33.
+    var folderPendingRemoval: URL?
 
     func playlist(id: Playlist.ID) -> Playlist? {
         playlists.first { $0.id == id }
@@ -553,6 +565,41 @@ final class AppModel {
             notice = "Removed \(count) from your library"
         } catch {
             actionError = "Could not remove from your library: "
+                + error.localizedDescription
+        }
+    }
+
+    /// The tracks the library holds from under `folder` — what a folder removal
+    /// would take with it, and what the confirmation dialog counts. Matched by
+    /// path component, the same way the scanner decides a file belongs to the
+    /// folder it is walking.
+    func tracks(under folder: URL) -> [Track] {
+        allTracks.filter { LibraryScanner.isDescendant($0.url, of: folder) }
+    }
+
+    /// Drops a music folder: its bookmark is released (via `forgetFolder`, so it
+    /// is not resolved or rescanned on the next launch) and every track the
+    /// library held from inside it leaves outright, cascading out of playlists
+    /// through the store's own foreign key. Files on disk are never touched.
+    ///
+    /// The store write comes first: if it fails the folder stays on the list to
+    /// try again, rather than a folder that is gone from the list while its now
+    /// unreachable tracks linger.
+    func removeFolder(_ folder: URL) async {
+        let doomed = tracks(under: folder)
+        do {
+            if !doomed.isEmpty {
+                try await store.remove(trackIDs: doomed.map(\.id))
+            }
+            forgetFolder?(folder)
+            await load()
+            await pruneArtwork?()
+            let name = folder.lastPathComponent
+            notice = doomed.isEmpty
+                ? "Removed “\(name)” from your library"
+                : "Removed “\(name)” and \(doomed.count == 1 ? "1 track" : "\(doomed.count) tracks")"
+        } catch {
+            actionError = "Could not remove “\(folder.lastPathComponent)”: "
                 + error.localizedDescription
         }
     }

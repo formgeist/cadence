@@ -5,11 +5,12 @@ import CadenceCore
 /// The `KeychainStore` the app ships — a thin wrapper over `SecItem*` for the
 /// one secret scrobbling holds, the Last.fm session key (#95).
 ///
-/// Under `swift run` this is the login keychain and just works. Inside the
-/// sandboxed `make app` bundle it needs the `keychain-access-groups`
-/// entitlement and a real signing identity — see `Scripts/make-app.sh`. A
-/// failure here is not fatal: `ScrobbleController` treats a missing key as
-/// "signed out".
+/// Under `swift run` this is the login keychain and just works. The sandboxed
+/// `make app` bundle uses the app's own default access group — no
+/// `keychain-access-groups` entitlement, which an ad-hoc signature cannot
+/// validate and current macOS kills the process for. A failure here is not
+/// fatal: `ScrobbleController` treats a missing key as "signed out". See
+/// `Scripts/make-app.sh` and issue #8 for the signed build.
 struct KeychainStore: CadenceCore.KeychainStore {
     /// Namespaces the items; shows up as the "where" in Keychain Access.
     private let service = "com.formgeist.cadence.scrobble"

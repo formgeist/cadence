@@ -20,8 +20,10 @@ APP="${APP:-build/Cadence.app}"
 BUNDLE_ID="${BUNDLE_ID:-com.formgeist.cadence}"
 VERSION="${VERSION:-0.1.0}"
 ICONSET="${ICONSET:-Icon/AppIcon.iconset}"
-# Ad-hoc by default. Set SIGN_IDENTITY to a Developer ID for distribution.
+# Ad-hoc by default. Set SIGN_IDENTITY to a Developer ID for distribution, and
+# TEAM_ID alongside it so the keychain access group can be team-prefixed.
 SIGN_IDENTITY="${SIGN_IDENTITY:--}"
+TEAM_ID="${TEAM_ID:-}"
 
 BUILT=$(swift build -c "$CONFIG" --show-bin-path)
 BINARY="$BUILT/Cadence"
@@ -134,7 +136,8 @@ plutil -lint "$APP/Contents/Info.plist" > /dev/null
 # question needs a genuinely sandboxed build. Set SANDBOX=0 to test the
 # difference.
 if [ "${SANDBOX:-1}" = "1" ]; then
-    cat > build/cadence.entitlements <<'ENTITLEMENTS'
+    {
+        cat <<'ENTITLEMENTS'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -147,18 +150,28 @@ if [ "${SANDBOX:-1}" = "1" ]; then
     <!-- Scrobbling talks to Last.fm — issue #95. A sandboxed build makes no
          outbound connection without this. -->
     <key>com.apple.security.network.client</key>                      <true/>
-    <!-- The Last.fm session key goes in the keychain. Ad-hoc signing
-         (SIGN_IDENTITY=-) has no team prefix for the access group, so
-         keychain reads/writes are reliable only with a real Developer ID;
-         an ad-hoc build falls back to "signed out" if the keychain refuses.
-         `swift run` is unaffected — it uses the login keychain. Spelled out
-         rather than built from $BUNDLE_ID: this heredoc does not expand, and
-         the group must match the bundle id above. -->
-    <key>keychain-access-groups</key>
-    <array><string>com.formgeist.cadence</string></array>
+ENTITLEMENTS
+
+        # keychain-access-groups is checked against the signature's team
+        # identifier. Ad-hoc signing (SIGN_IDENTITY=-) has none, and on current
+        # macOS an unvalidatable access group is not a soft keychain failure —
+        # the whole process is killed at spawn ("Launchd job spawn failed",
+        # RBSRequestErrorDomain 5). So it goes in only for a real Developer ID
+        # build, which needs the team prefix on the group; an ad-hoc build ships
+        # without it and uses the app's own default access group, which is all a
+        # single app needs. `swift run` is unaffected — it uses the login
+        # keychain. See KeychainStore, and issue #8 for the signed build.
+        if [ "$SIGN_IDENTITY" != "-" ]; then
+            printf '    <key>keychain-access-groups</key>\n'
+            printf '    <array><string>%s.%s</string></array>\n' \
+                "${TEAM_ID:?TEAM_ID is required when SIGN_IDENTITY is set}" "$BUNDLE_ID"
+        fi
+
+        cat <<'ENTITLEMENTS'
 </dict>
 </plist>
 ENTITLEMENTS
+    } > build/cadence.entitlements
     ENTITLEMENT_ARGS=(--entitlements build/cadence.entitlements)
 else
     ENTITLEMENT_ARGS=()

@@ -150,6 +150,10 @@ final class AppContainer {
                 watcher = coordinator
                 importer.onFolderAdded = { [weak coordinator] url in coordinator?.folderAdded(url) }
                 importer.onFolderForgotten = { [weak coordinator] url in coordinator?.folderRemoved(url) }
+
+                // Lets Preferences drop a folder — the bookmark side is the
+                // importer's, the tracks-and-reload side is the model's. See #33.
+                model.forgetFolder = { [importer] url in importer.forget(url) }
             } catch {
                 model = AppModel(store: PreviewData.store(), settings: settings)
                 model.storeFailure = error.localizedDescription
@@ -229,6 +233,8 @@ struct CadenceApp: App {
         // window's chrome, so `WindowChromeConfigurator` is deliberately absent.
         Settings {
             SettingsView()
+                .environment(container.model)
+                .environment(container.importer)
                 .environment(container.playback)
                 .environment(container.scrobble)
                 .preferredColorScheme(.dark)
