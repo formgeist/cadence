@@ -18,6 +18,15 @@ final class LibraryImporter {
     private(set) var lastSummary: LibraryScanner.Summary?
     private(set) var errorMessage: String?
 
+    /// A passing word about the last scan, shown in the banner and dismissible.
+    /// Only set when a scan couldn't read some files — the tracks it did import
+    /// show up in the library itself, but a file skipped for being unreadable
+    /// leaves no other trace. `errorMessage` is the separate channel for a scan
+    /// that failed outright.
+    private(set) var notice: String?
+
+    func clearNotice() { notice = nil }
+
     var isImporting: Bool { progress != nil }
 
     /// The folders the user has added.
@@ -97,10 +106,15 @@ final class LibraryImporter {
 
     /// Scans `folders` in turn. Completion runs after the library has been
     /// written, so the caller can reload from the store.
-    func importFolders(_ urls: [URL], force: Bool = false,
+    ///
+    /// `userInitiated` is off for the automatic scans — the launch catch-up and
+    /// the folder watcher — so those stay silent about unreadable files rather
+    /// than nagging about a condition the user didn't just ask to check.
+    func importFolders(_ urls: [URL], force: Bool = false, userInitiated: Bool = true,
                        onFinish: @escaping @MainActor () -> Void) {
         guard let scanner, !urls.isEmpty, task == nil else { return }
         errorMessage = nil
+        notice = nil
         progress = LibraryScanner.Progress()
 
         // Captured strongly on purpose: the importer must outlive the scan it
@@ -134,9 +148,21 @@ final class LibraryImporter {
 
             self.progress = nil
             self.lastSummary = combined
+            self.notice = userInitiated ? Self.completionNotice(for: combined) : nil
             self.task = nil
             onFinish()
         }
+    }
+
+    /// The one thing a finished scan can't show on its own: the files it
+    /// couldn't read. Their absence from the library looks the same as never
+    /// having added them.
+    private static func completionNotice(for summary: LibraryScanner.Summary) -> String? {
+        guard summary.failed > 0 else { return nil }
+        let files = summary.failed == 1 ? "1 file" : "\(summary.failed) files"
+        guard summary.imported > 0 else { return "\(files) couldn’t be read" }
+        let added = summary.imported == 1 ? "1 track" : "\(summary.imported) tracks"
+        return "Added \(added) — \(files) couldn’t be read"
     }
 
     func rescanAll(onFinish: @escaping @MainActor () -> Void) {
@@ -155,7 +181,7 @@ final class LibraryImporter {
             return now.timeIntervalSince(last) > Self.staleAfter
         }
         guard !stale.isEmpty else { return }
-        importFolders(stale, onFinish: onFinish)
+        importFolders(stale, userInitiated: false, onFinish: onFinish)
     }
 
     /// Re-reads every file, fingerprint or not. The way back from artwork that

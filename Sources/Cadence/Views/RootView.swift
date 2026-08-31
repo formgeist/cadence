@@ -45,6 +45,7 @@ struct RootView: View {
         .animation(.easeOut(duration: 0.2), value: playback.notice)
         .animation(.easeOut(duration: 0.2), value: model.actionError)
         .animation(.easeOut(duration: 0.2), value: model.notice)
+        .animation(.easeOut(duration: 0.2), value: importer.notice)
         .task {
             await model.load()
             // The queue only has ids until the library backing them exists —
@@ -190,6 +191,8 @@ struct RootView: View {
     @ViewBuilder
     private var errorBanner: some View {
         if let failure = model.actionError {
+            // No timer: a failure is the case a silent disappearance hurts, so
+            // it stays until the user has read it and dismissed it.
             Banner(text: failure,
                    icon: "exclamationmark.triangle.fill",
                    tint: Tokens.Palette.accent) {
@@ -197,17 +200,30 @@ struct RootView: View {
             }
         } else if let added = model.notice {
             Banner(text: added, icon: "checkmark.circle.fill",
-                   tint: Tokens.Palette.accent) {
+                   tint: Tokens.Palette.accent,
+                   autoDismissAfter: Banner.noticeLifetime) {
                 model.notice = nil
             }
         } else if let notice = playback.notice {
-            Banner(text: notice, icon: "headphones", tint: Tokens.Palette.textSecondary) {
+            // An output-device change leaves playback paused until the user acts,
+            // so that notice stays put; a skipped track is just informational.
+            Banner(text: notice, icon: "headphones", tint: Tokens.Palette.textSecondary,
+                   autoDismissAfter: playback.noticeIsSticky ? nil : Banner.noticeLifetime) {
                 playback.clearNotice()
             }
         } else if let error = playback.lastError {
             Banner(text: error.message,
                    icon: "exclamationmark.triangle.fill",
                    tint: Tokens.Palette.accent)
+        } else if let scan = importer.notice {
+            // A scan that couldn't read some files. The tracks it did add are
+            // in the library already; this is the part that would otherwise
+            // pass silently.
+            Banner(text: scan, icon: "exclamationmark.triangle.fill",
+                   tint: Tokens.Palette.accent,
+                   autoDismissAfter: Banner.noticeLifetime) {
+                importer.clearNotice()
+            }
         }
     }
 }
@@ -218,7 +234,26 @@ private struct Banner: View {
     var text: String
     var icon: String
     var tint: Color
+    /// When set — and the banner is dismissible — the banner dismisses itself
+    /// after this long, with a border drawing clockwise around the container
+    /// over the window so the countdown is visible. Nil leaves it up until
+    /// dismissed.
+    var autoDismissAfter: Duration?
     var onDismiss: (() -> Void)?
+
+    /// How long a success notice sits before it clears itself. Long enough to
+    /// read a sentence, short enough not to linger over the library.
+    static let noticeLifetime: Duration = .seconds(5)
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// How much of the border has been drawn, 0 → 1. Reaching 1 dismisses.
+    @State private var progress: Double = 0
+    /// The pointer resting on the banner freezes the countdown, so a message
+    /// can't slip away mid-read.
+    @State private var isHovering = false
+
+    private var countsDown: Bool { autoDismissAfter != nil && onDismiss != nil }
 
     var body: some View {
         HStack(spacing: Tokens.Space.m) {
@@ -247,8 +282,75 @@ private struct Banner: View {
             RoundedRectangle(cornerRadius: Tokens.Radius.popover, style: .continuous)
                 .strokeBorder(tint.opacity(0.4), lineWidth: 1)
         }
+        .overlay {
+            // The countdown, drawn as the border filling in clockwise from the
+            // top. Reduce Motion drops it — the timer still fires.
+            if countsDown && !reduceMotion {
+                ClockwiseBorder(cornerRadius: Tokens.Radius.popover)
+                    .trim(from: 0, to: progress)
+                    .stroke(tint, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+                    .padding(0.75)
+            }
+        }
         .shadow(color: .black.opacity(0.5), radius: 20, y: 8)
         .padding(.bottom, 28)
         .transition(.move(edge: .bottom).combined(with: .opacity))
+        .onHover { isHovering = $0 }
+        // Keyed on `text`: a new message rebuilds the task and the countdown
+        // restarts from empty.
+        .task(id: text) {
+            guard countsDown, let total = autoDismissAfter, let onDismiss else { return }
+            let totalSeconds = total.seconds
+            let tick = 0.05
+            progress = 0
+            var elapsed = 0.0
+            while elapsed < totalSeconds {
+                try? await Task.sleep(for: .milliseconds(50))
+                if Task.isCancelled { return }
+                if isHovering { continue }
+                elapsed += tick
+                // Linear over the tick so the border grows smoothly.
+                withAnimation(.linear(duration: tick)) {
+                    progress = min(1, elapsed / totalSeconds)
+                }
+            }
+            onDismiss()
+        }
+    }
+}
+
+private extension Duration {
+    /// The whole span in seconds, attoseconds folded back in.
+    var seconds: Double {
+        let (s, atto) = components
+        return Double(s) + Double(atto) / 1e18
+    }
+}
+
+/// A rounded-rectangle outline traced clockwise from the top centre, so
+/// `.trim(from: 0, to:)` fills it the way a clock hand sweeps. `RoundedRectangle`
+/// starts its own path in a corner and runs the other way, which is why this
+/// exists.
+private struct ClockwiseBorder: Shape {
+    var cornerRadius: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        let r = min(cornerRadius, min(rect.width, rect.height) / 2)
+        var path = Path()
+        path.move(to: CGPoint(x: rect.midX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - r, y: rect.minY))
+        path.addArc(center: CGPoint(x: rect.maxX - r, y: rect.minY + r), radius: r,
+                    startAngle: .degrees(-90), endAngle: .degrees(0), clockwise: false)
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - r))
+        path.addArc(center: CGPoint(x: rect.maxX - r, y: rect.maxY - r), radius: r,
+                    startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
+        path.addLine(to: CGPoint(x: rect.minX + r, y: rect.maxY))
+        path.addArc(center: CGPoint(x: rect.minX + r, y: rect.maxY - r), radius: r,
+                    startAngle: .degrees(90), endAngle: .degrees(180), clockwise: false)
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + r))
+        path.addArc(center: CGPoint(x: rect.minX + r, y: rect.minY + r), radius: r,
+                    startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
+        path.addLine(to: CGPoint(x: rect.midX, y: rect.minY))
+        return path
     }
 }

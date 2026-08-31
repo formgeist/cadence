@@ -83,7 +83,7 @@ final class FolderWatchCoordinator {
 
     private func rescan(key: String, url: URL) {
         let eventID = pendingEventIDs[key]
-        importer.importFolders([url]) { [weak self] in
+        importer.importFolders([url], userInitiated: false) { [weak self] in
             guard let self, let eventID else { return }
             self.lastEventIDs[key] = eventID
             self.defaults.set(self.lastEventIDs, forKey: Self.lastEventIDKey)

@@ -69,6 +69,12 @@ public final class PlaybackController {
     /// next thing the user does.
     public private(set) var notice: String?
 
+    /// Whether `notice` reports a state the user should acknowledge rather than
+    /// a message that can time out — set for the output-device change, which
+    /// leaves playback paused until they act on it. The interface reads this to
+    /// decide whether to auto-dismiss the banner.
+    public private(set) var noticeIsSticky = false
+
     /// Fired the instant a track actually starts, whether that's a fresh
     /// `play(_:in:)` or a gapless handoff the engine made on its own — never
     /// on queuing alone. The composition root wires this to record play
@@ -76,7 +82,10 @@ public final class PlaybackController {
     /// See #72.
     public var onTrackStarted: ((Track) -> Void)?
 
-    public func clearNotice() { notice = nil }
+    public func clearNotice() {
+        notice = nil
+        noticeIsSticky = false
+    }
 
     /// Tracks the queue moved past because the engine could not play them.
     ///
@@ -306,12 +315,19 @@ public final class PlaybackController {
     }
 
     public func appendToQueue(_ tracks: [Track]) {
+        guard !tracks.isEmpty else { return }
         orderedQueue.append(contentsOf: tracks)
         queue.append(contentsOf: tracks)
         // A track appended after the current one may now be the gapless
         // candidate the engine hasn't been told about.
         prepareNextIfNeeded()
         persistQueue()
+        // The queue lives in the Now Playing pane, which is often closed when
+        // this runs from an album or playlist menu — without a word it is
+        // indistinguishable from a dead menu item, the same as a playlist add.
+        let count = tracks.count == 1 ? "1 track" : "\(tracks.count) tracks"
+        notice = "Added \(count) to the queue"
+        noticeIsSticky = false
     }
 
     /// Loops rather than recurses on failure. A queue of thirty thousand tracks
@@ -364,6 +380,7 @@ public final class PlaybackController {
         if let position = needsReloadAtPosition, let index = currentIndex {
             needsReloadAtPosition = nil
             notice = nil
+            noticeIsSticky = false
             start(at: index, resumingAt: position)
             return
         }
@@ -470,6 +487,7 @@ public final class PlaybackController {
         guard failedIDs.insert(track.id).inserted else { return }
         skipped.append(SkippedTrack(track: track, reason: reason))
         notice = Self.skipNotice(for: skipped)
+        noticeIsSticky = false
     }
 
     /// Every remaining track failed too. Stop, but end in `.failed` rather than
@@ -481,6 +499,7 @@ public final class PlaybackController {
         // The notice would otherwise sit in front of the error that explains
         // the stop; `skipped` still carries the count.
         notice = nil
+        noticeIsSticky = false
         state = .failed(reason)
     }
 
@@ -668,6 +687,7 @@ public final class PlaybackController {
             needsReloadAtPosition = progress.elapsed
             if let track = currentTrack { state = .paused(track.id) }
             notice = "Output device changed. Playback paused."
+            noticeIsSticky = true
 
         case .failed(let error):
             // The engine gave up on this file. The record does not: a renamed
