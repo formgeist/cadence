@@ -5,6 +5,7 @@ Snapshots/
 *.xcodeproj
 .DS_Store
 PLAN.md
+.vscode/
 
 # Generated, and carries a Last.fm API key + shared secret — see
 # Scripts/gen-lastfm-credentials.sh.
