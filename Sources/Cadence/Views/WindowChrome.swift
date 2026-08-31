@@ -22,32 +22,57 @@ enum WindowChrome {
         // ever showing the real, live loading state. Nothing about this app
         // needs that continuity, so it's off rather than left to chance.
         window.isRestorable = false
-        centreTrafficLights(in: window)
+        installTallTitleBar(on: window)
     }
 
-    /// AppKit centres the lights in a 28pt title bar, so against a 52pt header
-    /// they float ten points above the search field they share a row with.
+    /// AppKit centres the traffic lights in a standard ~28pt title bar, so
+    /// against Cadence's 52pt header the hand-moved buttons this used to ship
+    /// never quite matched other Mac apps — the cluster sat a touch high, and
+    /// the resize / full-screen re-layout hooks didn't always keep up.
     ///
-    /// A unified toolbar would centre them natively. It also paints its own
-    /// background over the title bar area, which hid the search field
-    /// completely — the first attempt at this shipped that way for one build.
-    /// Moving three buttons is both smaller and visible in what it does.
-    static func centreTrafficLights(in window: NSWindow) {
-        let buttons = [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton]
-            .compactMap { window.standardWindowButton($0) }
-        guard let container = buttons.first?.superview else { return }
-        for button in buttons {
-            button.frame.origin.y = container.bounds.height
-                - Tokens.Layout.titleBarHeight / 2 - button.bounds.height / 2
+    /// An *empty* `NSToolbar` in the `.unified` style raises the title-bar
+    /// band to the standard unified height — ~52pt, which `titleBarHeight` is
+    /// set to match — and AppKit then keeps the lights centred in it across
+    /// resize and full screen with no per-button math. That unified height is
+    /// fixed: the header can't grow past it without going back to positioning
+    /// the buttons by hand. `titlebarAppearsTransparent` keeps the toolbar
+    /// from drawing any material over the header behind it (the search field,
+    /// issue #15's fix) — the regression the first unified-toolbar attempt
+    /// shipped was a *non*-transparent bar.
+    static func installTallTitleBar(on window: NSWindow) {
+        let toolbar: NSToolbar
+        if let existing = window.toolbar {
+            toolbar = existing
+        } else {
+            toolbar = NSToolbar(identifier: "CadenceChrome")
+            toolbar.delegate = sharedToolbarDelegate
+            window.toolbar = toolbar
         }
+        toolbar.showsBaselineSeparator = false
+        window.toolbarStyle = .unified
+    }
+
+    /// An empty toolbar still needs a delegate to be well-formed. Retained for
+    /// the process lifetime — one window, one toolbar.
+    private static let sharedToolbarDelegate = EmptyToolbarDelegate()
+
+    private final class EmptyToolbarDelegate: NSObject, NSToolbarDelegate {
+        func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { [] }
+        func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { [] }
+        func toolbar(_ toolbar: NSToolbar,
+                     itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
+                     willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? { nil }
     }
 }
 
 /// Applies the chrome to whichever window this view lands in. A representable
 /// rather than something in `AppDelegate`, so a second window gets it too.
+///
+/// The unified toolbar keeps the traffic lights placed correctly across
+/// resize and full-screen on its own, so unlike the hand-positioned version
+/// this needs no notification observers — just one application once the view
+/// has a window.
 struct WindowChromeConfigurator: NSViewRepresentable {
-
-    func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView(frame: .zero)
@@ -55,7 +80,6 @@ struct WindowChromeConfigurator: NSViewRepresentable {
         Task { @MainActor in
             guard let window = view.window else { return }
             WindowChrome.apply(to: window)
-            context.coordinator.observe(window)
         }
         return view
     }
@@ -63,32 +87,5 @@ struct WindowChromeConfigurator: NSViewRepresentable {
     func updateNSView(_ view: NSView, context: Context) {
         guard let window = view.window else { return }
         WindowChrome.apply(to: window)
-        context.coordinator.observe(window)
-    }
-
-    /// AppKit lays the traffic lights out again whenever the window resizes or
-    /// leaves full screen, putting them back at the top. Without this they
-    /// re-centre only on the next SwiftUI update, which for a window nobody is
-    /// interacting with may not come.
-    @MainActor
-    final class Coordinator: NSObject {
-        private weak var observed: NSWindow?
-
-        func observe(_ window: NSWindow) {
-            guard observed !== window else { return }
-            NotificationCenter.default.removeObserver(self)
-            observed = window
-            for name in [NSWindow.didResizeNotification,
-                         NSWindow.didExitFullScreenNotification] {
-                NotificationCenter.default.addObserver(
-                    self, selector: #selector(windowChanged),
-                    name: name, object: window)
-            }
-        }
-
-        @objc private func windowChanged(_ note: Notification) {
-            guard let window = note.object as? NSWindow else { return }
-            WindowChrome.centreTrafficLights(in: window)
-        }
     }
 }
