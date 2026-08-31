@@ -249,6 +249,14 @@ final class AppModel {
     /// closed for a track leaving because its file did.
     var pruneArtwork: (() async -> Void)?
 
+    /// Set by the composition root to `ArtworkLoader.forget`. A custom artist
+    /// image records its id the same instant its bytes are written, so a
+    /// redraw that raced the write can leave the loader holding a permanent
+    /// miss for it — the header then stays on the placeholder until relaunch.
+    /// Clearing that entry once the write has settled is what makes the new
+    /// image show up straight away.
+    var refreshArtwork: ((Artwork.ID) -> Void)?
+
     /// Set by the composition root to `LibraryImporter.forget`. `AppModel` owns
     /// the library mutation and the reload that a folder removal needs, but the
     /// folder list and its security-scoped bookmarks live on `LibraryImporter`
@@ -409,6 +417,10 @@ final class AppModel {
             try await store.setCustomArtistImage(id, forArtist: name)
             customArtistImages = try await store.customArtistImages()
             await pruneArtwork?()
+            // The loader may have already recorded a miss for this id on the
+            // redraw that `customArtistImages` just triggered — clear it so the
+            // header picks the new image up now rather than on next launch.
+            refreshArtwork?(id)
             notice = "Updated the image for “\(name)”"
         } catch {
             actionError = "Could not set the image for “\(name)”: "

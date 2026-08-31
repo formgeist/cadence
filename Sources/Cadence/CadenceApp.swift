@@ -144,6 +144,10 @@ final class AppContainer {
                 model.pruneArtwork = { [scanner] in try? await scanner.pruneOrphanedArtwork() }
                 importer = LibraryImporter(scanner: scanner, bookmarks: scoped)
                 artworkLoader = ArtworkLoader(store: artwork)
+                // A user-set artist image is referenced the instant its bytes
+                // land, so a redraw racing the write can leave the loader
+                // holding a stale miss for it — clear that once the write settles.
+                model.refreshArtwork = { [artworkLoader] id in artworkLoader.forget(id) }
                 nowPlaying = NowPlayingCoordinator(playback: playback, artwork: artwork)
 
                 let coordinator = FolderWatchCoordinator(importer: importer, bookmarks: scoped)
