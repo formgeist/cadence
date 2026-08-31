@@ -89,6 +89,26 @@ struct PlaybackControllerTests {
         #expect(engine.played.last?.lastPathComponent == "B.flac")
     }
 
+    @Test("A play remembers the playlist it came from, until the next fresh start")
+    func remembersPlaylistOrigin() {
+        let engine = SpyEngine()
+        let controller = PlaybackController(engine: engine)
+        let tracks = [makeTrack("A"), makeTrack("B"), makeTrack("C")]
+        let listID = UUID()
+
+        controller.play(tracks, fromPlaylist: listID)
+        #expect(controller.startedFromPlaylist == listID)
+
+        // Advancing within the queue keeps the credit — a gapless handoff to
+        // the next playlist track is still the playlist playing.
+        controller.next()
+        #expect(controller.startedFromPlaylist == listID)
+
+        // An album (or any non-playlist start) clears it.
+        controller.play(tracks[0], in: tracks)
+        #expect(controller.startedFromPlaylist == nil)
+    }
+
     @Test("The next track is prepared the moment this one starts, not near its end")
     func preparesNextOnStart() async {
         let engine = SpyEngine()
@@ -963,6 +983,41 @@ struct QueuePersistenceTests {
         // Nothing was actually handed to the engine — the engine only sees
         // this track once the user presses Play.
         #expect(engine.played.isEmpty)
+    }
+
+    @Test("A queue restored from a relaunch keeps the playlist it was started from")
+    func restoreKeepsPlaylistOrigin() {
+        let settings = InMemorySettingsStore()
+        let tracks = (1...3).map { makeTrack("T\($0)") }
+        let listID = UUID()
+
+        // Persist as if a playlist had been playing at quit.
+        let first = PlaybackController(engine: SpyEngine(), settings: settings)
+        first.play(tracks, fromPlaylist: listID)
+        first.flushQueueState()
+        #expect(settings.string(forKey: .queuePlaylistOrigin) == listID.uuidString)
+
+        // Relaunch.
+        let byID = Dictionary(uniqueKeysWithValues: tracks.map { ($0.id, $0) })
+        let relaunched = PlaybackController(engine: SpyEngine(), settings: settings)
+        relaunched.restoreQueue { byID[$0] }
+
+        #expect(relaunched.startedFromPlaylist == listID)
+    }
+
+    @Test("A restored queue that was not from a playlist has no origin")
+    func restoreWithoutPlaylistOriginIsNil() {
+        let settings = InMemorySettingsStore()
+        let tracks = (1...2).map { makeTrack("T\($0)") }
+        let first = PlaybackController(engine: SpyEngine(), settings: settings)
+        first.play(tracks[0], in: tracks)      // an album, say — no playlist
+        first.flushQueueState()
+
+        let byID = Dictionary(uniqueKeysWithValues: tracks.map { ($0.id, $0) })
+        let relaunched = PlaybackController(engine: SpyEngine(), settings: settings)
+        relaunched.restoreQueue { byID[$0] }
+
+        #expect(relaunched.startedFromPlaylist == nil)
     }
 
     @Test("Pressing Play after a restore reloads the engine at the saved position")

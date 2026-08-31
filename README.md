@@ -268,6 +268,31 @@ Two things worth knowing:
   `playlistItem.trackID` cascades. That is what lets the playlist screen treat
   a row offset and a stored position as the same number.
 
+## Recents
+
+The Recents grid is albums and playlists in one wall, most-recently played
+first. It is built from `AppModel.recentPlayRefs` — a capped list of
+references, never resolved values, so an album that leaves with its folder or
+a deleted playlist simply stops appearing rather than lingering as a dead
+tile.
+
+What qualifies is decided at track-start time, in `recordPlayed(_:from:)`:
+
+- Any track starting credits the album it belongs to. Playing one track from
+  search, or an artist's whole discography, still fills the grid with the
+  records that went past.
+- A queue started from a playlist credits the *playlist*, not each track's
+  album, so playing a 40-track playlist adds one tile.
+  `PlaybackController.startedFromPlaylist` carries that fact from the play
+  call to the `onTrackStarted` callback; it is set by `play(_:in:from:)` /
+  `shuffle(_:from:)`, cleared by any album or bare-track start, and — like the
+  rest of the queue (#42) — persisted and restored across a relaunch, so
+  resuming yesterday's playlist still credits the playlist and not the album
+  of whatever track it stopped on.
+
+There is no sort and no zoom — recency is the order — so the library header
+drops its options menu on this tab.
+
 ## Building UI before the audio layer works
 
 `MockPlayerEngine` advances a clock instead of decoding, and fakes the gapless

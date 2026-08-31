@@ -227,11 +227,10 @@ enum PlaylistMenu {
 
         return [
             .action("Play", Symbol.play, enabled: hasTracks) {
-                guard let first = tracks.first else { return }
-                playback.play(first, in: tracks)
+                playback.play(tracks, fromPlaylist: playlist.id)
             },
             .action("Shuffle", Symbol.shuffle, enabled: hasTracks) {
-                playback.shuffle(tracks)
+                playback.shuffle(tracks, from: playlist.id)
             },
             .action("Add to Queue", Symbol.addToQueue, enabled: hasTracks) {
                 playback.appendToQueue(tracks)

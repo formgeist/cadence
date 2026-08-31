@@ -106,6 +106,27 @@ enum Snapshot {
             container.model.tab = .playlists
         },
 
+        // Nothing played yet — the Recents tab on a library that has been
+        // imported but not listened to. `loadsBeforeConfigure: false` so the
+        // harness never starts a track, which is what would fill the grid.
+        Shot(name: "03a-library-recents-empty", size: Tokens.Layout.defaultWindow,
+             loadsBeforeConfigure: false) { container in
+            container.model.tab = .recents
+        },
+
+        // Albums and playlists mixed in one grid, newest first — the state the
+        // Recents tab shows once a library has been listened to.
+        Shot(name: "03b-library-recents", size: Tokens.Layout.defaultWindow) { container in
+            for album in container.model.albums.prefix(7) {
+                guard let track = album.discs.first?.tracks.first else { continue }
+                container.model.recordPlayed(track)
+            }
+            if let playlist = container.model.playlists.first {
+                container.model.recordPlayed(PreviewData.tracks[0], from: playlist.id)
+            }
+            container.model.tab = .recents
+        },
+
         // The album the design was drawn against.
         Shot(name: "04-album-design-reference", size: Tokens.Layout.defaultWindow) { container in
             // Year required: the preview library holds a 2025 remaster under

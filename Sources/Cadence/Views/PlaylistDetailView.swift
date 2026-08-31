@@ -96,13 +96,14 @@ struct PlaylistDetailView: View {
 
                 HStack(spacing: 10) {
                     CapsuleButton(title: "Play", systemImage: "play.fill", kind: .filled) {
-                        guard let first = tracks.first else { return }
-                        playback.play(first, in: tracks)
+                        playback.play(tracks, fromPlaylist: playlist.id)
                     }
                     .disabled(tracks.isEmpty)
 
-                    CapsuleButton(title: "Shuffle") { playback.shuffle(tracks) }
-                        .disabled(tracks.isEmpty)
+                    CapsuleButton(title: "Shuffle") {
+                        playback.shuffle(tracks, from: playlist.id)
+                    }
+                    .disabled(tracks.isEmpty)
 
                     CapsuleButton(systemImage: "plus",
                                   accessibilityLabel: "Add playlist to queue") {
@@ -239,7 +240,7 @@ struct PlaylistDetailView: View {
     /// playlist rather than the album that track came from.
     private func play(_ entry: AppModel.PlaylistEntry) {
         selectedEntry = entry.id
-        playback.play(entry.track, in: tracks)
+        playback.play(entry.track, in: tracks, from: playlist.id)
     }
 
     /// Row offsets translated to stored positions before they reach the

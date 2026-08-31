@@ -166,11 +166,17 @@ public enum SettingsKey: String, Sendable {
     /// JSON-encoded `[String]` — recent search terms and recently played
     /// track ids, most-recent first. See #72.
     case recentSearches, recentlyPlayed
+    /// JSON-encoded `[AppModel.RecentPlay]` — the albums and playlists behind
+    /// the Recents grid, most-recent first.
+    case recentPlays
     /// The queue across a relaunch — see #42. `queueTrackIDs` and
     /// `queueOrderedTrackIDs` are JSON-encoded `[String]` of track ids, in
     /// play order and in pre-shuffle order respectively; `queueCurrentTrackID`
-    /// is the one that was playing, and `queuePosition` how far into it.
+    /// is the one that was playing, and `queuePosition` how far into it;
+    /// `queuePlaylistOrigin` is the playlist the queue was started from, if
+    /// any, so a resumed playlist keeps crediting the playlist in Recents.
     case queueTrackIDs, queueOrderedTrackIDs, queueCurrentTrackID, queuePosition
+    case queuePlaylistOrigin
     /// Scrobbling — see #95. `scrobblingEnabled` is the on/off switch;
     /// `scrobbleService` and `scrobbleUsername` name the connected account
     /// (the session key itself lives in the keychain, not here);
