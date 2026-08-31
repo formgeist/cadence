@@ -69,7 +69,7 @@ enum ScanHarness {
             """)
 
         for failure in summary.failures.prefix(10) {
-            print("  ✗ \(failure)")
+            print("  ✗ \(failure.line)")
         }
         if summary.failures.count > 10 {
             print("  … and \(summary.failures.count - 10) more")

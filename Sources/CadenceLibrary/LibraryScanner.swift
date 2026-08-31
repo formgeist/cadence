@@ -40,16 +40,34 @@ public actor LibraryScanner {
         public var skipped: Int
         public var failed: Int
         public var removed: Int
-        public var failures: [String]
+        public var failures: [ScanFailure]
 
         public init(imported: Int = 0, skipped: Int = 0, failed: Int = 0,
-                    removed: Int = 0, failures: [String] = []) {
+                    removed: Int = 0, failures: [ScanFailure] = []) {
             self.imported = imported
             self.skipped = skipped
             self.failed = failed
             self.removed = removed
             self.failures = failures
         }
+    }
+
+    /// One file the scan found but couldn't turn into a track. Kept with its
+    /// full path and the reason so it can be listed — and revealed in Finder —
+    /// long after the scan that produced it, not just counted in a banner.
+    public struct ScanFailure: Sendable, Equatable, Codable {
+        public var path: String
+        public var reason: String
+
+        public init(path: String, reason: String) {
+            self.path = path
+            self.reason = reason
+        }
+
+        public var fileName: String { (path as NSString).lastPathComponent }
+
+        /// The one-line form the CLI and logs use.
+        public var line: String { "\(fileName): \(reason)" }
     }
 
     /// FLAC only, which is what `CadenceLibrary` can read on its own. The app
@@ -114,7 +132,7 @@ public actor LibraryScanner {
         onProgress?(progress)
 
         let known = try await store.fingerprints()
-        var failures: [String] = []
+        var failures: [ScanFailure] = []
         var batch: [(track: Track, fileSize: Int64)] = []
 
         var index = 0
@@ -156,7 +174,7 @@ public actor LibraryScanner {
 
                 case .failed(let message):
                     progress.failed += 1
-                    failures.append("\(result.url.lastPathComponent): \(message)")
+                    failures.append(ScanFailure(path: result.url.path, reason: message))
 
                 case .parsed(var track, let size, let cover):
                     if let cover, let artwork {
