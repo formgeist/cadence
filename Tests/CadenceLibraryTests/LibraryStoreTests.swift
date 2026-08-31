@@ -440,4 +440,41 @@ struct SearchTests {
             #expect(try await store.tracks(matching: "   ").isEmpty)
         }
     }
+
+    @Test("A custom artist image round-trips and can be cleared")
+    func customArtistImage() async throws {
+        try await withStore { store in
+            #expect(try await store.customArtistImages().isEmpty)
+
+            try await store.setCustomArtistImage("art-hash", forArtist: "Vera Lindqvist")
+            #expect(try await store.customArtistImages() == ["Vera Lindqvist": "art-hash"])
+
+            // Re-setting replaces rather than duplicating.
+            try await store.setCustomArtistImage("art-hash-2", forArtist: "Vera Lindqvist")
+            #expect(try await store.customArtistImages() == ["Vera Lindqvist": "art-hash-2"])
+
+            try await store.setCustomArtistImage(nil, forArtist: "Vera Lindqvist")
+            #expect(try await store.customArtistImages().isEmpty)
+        }
+    }
+
+    @Test("A custom artist image is not swept as an orphan")
+    func customArtistImageSurvivesPrune() async throws {
+        try await withStore { store in
+            // A cover a track carries, and an image no track references.
+            try await store.upsert([makeTrack("Slow Hours").withArtwork("cover-hash")])
+            try await store.setCustomArtistImage("artist-hash", forArtist: "Vera Lindqvist")
+
+            let referenced = try await store.referencedArtworkIDs()
+            #expect(referenced == ["cover-hash", "artist-hash"])
+        }
+    }
+}
+
+private extension Track {
+    func withArtwork(_ id: Artwork.ID) -> Track {
+        var copy = self
+        copy.artworkID = id
+        return copy
+    }
 }

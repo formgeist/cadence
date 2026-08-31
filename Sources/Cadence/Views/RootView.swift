@@ -69,6 +69,10 @@ struct RootView: View {
         .sheet(item: $model.infoTrack) { track in
             TrackInfoSheet(track: track)
         }
+        .sheet(item: $model.editingArtist) { artist in
+            ArtistImageSheet(artist: artist)
+                .environment(model)
+        }
         .confirmationDialog(
             deletionPrompt,
             isPresented: Binding(get: { model.playlistPendingDeletion != nil },

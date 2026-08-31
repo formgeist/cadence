@@ -138,6 +138,20 @@ public protocol LibraryStore: Sendable {
     func remove(trackIDs: [Track.ID]) async throws
     /// Total bytes on disk, for the sidebar footer.
     func librarySize() async throws -> Int64
+
+    /// Artist name → the artwork id the user chose for that artist, overriding
+    /// the first-album-cover default. Empty by default: an in-memory store used
+    /// by previews and tests need not carry the override.
+    func customArtistImages() async throws -> [String: Artwork.ID]
+    /// Sets (or, with `nil`, clears) the custom image for one artist. The bytes
+    /// themselves live in the `ArtworkStore`; this only records which id an
+    /// artist points at.
+    func setCustomArtistImage(_ id: Artwork.ID?, forArtist name: String) async throws
+}
+
+extension LibraryStore {
+    public func customArtistImages() async throws -> [String: Artwork.ID] { [:] }
+    public func setCustomArtistImage(_ id: Artwork.ID?, forArtist name: String) async throws {}
 }
 
 // MARK: - Settings

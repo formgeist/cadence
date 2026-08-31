@@ -364,6 +364,14 @@ public actor InMemoryLibraryStore: LibraryStore {
         // The preview store is read-only; the real store writes here.
     }
 
+    private var artistImages: [String: Artwork.ID] = [:]
+
+    public func customArtistImages() async throws -> [String: Artwork.ID] { artistImages }
+
+    public func setCustomArtistImage(_ id: Artwork.ID?, forArtist name: String) async throws {
+        artistImages[name] = id
+    }
+
     public func librarySize() async throws -> Int64 {
         // Roughly what lossless costs: ~1.1 MB per second of 24/96 stereo,
         // ~0.5 MB for 16/44.1. Enough to make the sidebar figure plausible.
@@ -372,6 +380,30 @@ public actor InMemoryLibraryStore: LibraryStore {
             return total + Int64(track.duration * perSecond)
         }
     }
+}
+
+/// An `ArtworkStore` that keeps bytes in a dictionary — for tests and previews
+/// that need to store an image without touching the disk cache. Thumbnails are
+/// the stored bytes verbatim: nothing here decodes them.
+public actor InMemoryArtworkStore: ArtworkStore {
+    private var blobs: [Artwork.ID: Data] = [:]
+
+    public init() {}
+
+    @discardableResult
+    public func store(_ data: Data) async throws -> Artwork.ID {
+        let id = data.reduce(into: 5381) { $0 = ($0 &* 33) &+ Int($1) }.description
+        blobs[id] = data
+        return id
+    }
+
+    public func thumbnail(for id: Artwork.ID, maxPixelSize: Int) async throws -> Data? {
+        blobs[id]
+    }
+
+    public func full(for id: Artwork.ID) async throws -> Data? { blobs[id] }
+
+    public func has(_ id: Artwork.ID) -> Bool { blobs[id] != nil }
 }
 
 // MARK: - Preview data
