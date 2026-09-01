@@ -1040,6 +1040,34 @@ struct QueuePersistenceTests {
         #expect(engine.seeks.contains(80))
     }
 
+    @Test("Starting a fresh track after a restore clears the pending resume — Space pauses, not seeks")
+    func freshPlayAfterRestoreDoesNotHijackTheFirstPause() async {
+        let settings = InMemorySettingsStore()
+        let tracks = (1...2).map { makeTrack("T\($0)", seconds: 300) }
+        settings.set(encode(tracks.map(\.id)), forKey: .queueTrackIDs)
+        settings.set(encode(tracks.map(\.id)), forKey: .queueOrderedTrackIDs)
+        settings.set(tracks[0].id.uuidString, forKey: .queueCurrentTrackID)
+        settings.set(80.0, forKey: .queuePosition)
+
+        let engine = SpyEngine()
+        let controller = PlaybackController(engine: engine, settings: settings)
+        let byID = Dictionary(uniqueKeysWithValues: tracks.map { ($0.id, $0) })
+        controller.restoreQueue { byID[$0] }
+
+        // The user clicks a track rather than resuming the restored one.
+        controller.play(tracks[1], in: tracks)
+        await engine.emit(.started(tracks[1].url))
+        let playsBeforePause = engine.played.count
+        engine.clearSeeks()
+
+        // First Space: it must pause, not reload-and-seek to the stale 80s.
+        controller.togglePlayPause()
+
+        #expect(engine.pauseCount == 1)
+        #expect(engine.seeks.isEmpty)
+        #expect(engine.played.count == playsBeforePause)
+    }
+
     @Test("A track removed from the library since is skipped, landing on the next one")
     func skipsATrackThatNoLongerResolves() {
         let settings = InMemorySettingsStore()
