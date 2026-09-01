@@ -337,6 +337,13 @@ public final class PlaybackController {
         var index = index
         var position = position
 
+        // Committing to a track at a known position supersedes any deferred
+        // "reload where you left off" — from `restoreQueue` or a lost output
+        // device. Left set, a stale one hijacked the first `togglePlayPause`
+        // after the user started a different track: instead of pausing, the
+        // track reloaded and seeked to the old position.
+        needsReloadAtPosition = nil
+
         while queue.indices.contains(index) {
             let track = queue[index]
             currentIndex = index
