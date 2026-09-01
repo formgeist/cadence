@@ -18,7 +18,9 @@ struct TitleBarView: View {
                 NavigationChevron(direction: .backward, isEnabled: model.canGoBack) {
                     model.goBack()
                 }
-                NavigationChevron(direction: .forward, isEnabled: false) {}
+                NavigationChevron(direction: .forward, isEnabled: model.canGoForward) {
+                    model.goForward()
+                }
             }
 
             SearchField()

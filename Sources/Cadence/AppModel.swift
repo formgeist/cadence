@@ -71,18 +71,30 @@ final class AppModel {
     /// A stack, so Back from an album reached through search returns to the
     /// search results' screen rather than guessing.
     private var backStack: [Screen] = []
+    /// Screens stepped away from with Back, newest last — Forward retraces
+    /// them. A fresh `show(_:)` abandons this branch, matching a browser.
+    private var forwardStack: [Screen] = []
 
     var canGoBack: Bool { !backStack.isEmpty }
+    var canGoForward: Bool { !forwardStack.isEmpty }
 
     func show(_ screen: Screen) {
         guard screen != self.screen else { return }
         backStack.append(self.screen)
+        forwardStack.removeAll()
         self.screen = screen
     }
 
     func goBack() {
         guard let previous = backStack.popLast() else { return }
+        forwardStack.append(screen)
         screen = previous
+    }
+
+    func goForward() {
+        guard let next = forwardStack.popLast() else { return }
+        backStack.append(screen)
+        screen = next
     }
 
     // MARK: Search

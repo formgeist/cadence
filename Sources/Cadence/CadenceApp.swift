@@ -381,6 +381,10 @@ struct CadenceCommands: Commands {
             Button("Back") { container.model.goBack() }
                 .keyboardShortcut("[", modifiers: .command)
                 .disabled(!container.model.canGoBack)
+
+            Button("Forward") { container.model.goForward() }
+                .keyboardShortcut("]", modifiers: .command)
+                .disabled(!container.model.canGoForward)
         }
     }
 }
