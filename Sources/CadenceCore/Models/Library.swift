@@ -227,7 +227,10 @@ public struct Track: Identifiable, Hashable, Sendable {
 public struct Album: Identifiable, Hashable, Sendable {
     /// Title alone merges every *Greatest Hits*; adding the year keeps
     /// remasters separate from originals. See PLAN.md §7.
-    public struct Key: Hashable, Sendable {
+    ///
+    /// `Codable` so the Recents list can persist an album reference across a
+    /// relaunch — see `AppModel.RecentPlay`.
+    public struct Key: Hashable, Sendable, Codable {
         public var albumArtist: String
         public var title: String
         public var year: Int?

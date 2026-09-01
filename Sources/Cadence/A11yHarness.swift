@@ -22,6 +22,11 @@ enum A11yHarness {
         await container.model.load()
         container.playback.play(PreviewData.slowHours[2], in: PreviewData.slowHours)
         container.playback.seek(to: 88)
+        // Give the Recents grid something to draw — an album from the play
+        // above, plus a playlist credited directly.
+        if let playlist = container.model.playlists.first {
+            container.model.recordPlayed(PreviewData.slowHours[0], from: playlist.id)
+        }
 
         var unlabelled = 0
 
@@ -81,10 +86,11 @@ enum A11yHarness {
     }
 
     private enum Screen: CaseIterable {
-        case artists, artist, album, playlist, settings, immersive
+        case recents, artists, artist, album, playlist, settings, immersive
 
         var title: String {
             switch self {
+            case .recents: "Library — Recents"
             case .artists: "Library — Artists"
             case .artist: "Artist detail"
             case .album: "Album detail"
@@ -97,6 +103,10 @@ enum A11yHarness {
         @MainActor
         func configure(_ container: AppContainer) {
             switch self {
+            case .recents:
+                container.model.isImmersive = false
+                container.model.show(.library)
+                container.model.tab = .recents
             case .artists:
                 container.model.isImmersive = false
                 container.model.show(.library)

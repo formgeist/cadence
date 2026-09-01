@@ -175,8 +175,9 @@ final class AppContainer {
         // Play history is recorded here, not inside `PlaybackController`,
         // which knows nothing about `AppModel` or persistence — see #72. The
         // same start event feeds the scrobbler's "now playing" update (#95).
-        playback.onTrackStarted = { [weak model = self.model, weak scrobble = self.scrobble] track in
-            model?.recordPlayed(track)
+        playback.onTrackStarted = { [weak model = self.model, weak scrobble = self.scrobble,
+                                     weak playback = self.playback] track in
+            model?.recordPlayed(track, from: playback?.startedFromPlaylist)
             scrobble?.trackStarted(track)
         }
 
@@ -354,12 +355,14 @@ struct CadenceCommands: Commands {
         }
 
         CommandGroup(replacing: .toolbar) {
-            Button("Artists") { container.model.show(.library); container.model.tab = .artists }
+            Button("Recents") { container.model.show(.library); container.model.tab = .recents }
                 .keyboardShortcut("1", modifiers: .command)
-            Button("Albums") { container.model.show(.library); container.model.tab = .albums }
+            Button("Artists") { container.model.show(.library); container.model.tab = .artists }
                 .keyboardShortcut("2", modifiers: .command)
-            Button("Playlists") { container.model.show(.library); container.model.tab = .playlists }
+            Button("Albums") { container.model.show(.library); container.model.tab = .albums }
                 .keyboardShortcut("3", modifiers: .command)
+            Button("Playlists") { container.model.show(.library); container.model.tab = .playlists }
+                .keyboardShortcut("4", modifiers: .command)
 
             Divider()
 

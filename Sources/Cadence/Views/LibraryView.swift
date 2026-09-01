@@ -11,6 +11,14 @@ struct LibraryView: View {
         VStack(spacing: 0) {
             header
             switch model.tab {
+            case .recents:
+                if model.isInitialLoading {
+                    SkeletonAlbumGrid()
+                } else if model.recentPlays.isEmpty {
+                    RecentsEmptyState()
+                } else {
+                    RecentsGrid(items: model.recentPlays)
+                }
             case .albums:
                 if model.isInitialLoading {
                     SkeletonAlbumGrid()
@@ -52,7 +60,10 @@ struct LibraryView: View {
             Spacer()
 
             HStack(spacing: Tokens.Space.l) {
-                if model.tab != .playlists && !model.isInitialLoading {
+                // Recents has no sort (it is recency order) and no zoom, and
+                // Playlists neither — so the options menu is for the two grids
+                // that actually have something to configure.
+                if (model.tab == .artists || model.tab == .albums) && !model.isInitialLoading {
                     LibraryActionsMenu()
                 }
                 if model.isInitialLoading {
@@ -635,6 +646,231 @@ private struct PlaylistShelfRow: View {
     /// resolving every id and allocating the whole array to take `.first` —
     /// on every body pass, for every row. See #86.
     private var artworkID: Artwork.ID? {
+        playlist.trackIDs.lazy.compactMap { model.track(id: $0)?.artworkID }.first
+    }
+}
+
+// MARK: - Recents
+
+/// A library with nothing played yet — the same shape the Playlists shelf uses
+/// for its own empty state, pointing at the one thing that fills this one.
+private struct RecentsEmptyState: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        EmptyState(
+            systemImage: "clock",
+            title: "Nothing played yet",
+            message: "Play an album or a playlist and it turns up here,\nnewest first."
+        ) {
+            CapsuleButton(title: "Browse Albums", systemImage: "circle.circle") {
+                model.tab = .albums
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Tokens.Palette.surface)
+    }
+}
+
+/// Albums and playlists, most-recently played first, in one grid. No sort and
+/// no zoom — recency *is* the order, and the header drops the options menu to
+/// match. Type-ahead is gone with the sort: there is no stable key to type
+/// against a list that reorders itself every time something plays.
+private struct RecentsGrid: View {
+    @Environment(AppModel.self) private var model
+    var items: [AppModel.RecentlyPlayed]
+
+    @State private var focusedIndex: Int?
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        // Fixed columns, computed from the width — see `AlbumGrid` for why
+        // adaptive columns are avoided.
+        GeometryReader { geometry in
+            let available = geometry.size.width - Tokens.Space.contentInset * 2
+            let columns = GridMetrics.columnCount(
+                for: available, minimum: Tokens.Layout.recentColumnWidth)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVGrid(
+                        columns: Array(repeating: GridItem(.flexible(),
+                                                           spacing: Tokens.Space.xl),
+                                       count: columns),
+                        alignment: .leading,
+                        spacing: Tokens.Space.xxl
+                    ) {
+                        ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                            RecentCard(item: item,
+                                       isKeyboardFocused: isFocused && focusedIndex == index) {
+                                focusedIndex = index
+                                isFocused = true
+                            }
+                            .id(item.id)
+                        }
+                    }
+                    .padding(.horizontal, Tokens.Space.contentInset)
+                    .padding(.vertical, Tokens.Space.xxl)
+                }
+                .scrollContentBackground(.hidden)
+                .focusable()
+                .focusEffectDisabled()
+                .focused($isFocused)
+                // Arrow keys via `.onMoveCommand`, not `.onKeyPress` — see
+                // `ArtistGrid` for the `ScrollView` responder conflict.
+                .onMoveCommand { direction in
+                    guard let direction = GridNavigation.Direction(direction) else { return }
+                    move(to: GridNavigation.move(from: focusedIndex, by: direction,
+                                                 count: items.count, columns: columns),
+                         proxy: proxy)
+                }
+                .onKeyPress { press in
+                    guard press.key == .return, press.modifiers.isEmpty,
+                          let focusedIndex, items.indices.contains(focusedIndex) else {
+                        return .ignored
+                    }
+                    open(items[focusedIndex])
+                    return .handled
+                }
+            }
+        }
+        // The grid reorders itself when something plays; an index captured
+        // against the old order can't mean anything against the new one.
+        .onChange(of: items.map(\.id)) { _, _ in focusedIndex = nil }
+    }
+
+    private func move(to index: Int?, proxy: ScrollViewProxy) {
+        focusedIndex = index
+        guard let index, items.indices.contains(index) else { return }
+        proxy.scrollTo(items[index].id, anchor: .center)
+    }
+
+    private func open(_ item: AppModel.RecentlyPlayed) {
+        switch item {
+        case .album(let album): model.show(.album(album.key))
+        case .playlist(let playlist): model.show(.playlist(playlist.id))
+        }
+    }
+}
+
+/// One recents tile. An album card and a playlist card in one, because the
+/// grid mixes them — square art, a title, and a single detail line (the
+/// artist, or the track count). A corner glyph on playlists is the only thing
+/// that tells the two kinds apart at a glance, since neither says its type.
+private struct RecentCard: View {
+    @Environment(AppModel.self) private var model
+    @Environment(PlaybackController.self) private var playback
+    var item: AppModel.RecentlyPlayed
+    var isKeyboardFocused: Bool = false
+    /// Marks this card keyboard-focused from the same click that opens it —
+    /// see `AlbumCard.onSelect`.
+    var onSelect: () -> Void = {}
+    @State private var isHovering = false
+
+    var body: some View {
+        Button {
+            onSelect()
+            open()
+        } label: {
+            VStack(alignment: .leading, spacing: 11) {
+                artwork
+                    .aspectRatio(1, contentMode: .fit)
+                    .shadow(color: .black.opacity(0.4), radius: 12, y: 6)
+                    .keyboardFocusRing(isKeyboardFocused,
+                                       in: RoundedRectangle(cornerRadius: Tokens.Radius.control,
+                                                            style: .continuous))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(Tokens.Typography.cardTitle)
+                        .foregroundStyle(Color(hex: 0xEBEBF0))
+                        .lineLimit(2, reservesSpace: true)
+                        .multilineTextAlignment(.leading)
+                    Text(detail)
+                        .font(Tokens.Typography.caption)
+                        .foregroundStyle(Tokens.Palette.textTertiary)
+                        .lineLimit(1)
+                }
+            }
+            .opacity(isHovering ? 0.86 : 1)
+        }
+        .plainControl()
+        .focusable(false)
+        .onHover { isHovering = $0 }
+        .cadenceContextMenu { contextMenuItems }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(spokenLabel)
+        .accessibilityAddTraits(.isButton)
+    }
+
+    @ViewBuilder
+    private var artwork: some View {
+        switch item {
+        case .album(let album):
+            ArtworkView(artworkID: album.artworkID,
+                        cornerRadius: Tokens.Radius.control,
+                        caption: album.artworkID == nil ? "NO COVER ART" : "COVER ART",
+                        displaySize: 320)
+        case .playlist(let playlist):
+            ArtworkView(artworkID: playlistArtworkID(playlist),
+                        cornerRadius: Tokens.Radius.control,
+                        displaySize: 320)
+                .overlay(alignment: .bottomLeading) {
+                    Image(systemName: "music.note.list")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Color(hex: 0xEBEBF0))
+                        .padding(5)
+                        .background {
+                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                .fill(.black.opacity(0.55))
+                        }
+                        .padding(7)
+                        .accessibilityHidden(true)
+                }
+        }
+    }
+
+    private var title: String {
+        switch item {
+        case .album(let album): album.title
+        case .playlist(let playlist): playlist.name
+        }
+    }
+
+    private var detail: String {
+        switch item {
+        case .album(let album): album.albumArtist
+        case .playlist(let playlist): playlist.summary
+        }
+    }
+
+    private var spokenLabel: String {
+        switch item {
+        case .album(let album):
+            "\(album.title), \(album.albumArtist)"
+        case .playlist(let playlist):
+            "Playlist: \(playlist.name), \(playlist.summary)"
+        }
+    }
+
+    private var contextMenuItems: [MenuItem] {
+        switch item {
+        case .album(let album):
+            PlaylistMenu.album(album, model: model, playback: playback)
+        case .playlist(let playlist):
+            PlaylistMenu.actions(model: model, playback: playback, playlist: playlist)
+        }
+    }
+
+    private func open() {
+        switch item {
+        case .album(let album): model.show(.album(album.key))
+        case .playlist(let playlist): model.show(.playlist(playlist.id))
+        }
+    }
+
+    /// The playlist's first available cover — lazy, so a long playlist stops
+    /// at the first hit rather than resolving every id. See #86.
+    private func playlistArtworkID(_ playlist: Playlist) -> Artwork.ID? {
         playlist.trackIDs.lazy.compactMap { model.track(id: $0)?.artworkID }.first
     }
 }

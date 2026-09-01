@@ -82,6 +82,17 @@ public final class PlaybackController {
     /// See #72.
     public var onTrackStarted: ((Track) -> Void)?
 
+    /// The playlist the current queue was started from, when it was started
+    /// from one — set by `play(_:in:from:)` / `shuffle(_:from:)`, restored with
+    /// the queue across a relaunch, and left in place until the next fresh
+    /// start. An album, an artist's discography, or a bare track all leave it
+    /// `nil`.
+    ///
+    /// Read at track-start time so play history can credit the playlist as a
+    /// whole rather than every track's album as the queue rolls through it —
+    /// see `AppModel.recordPlayed(_:from:)`.
+    public private(set) var startedFromPlaylist: Playlist.ID?
+
     public func clearNotice() {
         notice = nil
         noticeIsSticky = false
@@ -121,6 +132,11 @@ public final class PlaybackController {
     private var pendingRestoreOrderedQueueIDs: [Track.ID] = []
     private var pendingRestoreCurrentTrackID: Track.ID?
     private var pendingRestorePosition: TimeInterval = 0
+    /// The playlist the persisted queue was started from — `restoreQueue`
+    /// puts it back onto `startedFromPlaylist` so a queue resumed after a
+    /// relaunch still credits the playlist in play history, not each track's
+    /// album. See #42 and the Recents section of the README.
+    private var pendingRestorePlaylistOrigin: Playlist.ID?
     /// Throttles `persistPositionIfDue`, so a five-second gap between writes
     /// survives a position stream that ticks ten times a second.
     private var lastPersistedPositionSecond: Int?
@@ -183,6 +199,8 @@ public final class PlaybackController {
         pendingRestoreCurrentTrackID = settings.string(forKey: .queueCurrentTrackID)
             .flatMap(UUID.init)
         pendingRestorePosition = settings.double(forKey: .queuePosition) ?? 0
+        pendingRestorePlaylistOrigin = settings.string(forKey: .queuePlaylistOrigin)
+            .flatMap(UUID.init)
     }
 
     private func observe() {
@@ -205,7 +223,11 @@ public final class PlaybackController {
 
     /// Play `track` in the context of `tracks` — clicking row 3 of an album
     /// queues the whole album and starts at 3.
-    public func play(_ track: Track, in tracks: [Track]) {
+    ///
+    /// `from` names the playlist these tracks came from, when they came from
+    /// one, so play history can credit it — see `startedFromPlaylist`.
+    public func play(_ track: Track, in tracks: [Track], from playlist: Playlist.ID? = nil) {
+        startedFromPlaylist = playlist
         // A new record is a fresh chance for every file: the NAS may be back,
         // and the user asked for these tracks rather than inheriting a verdict
         // from the last queue.
@@ -229,6 +251,12 @@ public final class PlaybackController {
         play(first, in: ordered)
     }
 
+    /// Play a playlist from the top, crediting it in play history.
+    public func play(_ tracks: [Track], fromPlaylist playlist: Playlist.ID) {
+        guard let first = tracks.first else { return }
+        play(first, in: tracks, from: playlist)
+    }
+
     /// Queue an album with shuffle forced on, for the album header's Shuffle
     /// button. Leaves the user's own shuffle setting flipped, because that is
     /// what the button visibly did.
@@ -237,8 +265,10 @@ public final class PlaybackController {
     }
 
     /// The same, over any run of tracks — an artist's whole discography, say.
-    public func shuffle(_ tracks: [Track]) {
+    /// `from` credits a playlist in play history when the run is one.
+    public func shuffle(_ tracks: [Track], from playlist: Playlist.ID? = nil) {
         guard !tracks.isEmpty else { return }
+        startedFromPlaylist = playlist
         clearSkipped()
         shuffleMode = .on
         orderedQueue = tracks
@@ -721,6 +751,7 @@ public final class PlaybackController {
                      forKey: .queueOrderedTrackIDs)
         settings.set(currentTrack?.id.uuidString, forKey: .queueCurrentTrackID)
         settings.set(progress.elapsed, forKey: .queuePosition)
+        settings.set(startedFromPlaylist?.uuidString, forKey: .queuePlaylistOrigin)
     }
 
     /// The position ticks ten times a second; writing it out on every tick
@@ -757,10 +788,12 @@ public final class PlaybackController {
         let orderedIDs = pendingRestoreOrderedQueueIDs
         let currentID = pendingRestoreCurrentTrackID
         let position = pendingRestorePosition
+        let playlistOrigin = pendingRestorePlaylistOrigin
         pendingRestoreQueueIDs = []
         pendingRestoreOrderedQueueIDs = []
         pendingRestoreCurrentTrackID = nil
         pendingRestorePosition = 0
+        pendingRestorePlaylistOrigin = nil
 
         // Nothing to restore onto, or something already queued in the
         // meantime — the latter shouldn't happen given when the composition
@@ -779,6 +812,10 @@ public final class PlaybackController {
         queue = restoredQueue
         orderedQueue = restoredOrdered.isEmpty ? restoredQueue : restoredOrdered
         currentIndex = index
+        // The queue is the same one that was playing at quit, so its origin
+        // carries over — otherwise resuming a playlist after a relaunch would
+        // credit each track's album in play history instead of the playlist.
+        startedFromPlaylist = playlistOrigin
         let track = restoredQueue[index]
         // Only the track that was actually playing gets its position back;
         // one fallen through to starts at the top, the same rule

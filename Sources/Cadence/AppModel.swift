@@ -27,6 +27,7 @@ final class AppModel {
     }
 
     enum Tab: String, CaseIterable, Identifiable {
+        case recents = "Recents"
         case artists = "Artists"
         case albums = "Albums"
         case playlists = "Playlists"
@@ -35,6 +36,7 @@ final class AppModel {
 
         var icon: String {
             switch self {
+            case .recents: "clock"
             case .artists: "person"
             case .albums: "circle.circle"
             case .playlists: "list.bullet"
@@ -287,6 +289,7 @@ final class AppModel {
         }
         recentSearches = Self.decode(settings.string(forKey: .recentSearches))
         recentlyPlayedIDs = Self.decode(settings.string(forKey: .recentlyPlayed)).compactMap(UUID.init)
+        recentPlayRefs = Self.decodeRecentPlays(settings.string(forKey: .recentPlays))
     }
 
     func load() async {
@@ -325,6 +328,15 @@ final class AppModel {
             // forever, wasting one of its five slots on something
             // `recentlyPlayed` will never resolve again.
             recentlyPlayedIDs.removeAll { tracksByID[$0] == nil }
+            // Same for the Recents grid: an album gone with its folder or a
+            // deleted playlist should give its slot back rather than linger as
+            // a ref that never resolves.
+            recentPlayRefs.removeAll { ref in
+                switch ref {
+                case .album(let key): albumsByKey[key] == nil
+                case .playlist(let id): !playlists.contains { $0.id == id }
+                }
+            }
             sortArtists()
             sortAlbums()
             // A local library reads fast enough that the skeleton can finish
@@ -729,6 +741,7 @@ final class AppModel {
     /// The mono figure beside the screen title.
     var screenCount: String {
         switch tab {
+        case .recents: recentPlays.count == 1 ? "1 RECENT" : "\(recentPlays.count) RECENTS"
         case .artists: "\(artists.count) ARTISTS"
         case .albums: "\(albums.count) ALBUMS"
         case .playlists: "\(playlists.count) PLAYLISTS"
@@ -795,6 +808,77 @@ final class AppModel {
     /// this is the storage limit, not a display detail. See #72.
     private static let recentSearchesLimit = 5
     private static let recentlyPlayedLimit = 5
+    /// The Recents grid's history. Longer than the popover's five: this is a
+    /// browsing surface of its own, not a suggestion strip.
+    private static let recentPlaysLimit = 30
+
+    // MARK: Recently played collections
+
+    /// A collection the user has played — the unit the Recents grid is built
+    /// from. Stored as a reference, never a resolved value, so a rescan that
+    /// drops an album or a deleted playlist falls out of the list without it
+    /// needing to be told, the same way `recentlyPlayedIDs` handles tracks.
+    enum RecentPlay: Hashable, Codable {
+        case album(Album.Key)
+        case playlist(Playlist.ID)
+    }
+
+    /// A resolved Recents entry, ready for a card. Artists are deliberately
+    /// absent — the Recents grid shows records and playlists only.
+    enum RecentlyPlayed: Identifiable {
+        case album(Album)
+        case playlist(Playlist)
+
+        var id: String {
+            switch self {
+            case .album(let album):
+                "album:\(album.albumArtist)|\(album.title)|\(album.year.map(String.init) ?? "")"
+            case .playlist(let playlist):
+                "playlist:\(playlist.id.uuidString)"
+            }
+        }
+    }
+
+    /// References, most-recent first. Resolved lazily by `recentPlays`.
+    private var recentPlayRefs: [RecentPlay] = []
+
+    /// What the Recents grid shows — resolved against the live library on
+    /// every read rather than cached, so a removed album or a deleted
+    /// playlist simply stops appearing and a rescan never goes stale.
+    var recentPlays: [RecentlyPlayed] {
+        recentPlayRefs.compactMap { ref in
+            switch ref {
+            case .album(let key):
+                albumsByKey[key].map(RecentlyPlayed.album)
+            case .playlist(let id):
+                playlists.first { $0.id == id }.map(RecentlyPlayed.playlist)
+            }
+        }
+    }
+
+    /// Records that a collection was just played: most-recent first,
+    /// de-duplicated so replaying yesterday's album moves its tile to the
+    /// front rather than adding a second one. Called from
+    /// `recordPlayed(_:from:)` — a playlist when the queue was started from
+    /// one, otherwise the album the started track belongs to.
+    private func recordRecentPlay(_ play: RecentPlay) {
+        recentPlayRefs.removeAll { $0 == play }
+        recentPlayRefs.insert(play, at: 0)
+        if recentPlayRefs.count > Self.recentPlaysLimit {
+            recentPlayRefs.removeLast(recentPlayRefs.count - Self.recentPlaysLimit)
+        }
+        settings.set(Self.encodeRecentPlays(recentPlayRefs), forKey: .recentPlays)
+    }
+
+    private static func encodeRecentPlays(_ plays: [RecentPlay]) -> String? {
+        guard !plays.isEmpty else { return nil }
+        return (try? JSONEncoder().encode(plays)).flatMap { String(data: $0, encoding: .utf8) }
+    }
+
+    private static func decodeRecentPlays(_ raw: String?) -> [RecentPlay] {
+        guard let raw, let data = raw.data(using: .utf8) else { return [] }
+        return (try? JSONDecoder().decode([RecentPlay].self, from: data)) ?? []
+    }
 
     /// Most-recent first. Filled in by `commitCurrentSearch`, never by every
     /// keystroke — `searchText` already drives the live query.
@@ -828,13 +912,23 @@ final class AppModel {
     /// Wired to `PlaybackController.onTrackStarted` by the composition root —
     /// called once a track actually starts, not when it's merely queued. See
     /// #72.
-    func recordPlayed(_ track: Track) {
+    ///
+    /// `playlist` is `PlaybackController.startedFromPlaylist`: non-nil when the
+    /// queue was started from a playlist, which is what the Recents grid
+    /// credits instead of each track's album as the queue rolls through it.
+    func recordPlayed(_ track: Track, from playlist: Playlist.ID? = nil) {
         recentlyPlayedIDs.removeAll { $0 == track.id }
         recentlyPlayedIDs.insert(track.id, at: 0)
         if recentlyPlayedIDs.count > Self.recentlyPlayedLimit {
             recentlyPlayedIDs.removeLast(recentlyPlayedIDs.count - Self.recentlyPlayedLimit)
         }
         settings.set(Self.encode(recentlyPlayedIDs.map(\.uuidString)), forKey: .recentlyPlayed)
+
+        if let playlist {
+            recordRecentPlay(.playlist(playlist))
+        } else {
+            recordRecentPlay(.album(track.albumKey))
+        }
     }
 
     private static func encode(_ values: [String]) -> String? {
