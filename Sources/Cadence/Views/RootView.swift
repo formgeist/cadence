@@ -201,24 +201,24 @@ struct RootView: View {
         if let failure = model.actionError {
             // No timer: a failure is the case a silent disappearance hurts, so
             // it stays until the user has read it and dismissed it.
+            // `onDismiss:` is spelled out: `Banner` has closure parameters
+            // before it, and an unlabelled trailing closure binds to the first
+            // of those, not this one.
             Banner(text: failure,
                    icon: "exclamationmark.triangle.fill",
-                   tint: Tokens.Palette.accent) {
-                model.actionError = nil
-            }
+                   tint: Tokens.Palette.accent,
+                   onDismiss: { model.actionError = nil })
         } else if let added = model.notice {
             Banner(text: added, icon: "checkmark.circle.fill",
                    tint: Tokens.Palette.accent,
-                   autoDismissAfter: Banner.noticeLifetime) {
-                model.notice = nil
-            }
+                   autoDismissAfter: Banner.noticeLifetime,
+                   onDismiss: { model.notice = nil })
         } else if let notice = playback.notice {
             // An output-device change leaves playback paused until the user acts,
             // so that notice stays put; a skipped track is just informational.
             Banner(text: notice, icon: "headphones", tint: Tokens.Palette.textSecondary,
-                   autoDismissAfter: playback.noticeIsSticky ? nil : Banner.noticeLifetime) {
-                playback.clearNotice()
-            }
+                   autoDismissAfter: playback.noticeIsSticky ? nil : Banner.noticeLifetime,
+                   onDismiss: { playback.clearNotice() })
         } else if let error = playback.lastError {
             Banner(text: error.message,
                    icon: "exclamationmark.triangle.fill",
