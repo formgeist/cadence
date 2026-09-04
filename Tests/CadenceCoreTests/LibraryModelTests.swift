@@ -204,6 +204,30 @@ struct FormattingTests {
         #expect(mp3.shortDescription == "44.1 kHz")
         #expect(!mp3.isLossless)
     }
+
+    @Test("A known bitrate replaces the bit depth for lossy formats")
+    func lossyShowsBitrate() {
+        let mp3 = AudioFormat(codec: .mp3, sampleRate: 44_100, bitRate: 320)
+        #expect(mp3.shortDescription == "320 kbps")
+        #expect(mp3.longDescription == "320 kbps · 44.1 kHz")
+        #expect(mp3.badgeDescription == "MP3 · 320 kbps · 44.1 kHz")
+    }
+
+    @Test("A VBR average snaps to the nearest standard bitrate tier", arguments: [
+        (313, 320), (305, 320), (245, 256), (198, 192), (129, 128), (64, 64),
+    ])
+    func vbrSnapsToTier(average: Int, shown: Int) {
+        let mp3 = AudioFormat(codec: .mp3, sampleRate: 44_100, bitRate: average)
+        #expect(mp3.nominalBitRate == shown)
+        #expect(mp3.shortDescription == "\(shown) kbps")
+    }
+
+    @Test("A bitrate on a lossless file is ignored in favour of the bit depth")
+    func losslessIgnoresBitrate() {
+        let flac = AudioFormat(codec: .flac, sampleRate: 96_000, bitDepth: 24, bitRate: 4_500)
+        #expect(flac.shortDescription == "24/96")
+        #expect(flac.longDescription == "24-bit / 96 kHz")
+    }
 }
 
 // MARK: - Sorting
