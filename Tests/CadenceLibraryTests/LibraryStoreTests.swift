@@ -56,6 +56,21 @@ struct SQLiteLibraryStoreTests {
         }
     }
 
+    @Test("A lossy track's bitrate survives the round trip")
+    func bitrateRoundTrip() async throws {
+        try await withStore { store in
+            var track = makeTrack("Bitterness the Star")
+            track.format = AudioFormat(codec: .mp3, sampleRate: 44_100, bitRate: 311)
+            try await store.upsert([track])
+
+            let fetched = try #require(try await store.allTracks().first)
+            // The true average is stored; the display snaps it to a round tier.
+            #expect(fetched.format.bitRate == 311)
+            #expect(fetched.format.bitDepth == nil)
+            #expect(fetched.format.longDescription == "320 kbps · 44.1 kHz")
+        }
+    }
+
     @Test("Re-importing the same path updates the row and keeps its id")
     func upsertByPath() async throws {
         try await withStore { store in

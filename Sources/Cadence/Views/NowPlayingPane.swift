@@ -252,6 +252,9 @@ struct NowPlayingPane: View {
     static func spokenFormat(_ format: AudioFormat) -> String {
         var parts = [format.codec.name]
         if let depth = format.bitDepth { parts.append("\(depth) bit") }
+        if format.bitDepth == nil, let rate = format.nominalBitRate {
+            parts.append("\(rate) kilobits per second")
+        }
         parts.append("\(format.kilohertz) kilohertz")
         return parts.joined(separator: ", ")
     }

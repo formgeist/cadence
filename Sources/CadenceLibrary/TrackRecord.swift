@@ -29,6 +29,7 @@ struct TrackRecord: Codable, FetchableRecord, PersistableRecord {
     var sampleRate: Double
     var bitDepth: Int?
     var channelCount: Int
+    var bitRate: Int?
 
     var artworkID: String?
     var replayGainTrack: Double?
@@ -61,6 +62,7 @@ struct TrackRecord: Codable, FetchableRecord, PersistableRecord {
         sampleRate = track.format.sampleRate
         bitDepth = track.format.bitDepth
         channelCount = track.format.channelCount
+        bitRate = track.format.bitRate
         artworkID = track.artworkID
         replayGainTrack = track.replayGain?.trackGain
         replayGainTrackPeak = track.replayGain?.trackPeak
@@ -93,7 +95,8 @@ struct TrackRecord: Codable, FetchableRecord, PersistableRecord {
                 codec: AudioFormat.Codec(name: codec),
                 sampleRate: sampleRate,
                 bitDepth: bitDepth,
-                channelCount: channelCount),
+                channelCount: channelCount,
+                bitRate: bitRate),
             artworkID: artworkID,
             replayGain: hasReplayGain
                 ? ReplayGain(trackGain: replayGainTrack,

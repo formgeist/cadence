@@ -53,15 +53,32 @@ public struct AudioFormat: Hashable, Sendable {
     /// Nil for lossy formats, which have no meaningful bit depth.
     public var bitDepth: Int?
     public var channelCount: Int
+    /// Average bitrate in kbps. Nil until a scan has read it; only shown for
+    /// lossy formats, where it — not the bit depth — is the quality that varies.
+    public var bitRate: Int?
 
-    public init(codec: Codec, sampleRate: Double, bitDepth: Int? = nil, channelCount: Int = 2) {
+    public init(codec: Codec, sampleRate: Double, bitDepth: Int? = nil,
+                channelCount: Int = 2, bitRate: Int? = nil) {
         self.codec = codec
         self.sampleRate = sampleRate
         self.bitDepth = bitDepth
         self.channelCount = channelCount
+        self.bitRate = bitRate
     }
 
     public var isLossless: Bool { codec.isLossless }
+
+    /// The bitrate we actually show. `bitRate` is the true average, which for a
+    /// VBR file lands a few kbps off a round number — a 320-target encode reads
+    /// as 313, a V0 as 245. Snapping to the nearest standard MP3 tier gives back
+    /// the number the listener thinks of the file as, at the cost of being wrong
+    /// by one tier for genuinely in-between encodes. See #120.
+    public var nominalBitRate: Int? {
+        guard let bitRate else { return nil }
+        let tiers = [8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112,
+                     128, 144, 160, 192, 224, 256, 320]
+        return tiers.min { abs($0 - bitRate) < abs($1 - bitRate) } ?? bitRate
+    }
 
     /// `96` for 96000, `44.1` for 44100 — trailing zeroes dropped.
     public var kilohertz: String {
@@ -71,15 +88,23 @@ public struct AudioFormat: Hashable, Sendable {
             : String(format: "%.1f", khz)
     }
 
-    /// Compact form for table columns and badges: `24/96`, `16/44.1`.
+    /// Compact form for table columns and badges: `24/96`, `16/44.1`, or
+    /// `320 kbps` for a lossy file whose bitrate is known.
     public var shortDescription: String {
-        guard let bitDepth else { return "\(kilohertz) kHz" }
+        guard let bitDepth else {
+            if let rate = nominalBitRate { return "\(rate) kbps" }
+            return "\(kilohertz) kHz"
+        }
         return "\(bitDepth)/\(kilohertz)"
     }
 
-    /// Long form for the now-playing pane: `24-bit / 96 kHz`.
+    /// Long form for the now-playing pane: `24-bit / 96 kHz`, or
+    /// `320 kbps · 44.1 kHz` for a lossy file whose bitrate is known.
     public var longDescription: String {
-        guard let bitDepth else { return "\(kilohertz) kHz" }
+        guard let bitDepth else {
+            if let rate = nominalBitRate { return "\(rate) kbps · \(kilohertz) kHz" }
+            return "\(kilohertz) kHz"
+        }
         return "\(bitDepth)-bit / \(kilohertz) kHz"
     }
 
@@ -314,7 +339,8 @@ public struct Album: Identifiable, Hashable, Sendable {
     /// the listener bought it for.
     public var dominantFormat: AudioFormat? {
         tracks.map(\.format).max {
-            ($0.bitDepth ?? 0, $0.sampleRate) < ($1.bitDepth ?? 0, $1.sampleRate)
+            ($0.bitDepth ?? 0, $0.sampleRate, $0.bitRate ?? 0)
+                < ($1.bitDepth ?? 0, $1.sampleRate, $1.bitRate ?? 0)
         }
     }
 

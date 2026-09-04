@@ -144,6 +144,14 @@ public enum Migrations {
             }
         }
 
+        // Average bitrate in kbps. Null on rows imported before this column
+        // existed; they show sample rate alone until the file is re-scanned.
+        migrator.registerMigration("v4-track-bitrate") { db in
+            try db.alter(table: "track") { t in
+                t.add(column: "bitRate", .integer)
+            }
+        }
+
         return migrator
     }
 }

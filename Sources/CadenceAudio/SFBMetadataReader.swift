@@ -103,7 +103,9 @@ public struct SFBMetadataReader: MetadataReader, Sendable {
             codec: Self.codec(properties.formatName, extension: url.pathExtension),
             sampleRate: properties.sampleRate ?? 44_100,
             bitDepth: properties.bitDepth,
-            channelCount: properties.channelCount.map(Int.init) ?? 2)
+            channelCount: properties.channelCount.map(Int.init) ?? 2,
+            // SFB reports this in kbps despite the header calling it KiB/sec.
+            bitRate: properties.bitrate.map { Int($0.rounded()) })
     }
 
     /// SFB's format names are descriptive ("FLAC", "Apple Lossless"), so they
