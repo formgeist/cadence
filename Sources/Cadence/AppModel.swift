@@ -78,6 +78,19 @@ final class AppModel {
     var canGoBack: Bool { !backStack.isEmpty }
     var canGoForward: Bool { !forwardStack.isEmpty }
 
+    /// The artist scrolled to the top of `ArtistGrid`, so Back from an artist
+    /// detail page restores where the grid was rather than snapping to the
+    /// top — the grid itself is torn down and recreated on every navigation.
+    var artistGridScrollAnchor: String?
+
+    /// Same idea, for `AlbumGrid` — but that view is reused for two different
+    /// lists (the Library "Albums" tab, and one artist's discography inside
+    /// `ArtistDetailView`), so each needs its own anchor. Sharing one would
+    /// restore the wrong grid's scroll position after a detour through the
+    /// other.
+    var libraryAlbumGridScrollAnchor: Album.Key?
+    var artistAlbumGridScrollAnchor: Album.Key?
+
     func show(_ screen: Screen) {
         guard screen != self.screen else { return }
         backStack.append(self.screen)

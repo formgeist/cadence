@@ -24,9 +24,12 @@ struct ArtistDetailView: View {
     }
 
     var body: some View {
+        @Bindable var model = model
+
         // The grid brings the scroll view; the header rides inside it so it
         // scrolls away rather than pinning a 200pt band over the covers.
-        AlbumGrid(albums: albums, subtitle: .year) { header }
+        AlbumGrid(albums: albums, subtitle: .year,
+                 scrollAnchor: $model.artistAlbumGridScrollAnchor) { header }
             .background(Tokens.Palette.surface)
     }
 
