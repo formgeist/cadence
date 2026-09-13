@@ -67,9 +67,6 @@ enum Snapshot {
         /// Stands in for the preview library, for the states that are defined
         /// by what the library does *not* have.
         var store: (@Sendable () -> any LibraryStore)?
-        /// The suggestions only appear while the field holds focus, which an
-        /// off-screen window cannot take.
-        var focusesSearchField: Bool
         /// False for the skeleton shots: `AppModel` starts `isLoading`, and
         /// awaiting `load()` first — as every other shot needs, to have
         /// anything to show — is exactly the state that would erase.
@@ -81,14 +78,12 @@ enum Snapshot {
 
         init(name: String, size: CGSize,
              store: (@Sendable () -> any LibraryStore)? = nil,
-             focusesSearchField: Bool = false,
              loadsBeforeConfigure: Bool = true,
              makeRoot: @escaping (AppContainer) -> AnyView = { _ in AnyView(RootView()) },
              configure: @escaping (AppContainer) -> Void) {
             self.name = name
             self.size = size
             self.store = store
-            self.focusesSearchField = focusesSearchField
             self.loadsBeforeConfigure = loadsBeforeConfigure
             self.makeRoot = makeRoot
             self.configure = configure
@@ -246,19 +241,17 @@ enum Snapshot {
             container.model.tab = .albums
         },
 
-        // The results drop out of the header and over the library. They spent
-        // a release painted *underneath* it — issue #21 — which is the sort
-        // of thing a shot catches and a passing build does not.
-        Shot(name: "16-search-results", size: Tokens.Layout.defaultWindow,
-             focusesSearchField: true) { container in
+        // The command palette, mid-search.
+        Shot(name: "16-search-results", size: Tokens.Layout.defaultWindow) { container in
+            container.model.isSearching = true
             container.model.searchText = "slow"
         },
 
-        // What the field shows the instant it takes focus, before anything is
+        // What the modal shows the instant it opens, before anything is
         // typed — issue #72: this used to be a blank field over a blank
         // popover, with nothing to click.
-        Shot(name: "19-search-suggestions", size: Tokens.Layout.defaultWindow,
-             focusesSearchField: true) { container in
+        Shot(name: "19-search-suggestions", size: Tokens.Layout.defaultWindow) { container in
+            container.model.isSearching = true
             container.model.recordPlayed(PreviewData.slowHours[2])
             container.model.recordPlayed(PreviewData.slowHours[0])
             container.model.searchText = "slow hours"
@@ -322,7 +315,6 @@ enum Snapshot {
                 .environment(container.searchFocus)
                 .environment(container.scrobble)
                 .environment(\.isSilentPlayback, container.isSilentPlayback)
-                .environment(\.rendersSearchFocused, shot.focusesSearchField)
                 .preferredColorScheme(.dark)
                 .background(Tokens.Palette.surface)
 

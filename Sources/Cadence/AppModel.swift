@@ -115,7 +115,7 @@ final class AppModel {
     var searchText = "" {
         didSet {
             // `TextField`'s binding reassigns the same string when Return
-            // ends its editing session — after `SearchField`'s own key
+            // ends its editing session — after `SearchModal`'s own key
             // monitor has already set `searchHighlightedIndex` for that same
             // keypress. Reacting to that reassignment as if the query had
             // changed cleared the highlight out from under `onSubmit`, which
@@ -130,19 +130,18 @@ final class AppModel {
     }
     var isSearching = false
 
-    /// Arrow-key position in whichever search popover is showing, in the
-    /// flat order `SearchField.activate(_:)` walks. `nil` means nothing has
-    /// been explicitly navigated to yet — `searchEffectiveHighlight` is what
-    /// actually renders and responds to Return, defaulting that to the first
-    /// row — issue #74.
+    /// Arrow-key position in whichever section of `SearchModal` is showing,
+    /// in the flat order `SearchModal.activate(_:)` walks. `nil` means
+    /// nothing has been explicitly navigated to yet —
+    /// `searchEffectiveHighlight` is what actually renders and responds to
+    /// Return, defaulting that to the first row — issue #74.
     var searchHighlightedIndex: Int?
 
-    /// How many rows the currently visible search popover has, in the same
-    /// flat order `SearchField.activate(_:)` walks: recently played then
-    /// recent searches before any text, or top hit then artists then albums
-    /// then tracks once there's a query. Keep in sync with
-    /// `SearchSuggestionsPopover` and `SearchResultsPopover` if either
-    /// changes its grouping.
+    /// How many rows `SearchModal` currently shows, in the same flat order
+    /// `SearchModal.activate(_:)` walks: recently played then recent
+    /// searches before any text, or top hit then artists then albums then
+    /// tracks once there's a query. Keep in sync with `SearchModal`'s
+    /// `suggestions` and `results` if either changes its grouping.
     var searchNavigableCount: Int {
         if searchText.isEmpty {
             return recentlyPlayed.count + recentSearches.count
@@ -162,11 +161,11 @@ final class AppModel {
     }
 
     /// Moves `searchHighlightedIndex` for an Up/Down arrow press. Lives here,
-    /// not as an `.onMoveCommand` on `SearchField`: the search field's own
+    /// not as an `.onMoveCommand` on `SearchModal`: the search field's own
     /// text-editing responder answers `moveUp:`/`moveDown:` before SwiftUI's
     /// key-handling would ever see the event — the same conflict
     /// `LibraryView` has with `ScrollView`, except nothing further up the
-    /// responder chain can intercept it here. `SearchField` answers instead
+    /// responder chain can intercept it here. `SearchModal` answers instead
     /// with a local `NSEvent` key monitor, which needs a plain reference type
     /// to call into rather than a `View` struct's own `@State` — see #74.
     func moveSearchHighlight(_ direction: GridNavigation.Direction) {

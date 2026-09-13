@@ -36,9 +36,9 @@ enum GridNavigation {
 
         /// From a raw `NSEvent.keyCode`, for the one place in the app that
         /// answers arrow keys via a local `NSEvent` monitor rather than
-        /// `.onMoveCommand` — `SearchField`'s popover, where the search
-        /// field's own text-editing responder answers `moveUp:`/`moveDown:`
-        /// before either SwiftUI mechanism would ever see the event.
+        /// `.onMoveCommand` — `SearchModal`, where the search field's own
+        /// text-editing responder answers `moveUp:`/`moveDown:` before
+        /// either SwiftUI mechanism would ever see the event.
         init?(keyCode: UInt16) {
             switch keyCode {
             case 126: self = .up

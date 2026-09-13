@@ -15,9 +15,6 @@ struct RootView: View {
 
         return ZStack {
             VStack(spacing: 0) {
-                // The search suggestions hang out of the header's bounds, and
-                // a VStack paints its children in order — so without this the
-                // library draws straight over them (issue #21).
                 TitleBarView()
                     .zIndex(50)
                 HStack(spacing: 0) {
@@ -37,6 +34,15 @@ struct RootView: View {
                 ImmersiveView()
                     .zIndex(60)
             }
+
+            // The command palette: a modal over the whole window, not a
+            // dropdown hanging off the title bar's field, so it sits above
+            // everything including the immersive view.
+            if model.isSearching {
+                SearchModal()
+                    .zIndex(70)
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
+            }
         }
         .background(Tokens.Palette.surface)
         // The header *is* the title bar — see `WindowChrome`. Without this
@@ -46,6 +52,7 @@ struct RootView: View {
         .ignoresSafeArea(.container, edges: .top)
         .animation(.easeInOut(duration: 0.2), value: model.isImmersive)
         .animation(.easeInOut(duration: 0.2), value: hasNowPlayingContent)
+        .animation(.easeOut(duration: 0.15), value: model.isSearching)
         .animation(.easeOut(duration: 0.2), value: playback.notice)
         .animation(.easeOut(duration: 0.2), value: model.actionError)
         .animation(.easeOut(duration: 0.2), value: model.notice)
