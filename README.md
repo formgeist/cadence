@@ -452,10 +452,20 @@ the half Cadence uses — the `libmpcdec` decoder — is BSD. The remaining bund
 decoders (FLAC, Ogg, Vorbis, Opus, WavPack, Musepack) are BSD, which asks that
 their notices be reproduced in what ships beside the binary.
 
-Both halves of that obligation are now met. `make-app.sh` embeds each component
-as a framework, and copies every licence text into
-`Cadence.app/Contents/Resources/Licences`. The texts and the full component
-table live in [Licences/](Licences/README.md).
+That obligation is met for the dynamic frameworks. `make-app.sh` embeds each
+one as a framework, and copies every licence text into
+`Cadence.app/Contents/Resources/Licences`.
+
+The other half of what ships is nine packages that arrive as **source** and
+are compiled straight into the `Cadence` binary: TagLib (MPL 1.1 — the
+file-level-copyleft half of TagLib's dual licence, which is why static linking
+doesn't forfeit anything), Monkey's Audio and Speex (BSD), DUMB (zlib-style),
+and five sbooth utility packages (MIT). None of them carries the LGPL
+static-linking problem, but each still carries an attribution obligation, met
+the same way as the frameworks — by shipping the licence text.
+
+The texts and the full component table, split by how each one is linked, live
+in [Licences/](Licences/README.md).
 
 Bundled fonts are licensed separately under the SIL Open Font License —
 [Manrope](Sources/Cadence/Resources/OFL-Manrope.txt) and

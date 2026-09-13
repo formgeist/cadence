@@ -158,9 +158,6 @@ public struct Artwork: Identifiable, Hashable, Sendable {
 public struct Track: Identifiable, Hashable, Sendable {
     public var id: UUID
     public var url: URL
-    /// Security-scoped bookmark. Without this the user's music folder is
-    /// inaccessible on second launch — see PLAN.md §7.
-    public var bookmark: Data?
 
     public var title: String
     public var artist: String
@@ -190,7 +187,6 @@ public struct Track: Identifiable, Hashable, Sendable {
     public init(
         id: UUID = UUID(),
         url: URL,
-        bookmark: Data? = nil,
         title: String,
         artist: String,
         albumArtist: String? = nil,
@@ -212,7 +208,6 @@ public struct Track: Identifiable, Hashable, Sendable {
     ) {
         self.id = id
         self.url = url
-        self.bookmark = bookmark
         self.title = title
         self.artist = artist
         self.albumArtist = albumArtist ?? artist

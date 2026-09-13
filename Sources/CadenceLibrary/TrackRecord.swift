@@ -9,7 +9,6 @@ struct TrackRecord: Codable, FetchableRecord, PersistableRecord {
 
     var id: String
     var url: String
-    var bookmark: Data?
 
     var title: String
     var artist: String
@@ -45,7 +44,6 @@ struct TrackRecord: Codable, FetchableRecord, PersistableRecord {
     init(_ track: Track, fileSize: Int64 = 0) {
         id = track.id.uuidString
         url = track.url.absoluteString
-        bookmark = track.bookmark
         title = track.title
         artist = track.artist
         albumArtist = track.albumArtist
@@ -78,7 +76,6 @@ struct TrackRecord: Codable, FetchableRecord, PersistableRecord {
         Track(
             id: UUID(uuidString: id) ?? UUID(),
             url: URL(string: url) ?? URL(fileURLWithPath: url),
-            bookmark: bookmark,
             title: title,
             artist: artist,
             albumArtist: albumArtist,
