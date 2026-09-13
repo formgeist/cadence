@@ -6,7 +6,7 @@ import Observation
 /// menu bar it already has it.
 ///
 /// There's no `@FocusState` a menu command can reach directly: focus lives on
-/// the view that owns it. `SearchField` observes `token` instead of the
+/// the view that owns it. `SearchModal` observes `token` instead of the
 /// command calling into the field itself. See #72.
 @MainActor
 @Observable

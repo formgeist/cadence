@@ -129,6 +129,13 @@ enum Tokens {
         static let settingsContentWidth: CGFloat = 620
         static let minWindow = CGSize(width: 1_060, height: 660)
         static let defaultWindow = CGSize(width: 1_280, height: 820)
+        /// The search modal's card. Fixed rather than proportional to the
+        /// window — a command palette reads as an object floating over the
+        /// content, not a pane that resizes with it.
+        static let searchModalWidth: CGFloat = 640
+        static let searchModalMaxHeight: CGFloat = 520
+        /// Distance from the window's top edge, clear of the title bar.
+        static let searchModalTopInset: CGFloat = 96
     }
 
     // MARK: - Type

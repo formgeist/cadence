@@ -380,8 +380,11 @@ struct CadenceCommands: Commands {
             // ⌘K rather than ⌘F: Full-Screen Artwork already sits on ⌃⌘F, and
             // ⌘K is the convention a lot of apps have converged on for
             // "focus search" — unclaimed here otherwise. See #72.
-            Button("Search Library") { container.searchFocus.requestFocus() }
-                .keyboardShortcut("k", modifiers: .command)
+            Button("Search Library") {
+                container.model.isSearching = true
+                container.searchFocus.requestFocus()
+            }
+            .keyboardShortcut("k", modifiers: .command)
 
             Divider()
 
