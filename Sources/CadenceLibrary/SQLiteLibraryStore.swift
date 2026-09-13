@@ -102,16 +102,24 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
                 ORDER BY p.position, p.name
                 """)
 
-            return try rows.map { row in
+            // One query for every playlist's items, rather than one query per
+            // playlist: a sidebar with many playlists otherwise round-trips
+            // to SQLite once per row just to list its own contents.
+            let itemRows = try Row.fetchAll(db, sql: """
+                SELECT playlistID, trackID FROM playlistItem ORDER BY playlistID, position
+                """)
+            var trackIDsByPlaylist: [String: [UUID]] = [:]
+            for row in itemRows {
+                guard let trackID = UUID(uuidString: row["trackID"] as String) else { continue }
+                trackIDsByPlaylist[row["playlistID"] as String, default: []].append(trackID)
+            }
+
+            return rows.map { row in
                 let id: String = row["id"]
-                let trackIDs = try String.fetchAll(db, sql: """
-                    SELECT trackID FROM playlistItem
-                    WHERE playlistID = ? ORDER BY position
-                    """, arguments: [id])
                 return Playlist(
                     id: UUID(uuidString: id) ?? UUID(),
                     name: row["name"],
-                    trackIDs: trackIDs.compactMap(UUID.init(uuidString:)),
+                    trackIDs: trackIDsByPlaylist[id] ?? [],
                     duration: row["duration"])
             }
         }
@@ -277,15 +285,25 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
 
                 // Re-importing the same path must update, not duplicate, and
                 // must keep whatever id the existing row already has so
-                // playlists pointing at it survive.
-                let existingID = try String.fetchOne(
-                    db, sql: "SELECT id FROM track WHERE url = ?",
+                // playlists pointing at it survive. One lookup gets both the
+                // id and the implicit rowid the FTS index is keyed on, so a
+                // large import isn't paying for a second round trip per track
+                // just to rediscover the rowid `save` already touched.
+                let existing = try Row.fetchOne(
+                    db, sql: "SELECT rowid, id FROM track WHERE url = ?",
                     arguments: [record.url])
 
                 var toSave = record
-                if let existingID { toSave.id = existingID }
-                try toSave.save(db)
-                try Self.indexTrack(toSave, in: db, isNew: existingID == nil)
+                let rowID: Int64
+                if let existing {
+                    toSave.id = existing["id"]
+                    rowID = existing["rowid"]
+                    try toSave.save(db)
+                } else {
+                    try toSave.save(db)
+                    rowID = db.lastInsertedRowID
+                }
+                try Self.indexTrack(toSave, rowID: rowID, in: db, isNew: existing == nil)
             }
         }
     }
@@ -404,12 +422,8 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
     /// Indexes under the track's own rowid, so replacing an entry is a direct
     /// lookup rather than a scan of the whole search table.
     private static func indexTrack(
-        _ record: TrackRecord, in db: Database, isNew: Bool
+        _ record: TrackRecord, rowID: Int64, in db: Database, isNew: Bool
     ) throws {
-        guard let rowID = try Int64.fetchOne(
-            db, sql: "SELECT rowid FROM track WHERE url = ?",
-            arguments: [record.url]) else { return }
-
         // A track that did not exist a moment ago has nothing stale to remove.
         if !isNew {
             try db.execute(
