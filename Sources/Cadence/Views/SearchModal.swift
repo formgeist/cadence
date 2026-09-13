@@ -26,21 +26,20 @@ struct SearchModal: View {
     var body: some View {
         @Bindable var model = model
 
-        ZStack {
-            // The scrim: dims the whole window and closes the modal on a
-            // click outside the card, same as Spotify/Claude's own palette.
-            Color.black.opacity(0.45)
-                .ignoresSafeArea()
-                .contentShape(Rectangle())
-                .onTapGesture { model.endSearch() }
-                .accessibilityHidden(true)
+        GeometryReader { geo in
+            ZStack {
+                // The scrim: dims the whole window and closes the modal on a
+                // click outside the card, same as Spotify/Claude's own palette.
+                Color.black.opacity(0.45)
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture { model.endSearch() }
+                    .accessibilityHidden(true)
 
-            card
-                .frame(maxWidth: Tokens.Layout.searchModalWidth)
-                .padding(.horizontal, Tokens.Space.xxl)
+                card(maxWidth: cardWidth(for: geo.size), contentMaxHeight: contentMaxHeight(for: geo.size))
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .padding(.top, Tokens.Layout.searchModalTopInset)
         .onAppear {
             isFocused = true
             if arrowKeyMonitor == nil {
@@ -83,16 +82,35 @@ struct SearchModal: View {
         }
     }
 
-    private var card: some View {
+    /// The card's target width, shrunk to fit a window narrower than
+    /// `searchModalWidth` plus its side margins.
+    private func cardWidth(for windowSize: CGSize) -> CGFloat {
+        let horizontalMargin = Tokens.Space.xxl * 2
+        return min(Tokens.Layout.searchModalWidth, windowSize.width - horizontalMargin)
+    }
+
+    /// The scrollable area's target height, shrunk to fit a window too short
+    /// to fit `searchModalMaxHeight` plus the fixed chrome (header, footer,
+    /// hairlines) and a clearance margin — `searchModalTopInset` again, kept
+    /// on both edges so the centred card sits clear of the title bar above
+    /// it just as much as the window's bottom edge below it.
+    private func contentMaxHeight(for windowSize: CGSize) -> CGFloat {
+        let verticalMargin = Tokens.Layout.searchModalTopInset * 2
+        let available = windowSize.height - verticalMargin - Tokens.Layout.searchModalChromeHeight
+        return max(160, min(Tokens.Layout.searchModalMaxHeight, available))
+    }
+
+    private func card(maxWidth: CGFloat, contentMaxHeight: CGFloat) -> some View {
         @Bindable var model = model
 
         return VStack(spacing: 0) {
             header
             hairline
-            content
+            content(maxHeight: contentMaxHeight)
             hairline
             footer
         }
+        .frame(width: maxWidth)
         .background {
             RoundedRectangle(cornerRadius: Tokens.Radius.panel, style: .continuous)
                 .fill(Tokens.Palette.popover)
@@ -168,10 +186,16 @@ struct SearchModal: View {
         }
     }
 
-    private var content: some View {
-        ScrollView { contentBody }
-            .scrollIndicators(.hidden)
-            .frame(maxHeight: Tokens.Layout.searchModalMaxHeight)
+    private func content(maxHeight: CGFloat) -> some View {
+        ScrollViewReader { proxy in
+            ScrollView { contentBody }
+                .scrollIndicators(.hidden)
+                .frame(maxHeight: maxHeight)
+                .onChange(of: model.searchEffectiveHighlight) { _, highlighted in
+                    guard let highlighted else { return }
+                    proxy.scrollTo(highlighted, anchor: nil)
+                }
+        }
     }
 
     private func emptyState(message: String) -> some View {
@@ -273,6 +297,7 @@ struct SearchModal: View {
             if let topHit = searchResults.topHit {
                 TopHitRow(album: topHit, isHighlighted: highlighted == 0,
                           action: { open(topHit) }, onHover: { setHover(0, $0) })
+                    .id(0)
             }
             if !searchResults.artists.isEmpty {
                 modalGroup("Artists", searchResults.artists.map { artist in
@@ -525,6 +550,7 @@ private func modalGroup(_ label: String, _ rows: [SearchRow],
             }
             .plainControl()
             .onHover { onHover(index, $0) }
+            .id(index)
         }
     }
 }

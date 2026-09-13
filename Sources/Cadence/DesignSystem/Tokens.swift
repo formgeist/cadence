@@ -132,10 +132,16 @@ enum Tokens {
         /// The search modal's card. Fixed rather than proportional to the
         /// window — a command palette reads as an object floating over the
         /// content, not a pane that resizes with it.
-        static let searchModalWidth: CGFloat = 640
-        static let searchModalMaxHeight: CGFloat = 520
+        static let searchModalWidth: CGFloat = 704
+        static let searchModalMaxHeight: CGFloat = 624
         /// Distance from the window's top edge, clear of the title bar.
         static let searchModalTopInset: CGFloat = 96
+        /// The card's fixed chrome — header, footer, and the two hairlines
+        /// between them — used to fit the scrollable area to a short window
+        /// alongside `searchModalTopInset`. Not measured live: header and
+        /// footer are single-line rows at known padding, so this stays a
+        /// constant rather than a `GeometryReader` round trip.
+        static let searchModalChromeHeight: CGFloat = 110
     }
 
     // MARK: - Type
