@@ -327,16 +327,24 @@ final class AppModel {
         isLoading = true
         defer { isLoading = false }
         do {
-            allTracks = try await store.allTracks()
+            // Independent reads, fired together so the pool's readers overlap
+            // instead of the load serializing one round trip after another.
+            async let tracksFetch = store.allTracks()
+            async let artistsFetch = store.artists()
+            async let playlistsFetch = store.playlists()
+            async let librarySizeFetch = store.librarySize()
+            async let customArtistImagesFetch = store.customArtistImages()
+
+            allTracks = try await tracksFetch
             albums = Album.grouped(from: allTracks)
-            artists = try await store.artists()
-            playlists = try await store.playlists()
-            librarySize = try await store.librarySize()
+            artists = try await artistsFetch
+            playlists = try await playlistsFetch
+            librarySize = try await librarySizeFetch
             artistArtwork = albums.reduce(into: [:]) { result, album in
                 guard let artworkID = album.artworkID else { return }
                 result[album.albumArtist] = result[album.albumArtist] ?? artworkID
             }
-            customArtistImages = try await store.customArtistImages()
+            customArtistImages = try await customArtistImagesFetch
             artistDateAdded = Dictionary(grouping: allTracks, by: \.albumArtist)
                 .mapValues { tracks in tracks.map(\.dateAdded).max() ?? .distantPast }
             tracksByID = Dictionary(allTracks.map { ($0.id, $0) }) { first, _ in first }
