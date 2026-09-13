@@ -13,6 +13,12 @@ struct AlbumDetailView: View {
     /// second click or a `Return`, so something has to show what either one
     /// did.
     @State private var selectedTrackID: Track.ID?
+    /// Set alongside `selectedTrackID` only when the keyboard moved the
+    /// selection — arrow keys, type-ahead, first focus — so the list scrolls
+    /// to follow it. A click or ⌘-click sets `selectedTrackID` directly and
+    /// leaves this alone: that row is already on screen, and centering it
+    /// anyway reads as the list jumping under the pointer.
+    @State private var keyboardScrollTarget: Track.ID?
     @FocusState private var isTrackListFocused: Bool
     @State private var typeAhead = TypeAheadBuffer()
 
@@ -28,7 +34,7 @@ struct AlbumDetailView: View {
             }
             .scrollContentBackground(.hidden)
             .background(Tokens.Palette.surface)
-            .onChange(of: selectedTrackID) { _, new in
+            .onChange(of: keyboardScrollTarget) { _, new in
                 guard let new else { return }
                 proxy.scrollTo(new, anchor: .center)
             }
@@ -37,7 +43,10 @@ struct AlbumDetailView: View {
         // screen — `RootView` keeps the same `.album` case on the switch when
         // you jump from one record to another — so a stale id here would
         // otherwise point at a track that isn't on screen at all.
-        .onChange(of: album.key) { _, _ in selectedTrackID = nil }
+        .onChange(of: album.key) { _, _ in
+            selectedTrackID = nil
+            keyboardScrollTarget = nil
+        }
     }
 
     // MARK: Header
@@ -223,10 +232,14 @@ struct AlbumDetailView: View {
             if let index = GridNavigation.move(from: current, by: direction,
                                                count: orderedTracks.count, columns: 1) {
                 selectedTrackID = orderedTracks[index].id
+                keyboardScrollTarget = orderedTracks[index].id
             }
         }
         .onChange(of: isTrackListFocused) { _, focused in
-            if focused, selectedTrackID == nil { selectedTrackID = orderedTracks.first?.id }
+            if focused, selectedTrackID == nil {
+                selectedTrackID = orderedTracks.first?.id
+                keyboardScrollTarget = orderedTracks.first?.id
+            }
         }
         .padding(.horizontal, Tokens.Space.albumInset)
         .padding(.top, 22)
@@ -247,6 +260,7 @@ struct AlbumDetailView: View {
             if let index = typeAhead.index(for: character, current: current,
                                            keys: orderedTracks.map(\.title)) {
                 selectedTrackID = orderedTracks[index].id
+                keyboardScrollTarget = orderedTracks[index].id
             }
             return .handled
         }
