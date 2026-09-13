@@ -214,7 +214,7 @@ struct ImmersiveView: View {
                     Text(playback.progress.remainingText)
                 }
                 .font(Tokens.Typography.mono(10.5))
-                .foregroundStyle(Color(hex: 0x6A6A74))
+                .foregroundStyle(Color(hex: 0x7A7A84))
                 .monospacedDigit()
                 .accessibilityHidden(true)
             }

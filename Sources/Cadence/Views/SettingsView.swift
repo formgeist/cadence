@@ -322,6 +322,7 @@ private struct ScrobbleSettings: View {
                     .toggleStyle(.switch)
                     .tint(Tokens.Palette.accent)
                     .disabled(!scrobble.isConfigured)
+                    .accessibilityLabel("Scrobble to \(scrobble.serviceName)")
             }
 
             if scrobble.isConfigured {

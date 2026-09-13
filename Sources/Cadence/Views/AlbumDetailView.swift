@@ -360,6 +360,13 @@ private struct TrackRow: View {
                     .focusable(false)
                     // The row already says all of this, and says it better.
                     .accessibilityHidden(true)
+                } else if isCurrent {
+                    // A shape, not just a color, marks the playing track —
+                    // color alone is invisible to colorblind users and under
+                    // Differentiate Without Color.
+                    Image(systemName: "speaker.wave.2.fill")
+                        .font(.system(size: 10))
+                        .frame(width: 28, height: 18, alignment: .leading)
                 } else {
                     Text(track.trackNumber.map { String(format: "%02d", $0) } ?? "–")
                         .font(Tokens.Typography.mono(11.5))
@@ -378,13 +385,13 @@ private struct TrackRow: View {
                 // half of `rowSubtitle` becomes a link.
                 if let artistLinkTarget {
                     InlineLink(text: artistLinkTarget, font: Tokens.Typography.sans(11, .medium),
-                               color: Color(hex: 0x6A6A74)) {
+                               color: Color(hex: 0x7A7A84)) {
                         model.show(.artist(artistLinkTarget))
                     }
                 } else if let subtitle = track.rowSubtitle(showingArtist: showsArtist) {
                     Text(subtitle)
                         .font(Tokens.Typography.sans(11, .medium))
-                        .foregroundStyle(Color(hex: 0x6A6A74))
+                        .foregroundStyle(Color(hex: 0x7A7A84))
                         .lineLimit(1)
                 }
             }

@@ -507,7 +507,7 @@ private func modalGroup(_ label: String, _ rows: [SearchRow],
                         if !row.subtitle.isEmpty {
                             Text(row.subtitle)
                                 .font(Tokens.Typography.sans(12.5, .medium))
-                                .foregroundStyle(Color(hex: 0x6A6A74))
+                                .foregroundStyle(Color(hex: 0x7A7A84))
                                 .lineLimit(1)
                         }
                     }
