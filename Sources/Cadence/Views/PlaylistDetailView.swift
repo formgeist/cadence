@@ -311,10 +311,20 @@ private struct PlaylistTrackRow: View {
 
     var body: some View {
         HStack(spacing: Tokens.Space.l) {
-            Text(String(format: "%02d", entry.position + 1))
-                .font(Tokens.Typography.mono(11.5))
-                .foregroundStyle(isCurrent ? Tokens.Palette.accent : Color(hex: 0x5C5C66))
-                .frame(width: 28, alignment: .leading)
+            Group {
+                if isCurrent {
+                    // A shape, not just a color, marks the playing track —
+                    // color alone is invisible to colorblind users and under
+                    // Differentiate Without Color.
+                    Image(systemName: "speaker.wave.2.fill")
+                        .font(.system(size: 10))
+                } else {
+                    Text(String(format: "%02d", entry.position + 1))
+                        .font(Tokens.Typography.mono(11.5))
+                }
+            }
+            .foregroundStyle(isCurrent ? Tokens.Palette.accent : Color(hex: 0x5C5C66))
+            .frame(width: 28, alignment: .leading)
 
             ArtworkView(artworkID: track.artworkID, cornerRadius: Tokens.Radius.thumb,
                         stripe: 4, displaySize: 40)
