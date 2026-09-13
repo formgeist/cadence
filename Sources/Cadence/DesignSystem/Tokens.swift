@@ -138,16 +138,25 @@ enum Tokens {
     /// every call falls back to the system face at the same size and weight, so
     /// the app runs either way and only the texture changes.
     enum Typography {
+        /// `relativeTo: .body` makes every size below scale with the system
+        /// text size (System Settings > Accessibility > Display > Larger
+        /// Text) — a `fixedSize` custom font, or a plain `.system(size:)`,
+        /// stays the same physical size no matter what the user has chosen.
+        /// The fallback path names the system face by its actual PostScript
+        /// name (e.g. `.AppleSystemUIFontMedium`) so it can go through the
+        /// same scaling initializer as the bundled faces.
         static func sans(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
-            guard FontLoader.hasManrope else { return .system(size: size, weight: weight) }
-            return .custom(FontLoader.manropeName(for: weight), fixedSize: size)
+            let name = FontLoader.hasManrope
+                ? FontLoader.manropeName(for: weight)
+                : NSFont.systemFont(ofSize: size, weight: weight.nsWeight).fontName
+            return .custom(name, size: size, relativeTo: .body)
         }
 
         static func mono(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
-            guard FontLoader.hasPlexMono else {
-                return .system(size: size, weight: weight, design: .monospaced)
-            }
-            return .custom(FontLoader.plexMonoName(for: weight), fixedSize: size)
+            let name = FontLoader.hasPlexMono
+                ? FontLoader.plexMonoName(for: weight)
+                : NSFont.monospacedSystemFont(ofSize: size, weight: weight.nsWeight).fontName
+            return .custom(name, size: size, relativeTo: .body)
         }
 
         // Named roles, so a screen never picks a raw size.
@@ -282,6 +291,27 @@ enum FontLoader {
         let names = weights.map(manropeName(for:))
             + [plexMonoName(for: .regular), plexMonoName(for: .medium)]
         return names.map { ($0, NSFont(name: $0, size: 12) != nil) }
+    }
+}
+
+// MARK: - Weight bridging
+
+extension Font.Weight {
+    /// For handing a weight to an `NSFont` factory — the system-font fallback
+    /// in `Tokens.Typography` needs the AppKit type to ask for a specific
+    /// boldness.
+    var nsWeight: NSFont.Weight {
+        switch self {
+        case .black: .black
+        case .heavy: .heavy
+        case .bold: .bold
+        case .semibold: .semibold
+        case .medium: .medium
+        case .light: .light
+        case .thin: .thin
+        case .ultraLight: .ultraLight
+        default: .regular
+        }
     }
 }
 
