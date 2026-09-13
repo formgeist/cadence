@@ -232,6 +232,17 @@ struct CadenceApp: App {
         .windowStyle(.hiddenTitleBar)
         .defaultSize(Tokens.Layout.defaultWindow)
         .commands { CadenceCommands(container: container) }
+
+        MenuBarExtra {
+            MenuBarPlaybackView()
+                .environment(container.playback)
+                .environment(container.artworkLoader)
+        } label: {
+            MenuBarLabel()
+                .environment(container.playback)
+                .environment(container.artworkLoader)
+        }
+        .menuBarExtraStyle(.window)
     }
 }
 
