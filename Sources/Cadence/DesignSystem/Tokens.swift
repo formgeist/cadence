@@ -37,8 +37,8 @@ enum Tokens {
         static let textSecondary = Color(hex: 0x9B9BA5)
         static let textTertiary = Color(hex: 0x6D6D77)
         /// Mono section labels — LIBRARY, UP NEXT, TITLE.
-        static let textMuted = Color(hex: 0x55555F)
-        static let textFaint = Color(hex: 0x4F4F58)
+        static let textMuted = Color(hex: 0x84848E)
+        static let textFaint = Color(hex: 0x7A7A83)
 
         static let border = Color(hex: 0x1E1E23)
         static let borderStrong = Color(hex: 0x2C2C34)

@@ -378,13 +378,13 @@ private struct TrackRow: View {
                 // half of `rowSubtitle` becomes a link.
                 if let artistLinkTarget {
                     InlineLink(text: artistLinkTarget, font: Tokens.Typography.sans(11, .medium),
-                               color: Color(hex: 0x6A6A74)) {
+                               color: Color(hex: 0x7A7A84)) {
                         model.show(.artist(artistLinkTarget))
                     }
                 } else if let subtitle = track.rowSubtitle(showingArtist: showsArtist) {
                     Text(subtitle)
                         .font(Tokens.Typography.sans(11, .medium))
-                        .foregroundStyle(Color(hex: 0x6A6A74))
+                        .foregroundStyle(Color(hex: 0x7A7A84))
                         .lineLimit(1)
                 }
             }

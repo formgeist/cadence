@@ -547,7 +547,7 @@ private func popoverGroup(_ label: String, _ rows: [PopoverRow],
                         if !row.subtitle.isEmpty {
                             Text(row.subtitle)
                                 .font(Tokens.Typography.sans(12, .medium))
-                                .foregroundStyle(Color(hex: 0x6A6A74))
+                                .foregroundStyle(Color(hex: 0x7A7A84))
                                 .lineLimit(1)
                         }
                     }

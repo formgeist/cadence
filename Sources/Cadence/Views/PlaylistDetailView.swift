@@ -328,7 +328,7 @@ private struct PlaylistTrackRow: View {
                 // Always the artist here, never nil as on an album screen: a
                 // playlist has no single artist to make repeating one noise.
                 InlineLink(text: track.artist, font: Tokens.Typography.sans(11, .medium),
-                           color: Color(hex: 0x6A6A74)) {
+                           color: Color(hex: 0x7A7A84)) {
                     model.show(.artist(track.artist))
                 }
             }
