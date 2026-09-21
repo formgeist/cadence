@@ -30,6 +30,17 @@ public final class PlaybackController {
         }
     }
 
+    /// Follow each file's sample rate on the output device — see #34. Off by
+    /// default: reconfiguring someone's DAC unasked is not a reasonable
+    /// default. A transition that has to change the rate is not gapless, since
+    /// the device cannot change rate under a running stream.
+    public var matchesSampleRate: Bool = false {
+        didSet {
+            engine.setOutputSampleRateMatching(matchesSampleRate)
+            settings.set(matchesSampleRate, forKey: .matchSampleRate)
+        }
+    }
+
     public var shuffleMode: ShuffleMode = .off {
         didSet {
             settings.set(shuffleMode.rawValue, forKey: .shuffleMode)
@@ -180,6 +191,9 @@ public final class PlaybackController {
         if let raw = settings.string(forKey: .replayGainMode),
            let mode = ReplayGainMode(rawValue: raw) {
             replayGainMode = mode
+        }
+        if let match = settings.bool(forKey: .matchSampleRate) {
+            matchesSampleRate = match
         }
         if let muted = settings.bool(forKey: .isMuted) {
             isMuted = muted
@@ -613,6 +627,12 @@ public final class PlaybackController {
     /// the failure surfaced minutes later as a stall at the transition instead
     /// of a skip now. It is recorded here and the track after it is offered
     /// instead, so the gap never arrives.
+    private static func kilohertz(_ rate: Double) -> String {
+        let value = rate / 1000
+        let text = value == value.rounded() ? String(Int(value)) : String(format: "%.1f", value)
+        return "\(text) kHz"
+    }
+
     private func prepareNextIfNeeded() {
         guard state.isActive else { return }
         var candidate = indexAfter(currentIndex)
@@ -717,6 +737,11 @@ public final class PlaybackController {
                 stop()
             }
 
+        case .sampleRateNotMatched(let fileRate, let deviceRate):
+            notice = "Output device can't run at \(Self.kilohertz(fileRate)). "
+                + "Playing at \(Self.kilohertz(deviceRate))."
+            noticeIsSticky = false
+
         case .outputDeviceLost:
             // Pause rather than carry on: audio suddenly leaving headphones for
             // the speakers is the behaviour every Mac user expects not to
@@ -778,6 +803,11 @@ public final class PlaybackController {
     /// calls this from `applicationWillTerminate` — otherwise the position
     /// restored next launch is only as fresh as the last five-second tick.
     public func flushQueueState() { persistQueue() }
+
+    /// Gives the output device back at its original sample rate. Called from
+    /// `applicationWillTerminate`; a force-quit skips it, which leaves the
+    /// device on the last track's rate until the next app sets its own.
+    public func releaseOutput() { engine.restoreOutputSampleRate() }
 
     /// Puts the queue back the way it was at the last quit — paused at the
     /// right track, never playing, per #42. `PlaybackController` has no reach

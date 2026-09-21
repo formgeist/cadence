@@ -21,6 +21,8 @@ final class SpyEngine: PlayerEngine {
     private(set) var pauseCount = 0
     private(set) var resumeCount = 0
     private(set) var seeks: [TimeInterval] = []
+    private(set) var matchingCalls: [Bool] = []
+    private(set) var restoreOutputCount = 0
 
     init() {
         (events, eventSink) = AsyncStream.makeStream()
@@ -52,6 +54,8 @@ final class SpyEngine: PlayerEngine {
     func resume() { resumeCount += 1 }
     func stop() {}
     func seek(to time: TimeInterval) { seeks.append(time) }
+    func setOutputSampleRateMatching(_ enabled: Bool) { matchingCalls.append(enabled) }
+    func restoreOutputSampleRate() { restoreOutputCount += 1 }
 
     /// Deliver an event and let the controller's stream loop drain it.
     func emit(_ event: EngineEvent) async {
@@ -1112,6 +1116,54 @@ struct QueuePersistenceTests {
         controller.restoreQueue { $0 == persisted.id ? persisted : nil }
 
         #expect(controller.currentTrack?.id == live.id)
+    }
+}
+
+@MainActor
+@Suite("PlaybackController sample-rate matching")
+struct SampleRateMatchingTests {
+
+    @Test("Off by default, and the engine is only told when it changes")
+    func offByDefault() {
+        let engine = SpyEngine()
+        let controller = PlaybackController(engine: engine, settings: InMemorySettingsStore())
+        #expect(controller.matchesSampleRate == false)
+        #expect(engine.matchingCalls.isEmpty)
+
+        controller.matchesSampleRate = true
+        #expect(engine.matchingCalls == [true])
+    }
+
+    @Test("The preference survives a relaunch and reaches the new engine")
+    func persists() {
+        let settings = InMemorySettingsStore()
+        PlaybackController(engine: SpyEngine(), settings: settings).matchesSampleRate = true
+
+        let engine = SpyEngine()
+        let relaunched = PlaybackController(engine: engine, settings: settings)
+        #expect(relaunched.matchesSampleRate)
+        #expect(engine.matchingCalls == [true])
+    }
+
+    @Test("A device that cannot follow the file is reported, and playback carries on")
+    func fallbackNotice() async {
+        let engine = SpyEngine()
+        let controller = PlaybackController(engine: engine)
+        let track = makeTrack("A")
+        controller.play(track, in: [track])
+
+        await engine.emit(.sampleRateNotMatched(fileRate: 176_400, deviceRate: 96_000))
+
+        #expect(controller.notice == "Output device can't run at 176.4 kHz. Playing at 96 kHz.")
+        #expect(controller.noticeIsSticky == false)
+        #expect(controller.state.isActive)
+    }
+
+    @Test("Releasing the output asks the engine to restore the device")
+    func releaseOutput() {
+        let engine = SpyEngine()
+        PlaybackController(engine: engine).releaseOutput()
+        #expect(engine.restoreOutputCount == 1)
     }
 }
 

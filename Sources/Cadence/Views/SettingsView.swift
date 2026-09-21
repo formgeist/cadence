@@ -45,6 +45,21 @@ struct SettingsView: View {
                         }
                     }
 
+                    SettingsSection("Output") {
+                        SettingsRow(
+                            "Match sample rate",
+                            caption: "Switch the output device to each track's sample rate, "
+                                + "so it isn't resampled. Restored when playback stops. "
+                                + "A change of rate between tracks is not gapless."
+                        ) {
+                            Toggle("", isOn: $playback.matchesSampleRate)
+                                .labelsHidden()
+                                .toggleStyle(.switch)
+                                .tint(Tokens.Palette.accent)
+                                .accessibilityLabel("Match sample rate")
+                        }
+                    }
+
                     SettingsSection("Scrobbling") {
                         ScrobbleSettings()
                     }

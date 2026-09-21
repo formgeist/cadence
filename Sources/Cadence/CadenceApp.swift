@@ -619,6 +619,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// quitting is flushed here instead — see #42.
     func applicationWillTerminate(_ notification: Notification) {
         AppDelegate.playback?.flushQueueState()
+        AppDelegate.playback?.releaseOutput()
         AppDelegate.scrobble?.flushOnTermination()
     }
 }

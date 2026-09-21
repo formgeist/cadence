@@ -422,6 +422,24 @@ trusting the setter's return value — `AudioObjectSetPropertyData` returns
 `noErr` for a request that has merely been accepted, and coreaudiod applies it
 asynchronously.
 
+### In playback
+
+Preferences → Output → **Match sample rate** (off by default) switches the
+output device to each file's rate before its first buffer, waiting until the
+device reports the new rate. Without it, a 24/96 file on a device sitting at
+44.1 kHz is resampled.
+
+- **Gapless vs matching.** A device cannot change rate under a running stream,
+  so a transition between tracks of *different* rates is not gapless: the
+  current track ends, then the device switches and the next one starts.
+  Transitions at the same rate stay gapless.
+- **Unsupported rates.** If the device does not offer the file's rate, or
+  refuses it, the file plays resampled at the device rate and a notice says so.
+- **Restore.** The device goes back to the rate it had before Cadence changed
+  it when playback stops and when the app quits. A force-quit or crash skips
+  that, leaving the device on the last track's rate until another app sets its
+  own. That is deliberate: it cannot be prevented, and it is harmless.
+
 Two caveats before this settles the release plan: it was tested on built-in
 speakers with an ad-hoc signature, so it is worth re-running against an external
 DAC — which is where bit-perfect actually matters — and under a Developer ID

@@ -35,11 +35,27 @@ public final class SFBPlayerEngine: NSObject, PlayerEngine {
     private var pendingGain: [URL: Double] = [:]
     private var currentURL: URL?
 
+    // MARK: Output sample rate — #34
+
+    private var matchesSampleRate = false
+    private let rateMatcher: OutputRateMatcher
+
+    /// Our own rate write makes CoreAudio post a configuration change, which
+    /// `audioEngineConfigurationChange` would read as a device being unplugged.
+    /// Changes before this instant are ours.
+    private var expectsConfigChangeUntil = ContinuousClock.now
+    private static let configChangeGrace = Duration.seconds(2)
+
     /// Position ticks per second. Ten is enough for a smooth scrubber and far
     /// less than a redraw of the whole view tree would cost.
     private static let tickInterval = Duration.milliseconds(100)
 
-    public override init() {
+    public override convenience init() {
+        self.init(rateMatcher: OutputRateMatcher())
+    }
+
+    init(rateMatcher: OutputRateMatcher) {
+        self.rateMatcher = rateMatcher
         (events, eventSink) = AsyncStream.makeStream()
         (positions, positionSink) = AsyncStream.makeStream()
         super.init()
@@ -71,6 +87,7 @@ public final class SFBPlayerEngine: NSObject, PlayerEngine {
         currentURL = url
         trackGain = gain
         applyVolume()
+        matchOutputRate(to: url)
 
         do {
             try player.play(url)
@@ -81,6 +98,16 @@ public final class SFBPlayerEngine: NSObject, PlayerEngine {
     }
 
     public func prepareNext(url: URL, duration: TimeInterval, gain: Double) throws {
+        // The device cannot change rate under a running stream, and a gapless
+        // handoff is exactly a running stream. Where the next file needs a
+        // different rate the two cannot both hold, and this picks the rate: the
+        // track is left out of the queue, so the current one ends, the
+        // controller asks for the next by `play`, and the switch happens then.
+        // Same-rate transitions stay gapless.
+        if matchesSampleRate, let rate = Self.sampleRate(of: url),
+           rateMatcher.needsSwitch(for: rate) {
+            return
+        }
         pendingGain[url] = gain
         do {
             try player.enqueue(url)
@@ -99,8 +126,22 @@ public final class SFBPlayerEngine: NSObject, PlayerEngine {
 
     public func resume() { player.resume() }
 
+    public func setOutputSampleRateMatching(_ enabled: Bool) {
+        // Turning it off mid-track leaves the device where it is; changing
+        // rate under a playing stream is the click this exists to avoid. The
+        // rate is put back at the next stop or track change.
+        matchesSampleRate = enabled
+    }
+
+    public func restoreOutputSampleRate() {
+        guard rateMatcher.hasSavedRate else { return }
+        player.stop()
+        if rateMatcher.restore() { expectConfigChange() }
+    }
+
     public func stop() {
         player.stop()
+        if rateMatcher.restore() { expectConfigChange() }
         positionTimer?.cancel()
         positionTimer = nil
         currentURL = nil
@@ -109,6 +150,43 @@ public final class SFBPlayerEngine: NSObject, PlayerEngine {
 
     public func seek(to time: TimeInterval) {
         _ = player.seek(time: time)
+    }
+
+    // MARK: - Output rate
+
+    /// Runs before the first buffer of a track, with nothing rendering.
+    private func matchOutputRate(to url: URL) {
+        guard matchesSampleRate else {
+            // Matching was turned off while a switched rate was still in force.
+            if rateMatcher.hasSavedRate { restoreOutputSampleRate() }
+            return
+        }
+        guard let fileRate = Self.sampleRate(of: url) else { return }
+
+        // Stopping first is what makes the change safe. `play` would stop the
+        // old track anyway; it just does so after the rate has moved.
+        let switching = rateMatcher.needsSwitch(for: fileRate)
+        if switching { player.stop() }
+
+        let outcome = rateMatcher.match(fileRate: fileRate)
+        if switching { expectConfigChange() }
+
+        if case .fallback(let deviceRate) = outcome {
+            eventSink.yield(.sampleRateNotMatched(fileRate: fileRate, deviceRate: deviceRate))
+        }
+    }
+
+    private func expectConfigChange() {
+        expectsConfigChangeUntil = .now + Self.configChangeGrace
+    }
+
+    /// The file's own rate, read without decoding any audio. Nil when the file
+    /// cannot be opened; `play` reports that properly a moment later.
+    static func sampleRate(of url: URL) -> Double? {
+        guard let decoder = try? AudioDecoder(url: url),
+              (try? decoder.open()) != nil else { return nil }
+        let rate = decoder.processingFormat.sampleRate
+        return rate > 0 ? rate : nil
     }
 
     // MARK: - Volume
@@ -248,6 +326,8 @@ extension SFBPlayerEngine: AudioPlayer.Delegate {
     ) {
         Task { @MainActor [weak self] in
             guard let self else { return }
+            // A rate switch of our own making is not a device going away.
+            guard ContinuousClock.now >= self.expectsConfigChangeUntil else { return }
             // Give the graph a moment to come back before calling it lost.
             try? await Task.sleep(for: .milliseconds(250))
             guard !self.player.isPlaying else { return }
