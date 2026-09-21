@@ -77,7 +77,11 @@ public enum OutputDevice {
         return rate
     }
 
-    public static func availableSampleRates(of deviceID: AudioDeviceID) -> [Double] {
+    /// What the device advertises, as ranges. Discrete rates come back as
+    /// zero-width ranges; a device that takes any rate in a span reports one
+    /// wide range, which is why membership is tested against these and not
+    /// against `availableSampleRates`.
+    public static func availableSampleRateRanges(of deviceID: AudioDeviceID) -> [ClosedRange<Double>] {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioDevicePropertyAvailableNominalSampleRates,
             mScope: kAudioObjectPropertyScopeGlobal,
@@ -91,9 +95,14 @@ public enum OutputDevice {
         guard AudioObjectGetPropertyData(
             deviceID, &address, 0, nil, &size, &ranges) == noErr else { return [] }
 
+        return ranges.map { $0.mMinimum...$0.mMaximum }
+    }
+
+    public static func availableSampleRates(of deviceID: AudioDeviceID) -> [Double] {
         // Devices report ranges; for the discrete rates we care about, minimum
         // and maximum are the same value.
-        return Array(Set(ranges.flatMap { [$0.mMinimum, $0.mMaximum] })).sorted()
+        Array(Set(availableSampleRateRanges(of: deviceID).flatMap { [$0.lowerBound, $0.upperBound] }))
+            .sorted()
     }
 
     /// Attempts the write and returns the status. `noErr` means bit-perfect

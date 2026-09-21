@@ -19,6 +19,10 @@ public enum EngineEvent: Sendable, Equatable {
     /// disconnected. Distinct from `failed` because the track is still
     /// perfectly good; only the destination changed.
     case outputDeviceLost
+    /// Rate matching is on but the device could not be put on the file's rate,
+    /// so the file plays resampled at `deviceRate`. Informational: playback
+    /// carries on.
+    case sampleRateNotMatched(fileRate: Double, deviceRate: Double)
     case failed(PlaybackError)
 }
 
@@ -47,6 +51,20 @@ public protocol PlayerEngine: AnyObject {
     func resume()
     func stop()
     func seek(to time: TimeInterval)
+
+    /// Switch the output device to each file's sample rate before its first
+    /// buffer, where the device offers it — see #34. Off by default: it
+    /// reconfigures hardware the user did not ask to have touched.
+    func setOutputSampleRateMatching(_ enabled: Bool)
+    /// Put the device back on the rate it had before the engine changed it.
+    /// Called on stop, and on quit.
+    func restoreOutputSampleRate()
+}
+
+extension PlayerEngine {
+    /// Engines that do not drive a real device have nothing to match.
+    public func setOutputSampleRateMatching(_ enabled: Bool) {}
+    public func restoreOutputSampleRate() {}
 }
 
 // MARK: - Metadata
@@ -183,6 +201,8 @@ public enum SettingsKey: String, Sendable {
     /// `pendingScrobbles` is a JSON-encoded `[ScrobblePlay]` held for retry
     /// when the network is down.
     case scrobblingEnabled, scrobbleService, scrobbleUsername, pendingScrobbles
+    /// Follow each file's sample rate on the output device — see #34.
+    case matchSampleRate
 }
 
 /// Small pieces of state that should survive a relaunch — volume, mute,
