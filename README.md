@@ -324,6 +324,18 @@ swift run Cadence --snapshot ~/Desktop/cadence-shots
 It renders through a real off-screen `NSWindow`, not `ImageRenderer`, which
 never lays out `ScrollView` content and silently produced blank lists.
 
+### Website screenshots
+
+```bash
+swift run Cadence --snapshot ~/Desktop/cadence-showcase --showcase
+```
+
+Renders the same views against an invented library that covers jazz, pop,
+rock, folk, electronic, hip-hop, classical, soul, metal and Latin, with cover
+art generated in code (`ShowcaseCovers.swift`). The screenshots look like a
+real collection without showing anyone's library or anyone else's artwork.
+Covers are also written to `covers/` in the output folder.
+
 The design canvas the interface was built from is
 [Cadence.dc.html](https://claude.ai/design/p/af59472b-17be-4420-b17e-19a438189905?file=Cadence.dc.html).
 Its values live in
