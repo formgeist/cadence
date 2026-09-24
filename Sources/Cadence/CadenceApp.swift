@@ -558,6 +558,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in
                 print("Rendering snapshots into \(directory.path)")
                 do {
+                    if CommandLine.arguments.contains("--hero-sequence") {
+                        let count = try await HeroSequence.run(into: directory)
+                        print("\(count) of \(HeroSequence.count) written.")
+                        exit(count == HeroSequence.count ? 0 : 1)
+                    }
                     if CommandLine.arguments.contains("--showcase") {
                         let count = try await Showcase.run(into: directory)
                         print("\(count) of \(Showcase.shots.count) written.")

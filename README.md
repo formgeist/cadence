@@ -336,6 +336,11 @@ art generated in code (`ShowcaseCovers.swift`). The screenshots look like a
 real collection without showing anyone's library or anyone else's artwork.
 Covers are also written to `covers/` in the output folder.
 
+Add `--hero-sequence` for the keyframes of the website's animated hero —
+search, play, add to a playlist — plus the context menus rendered on their
+own and a `layout.json` of their row frames. The website repo composites
+them into the video (`scripts/hero-video/` there).
+
 The design canvas the interface was built from is
 [Cadence.dc.html](https://claude.ai/design/p/af59472b-17be-4420-b17e-19a438189905?file=Cadence.dc.html).
 Its values live in
