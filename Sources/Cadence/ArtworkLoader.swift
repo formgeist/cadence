@@ -56,13 +56,17 @@ final class ArtworkLoader {
         Task { [weak self] in
             // Retina: ask for twice the point size so the thumbnail is sharp.
             let data = try? await store.thumbnail(for: id, maxPixelSize: size * 2)
+            // Off the main actor: `Self.decode` is `nonisolated`, so this hop
+            // lands on the cooperative pool rather than resuming on the actor
+            // that kicked off the `Task`.
+            let image = await Self.decode(data)
             guard let self else { return }
             // A `forget(_:)` while this was in flight has already dropped the
             // key and likely kicked off a fresh attempt — this one must not
             // land its result, least of all resurrect a miss the retry is
             // meant to clear.
             guard self.inFlight.remove(key) != nil else { return }
-            if let data, let image = NSImage(data: data) {
+            if let image {
                 self.images.setObject(image, forKey: key as NSString, cost: Self.decodedCost(of: image))
                 self.generation += 1
             } else {
@@ -70,6 +74,16 @@ final class ArtworkLoader {
             }
         }
         return nil
+    }
+
+    /// Decodes off the main actor. `NSImage(data:)` itself is cheap — it just
+    /// boxes the bytes — but touching `cgImage` forces the actual pixel
+    /// decode right here instead of deferring it to whatever frame first
+    /// draws the image, which is the mid-scroll stall this exists to avoid.
+    private nonisolated static func decode(_ data: Data?) async -> NSImage? {
+        guard let data, let image = NSImage(data: data) else { return nil }
+        _ = image.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        return image
     }
 
     /// Drops every cached trace of one artwork id — a decoded image, a recorded
