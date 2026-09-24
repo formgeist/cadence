@@ -58,7 +58,10 @@ public struct FLACMetadataReader: MetadataReader, Sendable {
             albumTitle: Self.albumTitle(
                 comments.value(for: "ALBUM") ?? "Unknown Album",
                 discNumber: discNumber),
-            composer: comments.value(for: "COMPOSER"),
+            // A repeated field is several composers, not a first one and
+            // some spares.
+            composer: Self.joined(comments.values(for: "COMPOSER")),
+            credits: Credit.fromTags { comments.values(for: $0) },
             genre: comments.value(for: "GENRE"),
             year: Self.year(from: comments.value(for: "DATE")
                 ?? comments.value(for: "YEAR")),
@@ -249,6 +252,11 @@ public struct FLACMetadataReader: MetadataReader, Sendable {
               Int(match.disc) == discNumber else { return raw }
         let stripped = String(match.title).trimmingCharacters(in: .whitespaces)
         return stripped.isEmpty ? raw : stripped
+    }
+
+    /// Repeated values as one comma-separated line, or nil when there are none.
+    static func joined(_ values: [String]) -> String? {
+        values.isEmpty ? nil : values.joined(separator: ", ")
     }
 
     /// `3/12` → `(3, 12)`, `03` → `(3, nil)`, junk → `(nil, nil)`.

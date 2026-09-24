@@ -138,6 +138,15 @@ enum Snapshot {
             open(container, album: "The Complete Aldeburgh Recordings")
         },
 
+        // A sheet is its own window, so it is rendered as the root here.
+        Shot(name: "05b-album-credits", size: CGSize(width: 460, height: 420),
+             makeRoot: { container in
+                 let album = container.model.albums.first {
+                     $0.title == "The Complete Aldeburgh Recordings"
+                 }
+                 return AnyView(album.map { AlbumCreditsSheet(album: $0) })
+             }) { _ in },
+
         // Various Artists: every row needs its own artist line.
         Shot(name: "06-album-compilation", size: Tokens.Layout.defaultWindow) { container in
             open(container, album: "Nordic Ambient, Vol. 4")

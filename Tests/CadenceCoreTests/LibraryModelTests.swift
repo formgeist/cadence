@@ -145,12 +145,65 @@ struct RowSubtitleTests {
         #expect(track.rowSubtitle(showingArtist: true) == "Ansel Vaughn")
     }
 
-    @Test("Classical prefers the composer over the performer")
-    func composerWins() {
+    @Test("The composer stays off the row — it lives in the album's credits")
+    func composerNotShown() {
         let track = Track(url: URL(fileURLWithPath: "/a.flac"), title: "Passacaglia",
                           artist: "Cyrille Marchand", albumTitle: "Aldeburgh",
                           composer: "Benjamin Britten", duration: 10)
-        #expect(track.rowSubtitle(showingArtist: false) == "Benjamin Britten")
+        #expect(track.rowSubtitle(showingArtist: false) == nil)
+    }
+}
+
+// MARK: - Credits
+
+@Suite("Album credits")
+struct AlbumCreditTests {
+
+    private func track(_ number: Int, disc: Int? = nil, composer: String? = nil,
+                       credits: [Credit] = []) -> Track {
+        Track(url: URL(fileURLWithPath: "/\(disc ?? 0)-\(number).flac"), title: "T\(number)",
+              artist: "Vera Lindqvist", albumTitle: "Slow Hours", composer: composer,
+              credits: credits, trackNumber: number, discNumber: disc, duration: 10)
+    }
+
+    @Test("Tags map to roles, deduplicated, composer left to its own field")
+    func fromTags() {
+        let tags = ["PRODUCER": ["Ida Berg", "Ida Berg ", "Karl Holm"],
+                    "MIXARTIST": ["Nils Ek"], "COMPOSER": ["Someone"]]
+        let credits = Credit.fromTags { tags[$0] ?? [] }
+        #expect(credits == [Credit(role: .producer, name: "Ida Berg"),
+                            Credit(role: .producer, name: "Karl Holm"),
+                            Credit(role: .remixer, name: "Nils Ek")])
+    }
+
+    @Test("Credits group by role, and a partial credit names its tracks")
+    func grouped() {
+        let producer = Credit(role: .producer, name: "Ida Berg")
+        let album = Album(key: .init(albumArtist: "Vera Lindqvist", title: "Slow Hours", year: nil),
+                          tracks: [track(1, composer: "A", credits: [producer]),
+                                   track(2, composer: "A", credits: [producer]),
+                                   track(3, composer: "B", credits: [producer]),
+                                   track(5, composer: "A", credits: [producer])])
+        let groups = album.credits
+        #expect(groups.map(\.role) == [.composer, .producer])
+        #expect(groups[0].entries == [.init(name: "A", tracks: "Tracks 1–2, 5"),
+                                      .init(name: "B", tracks: "Track 3")])
+        #expect(groups[1].entries == [.init(name: "Ida Berg", tracks: nil)])
+    }
+
+    @Test("Across discs, the track list says which disc")
+    func multiDisc() {
+        let album = Album(key: .init(albumArtist: "Vera Lindqvist", title: "Slow Hours", year: nil),
+                          tracks: [track(1, disc: 1, composer: "A"), track(2, disc: 1),
+                                   track(1, disc: 2, composer: "A"), track(2, disc: 2, composer: "A")])
+        #expect(album.credits.first?.entries.first?.tracks == "Disc 1: 1 · Disc 2: 1–2")
+    }
+
+    @Test("An album nobody is credited on has no credits")
+    func empty() {
+        let album = Album(key: .init(albumArtist: "Vera Lindqvist", title: "Slow Hours", year: nil),
+                          tracks: [track(1)])
+        #expect(album.credits.isEmpty)
     }
 }
 

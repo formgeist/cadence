@@ -15,6 +15,9 @@ struct TrackRecord: Codable, FetchableRecord, PersistableRecord {
     var albumArtist: String
     var albumTitle: String
     var composer: String?
+    /// JSON. Nil rather than `[]` when a file names nobody, so the column
+    /// stays empty for the common case.
+    var credits: [Credit]?
     var genre: String?
     var year: Int?
 
@@ -49,6 +52,7 @@ struct TrackRecord: Codable, FetchableRecord, PersistableRecord {
         albumArtist = track.albumArtist
         albumTitle = track.albumTitle
         composer = track.composer
+        credits = track.credits.isEmpty ? nil : track.credits
         genre = track.genre
         year = track.year
         trackNumber = track.trackNumber
@@ -81,6 +85,7 @@ struct TrackRecord: Codable, FetchableRecord, PersistableRecord {
             albumArtist: albumArtist,
             albumTitle: albumTitle,
             composer: composer,
+            credits: credits ?? [],
             genre: genre,
             year: year,
             trackNumber: trackNumber,

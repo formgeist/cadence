@@ -21,6 +21,7 @@ struct AlbumDetailView: View {
     @State private var keyboardScrollTarget: Track.ID?
     @FocusState private var isTrackListFocused: Bool
     @State private var typeAhead = TypeAheadBuffer()
+    @State private var isShowingCredits = false
 
     private var orderedTracks: [Track] { album.discs.flatMap(\.tracks) }
 
@@ -46,6 +47,9 @@ struct AlbumDetailView: View {
         .onChange(of: album.key) { _, _ in
             selectedTrackID = nil
             keyboardScrollTarget = nil
+        }
+        .sheet(isPresented: $isShowingCredits) {
+            AlbumCreditsSheet(album: album)
         }
     }
 
@@ -176,7 +180,9 @@ struct AlbumDetailView: View {
         // every row on open — only what the shared `ScrollView` can show. The
         // header scrolls away with the list, so this is the inner list only;
         // `PlaylistDetailView` does the same for its rows. See #87.
-        LazyVStack(spacing: 0) {
+        // Asked once here, not per row: every row's menu offers the same sheet.
+        let hasCredits = album.tracks.contains { !$0.allCredits.isEmpty }
+        return LazyVStack(spacing: 0) {
             columnHeader
             ForEach(album.discs) { disc in
                 if let number = disc.number {
@@ -211,7 +217,10 @@ struct AlbumDetailView: View {
                                 selectedTrackID = track.id
                                 playback.play(track, in: orderedTracks)
                             },
-                            addToQueue: { playback.appendToQueue([track]) })
+                            addToQueue: { playback.appendToQueue([track]) },
+                            // Only offered when the tags name someone: an
+                            // empty sheet is a menu item that lied.
+                            showCredits: hasCredits ? { isShowingCredits = true } : nil)
                     }
                 }
             }
@@ -350,12 +359,10 @@ private struct TrackRow: View {
             }
     }
 
-    /// The artist name shown as a link under the title, matching `row`'s own
-    /// composer-vs-artist choice — nil when the row shows a composer instead,
-    /// or shows no subtitle at all.
+    /// The artist name shown as a link under the title — nil when the row
+    /// shows no subtitle at all.
     private var artistLinkTarget: String? {
-        guard track.composer == nil || track.composer!.isEmpty else { return nil }
-        return track.rowSubtitle(showingArtist: showsArtist) != nil ? track.artist : nil
+        track.rowSubtitle(showingArtist: showsArtist) != nil ? track.artist : nil
     }
 
     private var row: some View {
@@ -395,18 +402,11 @@ private struct TrackRow: View {
                     .foregroundStyle(isCurrent
                                      ? Tokens.Palette.accent : Color(hex: 0xE6E6EC))
                     .lineLimit(1)
-                // The composer isn't a page this app has, so only the artist
-                // half of `rowSubtitle` becomes a link.
                 if let artistLinkTarget {
                     InlineLink(text: artistLinkTarget, font: Tokens.Typography.sans(11, .medium),
                                color: Color(hex: 0x7A7A84)) {
                         model.show(.artist(artistLinkTarget))
                     }
-                } else if let subtitle = track.rowSubtitle(showingArtist: showsArtist) {
-                    Text(subtitle)
-                        .font(Tokens.Typography.sans(11, .medium))
-                        .foregroundStyle(Color(hex: 0x7A7A84))
-                        .lineLimit(1)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

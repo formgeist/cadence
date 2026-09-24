@@ -152,6 +152,15 @@ public enum Migrations {
             }
         }
 
+        // Credits beyond the composer, as a JSON array. Null on rows imported
+        // before this column existed; those albums list only their composer
+        // until the files are re-scanned.
+        migrator.registerMigration("v5-track-credits") { db in
+            try db.alter(table: "track") { t in
+                t.add(column: "credits", .text)
+            }
+        }
+
         return migrator
     }
 }

@@ -431,6 +431,7 @@ public enum PreviewData {
         discs: Int? = nil,
         year: Int? = nil,
         composer: String? = nil,
+        credits: [Credit] = [],
         genre: String? = nil,
         format: AudioFormat = .hiRes,
         artwork: Artwork.ID? = "art-placeholder",
@@ -444,6 +445,7 @@ public enum PreviewData {
             albumArtist: albumArtist ?? artist,
             albumTitle: album,
             composer: composer,
+            credits: credits,
             genre: genre,
             year: year,
             trackNumber: number,
@@ -540,6 +542,12 @@ public enum PreviewData {
                     year: 1976,
                     // Composer matters more than performer here.
                     composer: ["Benjamin Britten", "Benjamin Britten", "Peter Grimes (arr.)"][discIndex],
+                    // Enough of a sleeve to fill the credits sheet: some names
+                    // on every track, some on one disc only.
+                    credits: [Credit(role: .conductor, name: "Cyrille Marchand"),
+                              Credit(role: .ensemble, name: "Aldeburgh Festival Orchestra"),
+                              Credit(role: .producer, name: "Ida Berg")]
+                        + (discIndex == 2 ? [Credit(role: .engineer, name: "Karl Holm")] : []),
                     genre: "Classical",
                     format: .cd
                 ))
