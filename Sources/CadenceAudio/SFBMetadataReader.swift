@@ -42,7 +42,8 @@ public struct SFBMetadataReader: MetadataReader, Sendable {
             artist: artist,
             albumArtist: albumArtist,
             albumTitle: Self.clean(metadata.albumTitle) ?? "Unknown Album",
-            composer: Self.clean(metadata.composer),
+            composer: Self.composer(metadata, url: url),
+            credits: Self.credits(metadata),
             genre: Self.clean(metadata.genre),
             year: Self.year(from: metadata.releaseDate),
             trackNumber: metadata.trackNumber,
@@ -132,6 +133,36 @@ public struct SFBMetadataReader: MetadataReader, Sendable {
         case "ogg", "oga": return .vorbis
         default: return .other(formatName ?? pathExtension.uppercased())
         }
+    }
+
+    /// Several composers read as one comma-separated line. SFB hands an MP3's
+    /// multi-value `TCOM` over already joined by spaces, so for those the
+    /// frame is read again — see `ID3TextFrame`.
+    static func composer(_ metadata: AudioMetadata, url: URL) -> String? {
+        if url.pathExtension.lowercased() == "mp3",
+           let names = ID3TextFrame.values(of: "TCOM", at: url) {
+            return names.joined(separator: ", ")
+        }
+        return clean(metadata.composer)
+    }
+
+    /// SFB has no properties for credits beyond the composer, but its Vorbis
+    /// comment and APE readers hand every field they don't recognise over in
+    /// `additionalMetadata`, under the key as the file spelled it. ID3 and MP4
+    /// files carry none there, so they only ever show a composer.
+    static func credits(_ metadata: AudioMetadata) -> [Credit] {
+        guard let extra = metadata.additionalMetadata else { return [] }
+        var fields: [String: [String]] = [:]
+        for (key, value) in extra {
+            guard let key = key as? String else { continue }
+            let values: [String] = switch value {
+            case let text as String: [text]
+            case let list as [String]: list
+            default: []
+            }
+            fields[key.uppercased(), default: []].append(contentsOf: values)
+        }
+        return Credit.fromTags { fields[$0] ?? [] }
     }
 
     /// Qualified: SFBAudioEngine exports a `ReplayGain` of its own.

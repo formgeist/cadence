@@ -56,6 +56,21 @@ struct SQLiteLibraryStoreTests {
         }
     }
 
+    @Test("Credits survive the round trip, and none come back as none")
+    func creditsRoundTrip() async throws {
+        try await withStore { store in
+            var credited = makeTrack("Slow Hours", number: 1)
+            credited.credits = [Credit(role: .producer, name: "Ida Berg"),
+                                Credit(role: .engineer, name: "Karl Holm")]
+            let plain = makeTrack("Fast Hours", number: 2)
+            try await store.upsert([credited, plain])
+
+            let fetched = try await store.allTracks()
+            #expect(fetched.first { $0.id == credited.id }?.credits == credited.credits)
+            #expect(fetched.first { $0.id == plain.id }?.credits == [])
+        }
+    }
+
     @Test("A lossy track's bitrate survives the round trip")
     func bitrateRoundTrip() async throws {
         try await withStore { store in

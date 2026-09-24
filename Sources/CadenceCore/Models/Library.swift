@@ -165,6 +165,10 @@ public struct Track: Identifiable, Hashable, Sendable {
     public var albumTitle: String
     /// Classical files where the composer matters more than the performer.
     public var composer: String?
+    /// Everyone else the tags name — lyricist, producer, engineer and so on.
+    /// The composer stays in its own field above, because search and the
+    /// classical grouping lean on it; `allCredits` puts the two together.
+    public var credits: [Credit]
     public var genre: String?
     public var year: Int?
 
@@ -192,6 +196,7 @@ public struct Track: Identifiable, Hashable, Sendable {
         albumArtist: String? = nil,
         albumTitle: String,
         composer: String? = nil,
+        credits: [Credit] = [],
         genre: String? = nil,
         year: Int? = nil,
         trackNumber: Int? = nil,
@@ -213,6 +218,7 @@ public struct Track: Identifiable, Hashable, Sendable {
         self.albumArtist = albumArtist ?? artist
         self.albumTitle = albumTitle
         self.composer = composer
+        self.credits = credits
         self.genre = genre
         self.year = year
         self.trackNumber = trackNumber
@@ -234,12 +240,111 @@ public struct Track: Identifiable, Hashable, Sendable {
 
     /// What the track-row secondary line should say. On a single-artist album
     /// repeating the album artist under every title is noise; where the artists
-    /// differ it is the most useful column on the screen.
+    /// differ it is the most useful column on the screen. The composer used to
+    /// take this line too, which repeated one name down a whole album — it
+    /// lives in the album's credits sheet now.
     public func rowSubtitle(showingArtist: Bool) -> String? {
-        if let composer, !composer.isEmpty { return composer }
         if showingArtist || artist != albumArtist { return artist }
         return nil
     }
+
+    /// The composer followed by every other credit, in the order the tags
+    /// gave them.
+    public var allCredits: [Credit] {
+        guard let composer, !composer.isEmpty else { return credits }
+        return [Credit(role: .composer, name: composer)] + credits
+    }
+}
+
+// MARK: - Credit
+
+/// A name the tags attach to a job on the record: who wrote it, who produced
+/// it, who played what.
+public struct Credit: Hashable, Sendable, Codable {
+    /// Declaration order is display order: the writing first, then the
+    /// playing, then the studio — the order a sleeve would list them in.
+    public enum Role: String, CaseIterable, Hashable, Sendable, Codable {
+        case composer, lyricist, writer, arranger
+        case conductor, ensemble, performer
+        case producer, engineer, mixer, remixer
+
+        public var title: String {
+            switch self {
+            case .composer: "Composer"
+            case .lyricist: "Lyricist"
+            case .writer: "Writer"
+            case .arranger: "Arranger"
+            case .conductor: "Conductor"
+            case .ensemble: "Ensemble"
+            case .performer: "Performer"
+            case .producer: "Producer"
+            case .engineer: "Engineer"
+            case .mixer: "Mixer"
+            case .remixer: "Remixer"
+            }
+        }
+
+        /// The Vorbis comment and APE field names that carry this role, in
+        /// the spellings taggers actually write. Uppercase; both formats
+        /// compare field names case-insensitively.
+        public var tagFields: [String] {
+            switch self {
+            case .composer: ["COMPOSER"]
+            case .lyricist: ["LYRICIST"]
+            case .writer: ["WRITER", "SONGWRITER"]
+            case .arranger: ["ARRANGER"]
+            case .conductor: ["CONDUCTOR"]
+            case .ensemble: ["ENSEMBLE", "ORCHESTRA"]
+            case .performer: ["PERFORMER"]
+            case .producer: ["PRODUCER"]
+            case .engineer: ["ENGINEER"]
+            case .mixer: ["MIXER"]
+            case .remixer: ["REMIXER", "MIXARTIST"]
+            }
+        }
+    }
+
+    public var role: Role
+    public var name: String
+
+    public init(role: Role, name: String) {
+        self.role = role
+        self.name = name
+    }
+
+    /// Every credit a file's tags carry apart from the composer, which has a
+    /// field of its own on `Track`. `values` answers a field name with every
+    /// value stored under it — a Vorbis comment can repeat a field, and a
+    /// file with three producers usually does.
+    public static func fromTags(_ values: (String) -> [String]) -> [Credit] {
+        var credits: [Credit] = []
+        for role in Role.allCases where role != .composer {
+            var seen = Set<String>()
+            for field in role.tagFields {
+                for raw in values(field) {
+                    let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !name.isEmpty, seen.insert(name).inserted else { continue }
+                    credits.append(Credit(role: role, name: name))
+                }
+            }
+        }
+        return credits
+    }
+}
+
+/// One role's worth of an album's credits, for the credits sheet.
+public struct CreditGroup: Identifiable, Hashable, Sendable {
+    public struct Entry: Identifiable, Hashable, Sendable {
+        public var name: String
+        /// Where on the album this name is credited, or nil when it is on
+        /// every track — which is the common case, and not worth saying.
+        public var tracks: String?
+        public var id: String { name }
+    }
+
+    public var role: Credit.Role
+    public var entries: [Entry]
+    public var id: Credit.Role { role }
 }
 
 // MARK: - Album
@@ -321,6 +426,62 @@ public struct Album: Identifiable, Hashable, Sendable {
         return grouped.keys.sorted().map { number in
             Disc(number: number, tracks: (grouped[number] ?? []).sorted(by: Track.inAlbumOrder))
         }
+    }
+
+    /// Every credit on the record, grouped by role in `Credit.Role` order and
+    /// by first appearance within a role. A name credited on only some tracks
+    /// says which, since the track rows no longer do.
+    public var credits: [CreditGroup] {
+        // Names in first-appearance order per role, each with every place on
+        // the album it is credited.
+        var names: [Credit.Role: [String]] = [:]
+        var positions: [Credit.Role: [String: [(disc: Int?, number: Int)]]] = [:]
+        var fallback = 0
+        for disc in discs {
+            for track in disc.tracks {
+                fallback += 1
+                let position = (disc: disc.number, number: track.trackNumber ?? fallback)
+                var seen = Set<Credit>()
+                for credit in track.allCredits where seen.insert(credit).inserted {
+                    if positions[credit.role]?[credit.name] == nil {
+                        names[credit.role, default: []].append(credit.name)
+                    }
+                    positions[credit.role, default: [:]][credit.name, default: []]
+                        .append(position)
+                }
+            }
+        }
+        return Credit.Role.allCases.compactMap { role in
+            guard let roleNames = names[role] else { return nil }
+            let entries = roleNames.map { name in
+                let spots = positions[role]?[name] ?? []
+                return CreditGroup.Entry(
+                    name: name,
+                    tracks: spots.count == trackCount ? nil : Self.describe(spots))
+            }
+            return CreditGroup(role: role, entries: entries)
+        }
+    }
+
+    /// `1–3, 5` on a single disc; `Disc 1: 2–4 · Disc 2: 1` across several.
+    static func describe(_ positions: [(disc: Int?, number: Int)]) -> String {
+        let byDisc = Dictionary(grouping: positions, by: { $0.disc ?? 0 })
+        let parts = byDisc.keys.sorted().map { disc -> String in
+            let numbers = Set(byDisc[disc]!.map(\.number)).sorted()
+            var runs: [String] = []
+            var start = numbers[0], end = numbers[0]
+            for number in numbers.dropFirst() {
+                if number == end + 1 { end = number; continue }
+                runs.append(start == end ? "\(start)" : "\(start)–\(end)")
+                start = number; end = number
+            }
+            runs.append(start == end ? "\(start)" : "\(start)–\(end)")
+            let list = runs.joined(separator: ", ")
+            return disc == 0 ? list : "Disc \(disc): \(list)"
+        }
+        let single = byDisc.keys.count == 1 && byDisc.keys.first == 0
+        let prefix = single && positions.count == 1 ? "Track " : (single ? "Tracks " : "")
+        return prefix + parts.joined(separator: " · ")
     }
 
     public struct Disc: Identifiable, Hashable, Sendable {

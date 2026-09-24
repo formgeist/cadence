@@ -196,6 +196,7 @@ enum PlaylistMenu {
         static let replayGain = "waveform"
         static let revealInFinder = "folder"
         static let getInfo = "info.circle"
+        static let credits = "person.2"
     }
 
     /// "Add to Playlist" wherever tracks are listed. A submenu rather than a
@@ -296,6 +297,7 @@ enum PlaylistMenu {
                       model: AppModel,
                       play: @escaping () -> Void,
                       addToQueue: (() -> Void)? = nil,
+                      showCredits: (() -> Void)? = nil,
                       remove: (title: String, action: () -> Void)? = nil) -> [MenuItem] {
         var items: [MenuItem] = [.action("Play", Symbol.play, play)]
         if let addToQueue {
@@ -310,6 +312,9 @@ enum PlaylistMenu {
         items.append(.action("Get Info", Symbol.getInfo) {
             model.infoTrack = track
         })
+        if let showCredits {
+            items.append(.action("View Credits", Symbol.credits, showCredits))
+        }
         if let remove {
             items.append(.separator)
             items.append(.action(remove.title, Symbol.remove,
