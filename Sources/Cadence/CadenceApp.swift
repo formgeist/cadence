@@ -73,8 +73,10 @@ final class AppContainer {
 
     /// `store` stands in for the preview library, so a snapshot can render a
     /// library that is empty — or has no playlists — without a second
-    /// composition root.
-    init(mode: Mode = .live, store previewStore: (any LibraryStore)? = nil) {
+    /// composition root. `artwork` gives preview mode covers to draw, which
+    /// the showcase screenshots need and design QA does not.
+    init(mode: Mode = .live, store previewStore: (any LibraryStore)? = nil,
+         artwork previewArtwork: DiskArtworkStore? = nil) {
         textEntry = TextEntryMonitor()
 
         // Preview mode keeps everything in memory, the same way it keeps the
@@ -167,9 +169,10 @@ final class AppContainer {
 
         case .preview:
             folders = SecurityScopedFolders(defaultsKey: "CadencePreviewBookmarks")
-            model = AppModel(store: previewStore ?? PreviewData.store(), settings: settings)
+            model = AppModel(store: previewStore ?? PreviewData.store(), settings: settings,
+                             artwork: previewArtwork)
             importer = LibraryImporter(scanner: nil, bookmarks: folders)
-            artworkLoader = ArtworkLoader(store: nil)
+            artworkLoader = ArtworkLoader(store: previewArtwork)
         }
 
         // Play history is recorded here, not inside `PlaybackController`,
@@ -555,6 +558,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in
                 print("Rendering snapshots into \(directory.path)")
                 do {
+                    if CommandLine.arguments.contains("--showcase") {
+                        let count = try await Showcase.run(into: directory)
+                        print("\(count) of \(Showcase.shots.count) written.")
+                        exit(count == Showcase.shots.count ? 0 : 1)
+                    }
                     let live = CommandLine.arguments.contains("--live")
                     let count = live
                         ? try await Snapshot.runLive(into: directory)
