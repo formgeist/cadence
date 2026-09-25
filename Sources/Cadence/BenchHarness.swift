@@ -16,8 +16,9 @@ import CadenceLibrary
 /// window with a display link, because the obvious alternative is wrong:
 /// `cacheDisplay(in:to:)` rasterises on the CPU, where a blur costs orders of
 /// magnitude more than it does on the GPU. Measured that way, a drop shadow
-/// looked like a 1.6-second frame; measured honestly it is nearly free. The
-/// window appears briefly while the benchmark runs.
+/// looked like a 1.6-second frame; measured honestly it is far cheaper, though
+/// not free — one on every grid card cost one frame in seven scrolling 2,500
+/// albums. The window appears briefly while the benchmark runs.
 @MainActor
 enum BenchHarness {
 
@@ -56,14 +57,21 @@ enum BenchHarness {
             + (options.withArtwork ? " with artwork…" : "…"))
 
         let artworkStore = try DiskArtworkStore(root: root.appendingPathComponent("art"))
-        var artworkID: Artwork.ID?
-        if options.withArtwork {
-            artworkID = try await artworkStore.store(coverImageData())
-        }
-
         var tracks = syntheticTracks(count: options.trackCount)
-        if let artworkID {
-            for index in tracks.indices { tracks[index].artworkID = artworkID }
+        if options.withArtwork {
+            // One cover per album, as in a real library. A single shared cover
+            // is decoded once and then served from cache for every card, which
+            // hides the cost of covers arriving mid-scroll.
+            let albumCount = (tracks.count + tracksPerAlbum - 1) / tracksPerAlbum
+            var artworkIDs: [Artwork.ID] = []
+            try await time("store \(formatted(albumCount)) covers") {
+                for album in 0..<albumCount {
+                    artworkIDs.append(try await artworkStore.store(coverImageData(seed: album)))
+                }
+            }
+            for index in tracks.indices {
+                tracks[index].artworkID = artworkIDs[index / tracksPerAlbum]
+            }
         }
 
         try await time("insert + index") { try await store.upsert(tracks) }
@@ -223,13 +231,15 @@ enum BenchHarness {
     }
 
     /// A plain PNG standing in for a cover, big enough that thumbnailing does
-    /// real work.
-    private static func coverImageData() -> Data {
+    /// real work. `seed` varies the colours so every album's cover is
+    /// distinct bytes — the store deduplicates by content.
+    private static func coverImageData(seed: Int) -> Data {
         let size = NSSize(width: 600, height: 600)
+        let hue = Double(seed % 360) / 360
         let image = NSImage(size: size, flipped: false) { rect in
-            NSColor(calibratedRed: 0.15, green: 0.16, blue: 0.2, alpha: 1).setFill()
+            NSColor(calibratedRed: 0.15, green: 0.16, blue: Double(seed % 97) / 97, alpha: 1).setFill()
             rect.fill()
-            NSColor(calibratedRed: 0.91, green: 0.28, blue: 0.25, alpha: 1).setFill()
+            NSColor(calibratedHue: hue, saturation: 0.7, brightness: 0.9, alpha: 1).setFill()
             NSBezierPath(ovalIn: rect.insetBy(dx: 140, dy: 140)).fill()
             return true
         }
@@ -242,6 +252,8 @@ enum BenchHarness {
 
     // MARK: - Data
 
+    private static let tracksPerAlbum = 12
+
     private static func syntheticTracks(count: Int) -> [Track] {
         let artists = (0..<max(1, count / 120)).map { "Artist \(String(format: "%04d", $0))" }
         let words = ["Slow", "Hollow", "Paper", "Static", "Undertow", "Northerly",
@@ -251,7 +263,7 @@ enum BenchHarness {
             // The artist belongs to the album, not the track — otherwise every
             // track lands in its own album, since Album.Key is
             // (albumArtist, title, year).
-            let albumIndex = index / 12
+            let albumIndex = index / tracksPerAlbum
             let artist = artists[albumIndex % artists.count]
             return Track(
                 url: URL(fileURLWithPath: "/bench/\(index).flac"),
