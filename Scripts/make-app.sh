@@ -39,13 +39,12 @@ if [ -z "${SIGN_IDENTITY:-}" ]; then
 fi
 TEAM_ID="${TEAM_ID:-}"
 
+# Build first, every time. --show-bin-path alone only reports where the binary
+# would be, so a stale one left there by an older checkout was bundled as if it
+# were current. SwiftPM's build is incremental; an up-to-date tree costs seconds.
+swift build -c "$CONFIG" --product Cadence
 BUILT=$(swift build -c "$CONFIG" --show-bin-path)
 BINARY="$BUILT/Cadence"
-
-if [ ! -x "$BINARY" ]; then
-    echo "No binary at $BINARY — run 'swift build' first." >&2
-    exit 1
-fi
 
 echo "Assembling $APP from $CONFIG, signed by ${SIGN_IDENTITY/#-/ad-hoc}"
 rm -rf "$APP"
