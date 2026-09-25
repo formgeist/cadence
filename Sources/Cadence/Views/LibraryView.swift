@@ -495,6 +495,7 @@ struct AlbumCard: View, Equatable {
     /// opens the album — see `ArtistCard.onSelect`.
     var onSelect: () -> Void = {}
     @State private var isHovering = false
+    @State private var isHoveringArt = false
     /// Where the pointer last was inside this card, and how big the card is —
     /// between them they place the drag chip. See `anchored(in:at:)`.
     @State private var pointer: CGPoint = .zero
@@ -520,6 +521,16 @@ struct AlbumCard: View, Equatable {
                             caption: album.artworkID == nil ? "NO COVER ART" : "COVER ART",
                             displaySize: 320)
                     .aspectRatio(1, contentMode: .fit)
+                    // Built only while hovered. An idle, transparent scrim on
+                    // every card measurably added long frames scrolling 2,500
+                    // albums; this matched having no overlay at all.
+                    .overlay {
+                        if isHoveringArt {
+                            playOverlay.transition(.opacity)
+                        }
+                    }
+                    .animation(.easeOut(duration: 0.12), value: isHoveringArt)
+                    .onHover { isHoveringArt = $0 }
                     .keyboardFocusRing(isKeyboardFocused,
                                       in: RoundedRectangle(cornerRadius: Tokens.Radius.control,
                                                            style: .continuous))
@@ -565,6 +576,26 @@ struct AlbumCard: View, Equatable {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(spokenLabel)
         .accessibilityAddTraits(.isButton)
+        // The hover pill is hidden from VoiceOver along with the rest of the
+        // card's children, so the same action is offered here instead.
+        .accessibilityAction(named: "Play") { playback.play(album) }
+    }
+
+    /// Appears over the cover on hover: a scrim behind a "Play" pill that
+    /// starts the album from the top without opening it. Same treatment as
+    /// the artist header's Edit overlay, so the two read as one idea.
+    private var playOverlay: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: Tokens.Radius.control, style: .continuous)
+                .fill(.black.opacity(0.55))
+                .allowsHitTesting(false)
+
+            CapsuleButton(title: "Play", systemImage: "play.fill",
+                          accessibilityLabel: "Play \(album.title)") {
+                playback.play(album)
+            }
+            .scaleEffect(0.82)
+        }
     }
 
     /// Everything but `onSelect`, which no closure can be compared on — see
