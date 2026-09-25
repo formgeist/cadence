@@ -330,7 +330,6 @@ private struct ArtistCard: View {
                             isCircular: true,
                             displaySize: 200)
                     .aspectRatio(1, contentMode: .fit)
-                    .shadow(color: .black.opacity(0.4), radius: 12, y: 6)
                     .keyboardFocusRing(isKeyboardFocused, in: Circle())
 
                 VStack(spacing: 3) {
@@ -404,11 +403,17 @@ struct AlbumGrid<Header: View>: View {
                     spacing: Tokens.Space.xxl
                 ) {
                     ForEach(Array(albums.enumerated()), id: \.element.id) { index, album in
-                        AlbumCard(album: album, subtitle: subtitle,
+                        AlbumCard(album: album, subtitle: subtitle, index: index,
                                  isKeyboardFocused: isFocused && focusedIndex == index) {
                             focusedIndex = index
                             isFocused = true
                         }
+                        // This body re-runs on every scrolled row, because
+                        // `.scrollPosition(id:)` writes the anchor binding it
+                        // holds. A closure never compares equal, so without
+                        // this every card the grid has built re-ran with it:
+                        // over a thousand bodies a frame at 2,500 albums.
+                        .equatable()
                         .id(album.id)
                     }
                 }
@@ -473,7 +478,7 @@ extension AlbumGrid where Header == EmptyView {
     }
 }
 
-struct AlbumCard: View {
+struct AlbumCard: View, Equatable {
     @Environment(AppModel.self) private var model
     @Environment(PlaybackController.self) private var playback
     var album: Album
@@ -481,6 +486,10 @@ struct AlbumCard: View {
     /// artist's own page already knows who they are, and needs the year to
     /// tell a record from its remaster.
     var subtitle: Subtitle = .artist
+    /// Position in the grid. Unused by the card itself, but `onSelect`
+    /// captures it — comparing it keeps a card whose album moved from
+    /// holding on to a closure that focuses its old slot.
+    var index: Int
     var isKeyboardFocused: Bool = false
     /// Marks this card keyboard-focused, called from the same click that
     /// opens the album — see `ArtistCard.onSelect`.
@@ -512,9 +521,16 @@ struct AlbumCard: View {
                             caption: album.artworkID == nil ? "NO COVER ART" : "COVER ART",
                             displaySize: 320)
                     .aspectRatio(1, contentMode: .fit)
-                    .overlay { playOverlay }
+                    // Built only while hovered. An idle, transparent scrim on
+                    // every card measurably added long frames scrolling 2,500
+                    // albums; this matched having no overlay at all.
+                    .overlay {
+                        if isHoveringArt {
+                            playOverlay.transition(.opacity)
+                        }
+                    }
+                    .animation(.easeOut(duration: 0.12), value: isHoveringArt)
                     .onHover { isHoveringArt = $0 }
-                    .shadow(color: .black.opacity(0.4), radius: 12, y: 6)
                     .keyboardFocusRing(isKeyboardFocused,
                                       in: RoundedRectangle(cornerRadius: Tokens.Radius.control,
                                                            style: .continuous))
@@ -571,19 +587,24 @@ struct AlbumCard: View {
     private var playOverlay: some View {
         ZStack {
             RoundedRectangle(cornerRadius: Tokens.Radius.control, style: .continuous)
-                .fill(.black.opacity(isHoveringArt ? 0.55 : 0))
+                .fill(.black.opacity(0.55))
                 .allowsHitTesting(false)
 
-            if isHoveringArt {
-                CapsuleButton(title: "Play", systemImage: "play.fill",
-                              accessibilityLabel: "Play \(album.title)") {
-                    playback.play(album)
-                }
-                .scaleEffect(0.82)
-                .transition(.opacity)
+            CapsuleButton(title: "Play", systemImage: "play.fill",
+                          accessibilityLabel: "Play \(album.title)") {
+                playback.play(album)
             }
+            .scaleEffect(0.82)
         }
-        .animation(.easeOut(duration: 0.12), value: isHoveringArt)
+    }
+
+    /// Everything but `onSelect`, which no closure can be compared on — see
+    /// `index`.
+    nonisolated static func == (lhs: AlbumCard, rhs: AlbumCard) -> Bool {
+        lhs.index == rhs.index
+            && lhs.subtitle == rhs.subtitle
+            && lhs.isKeyboardFocused == rhs.isKeyboardFocused
+            && lhs.album == rhs.album
     }
 
     private var spokenLabel: String {
@@ -812,7 +833,6 @@ private struct RecentCard: View {
             VStack(alignment: .leading, spacing: 11) {
                 artwork
                     .aspectRatio(1, contentMode: .fit)
-                    .shadow(color: .black.opacity(0.4), radius: 12, y: 6)
                     .keyboardFocusRing(isKeyboardFocused,
                                        in: RoundedRectangle(cornerRadius: Tokens.Radius.control,
                                                             style: .continuous))

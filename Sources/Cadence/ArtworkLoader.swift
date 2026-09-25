@@ -16,22 +16,36 @@ import CadenceLibrary
 @Observable
 final class ArtworkLoader {
 
-    private let store: DiskArtworkStore?
+    /// One cover at one size. A view observes the slot for the image it asked
+    /// for, so a cover landing redraws that view and no other. A single
+    /// counter on the loader used to do this job, and every cover that landed
+    /// mid-scroll redrew every cover in the grid.
+    @MainActor
+    @Observable
+    fileprivate final class Slot {
+        var image: NSImage?
+    }
+
+    @ObservationIgnored private let store: DiskArtworkStore?
     /// Decoded covers, bounded by resident bitmap size rather than count — a
     /// 600pt header image and a 32pt row icon cost very different amounts of
     /// memory for the same one slot. `DiskArtworkStore` caches the encoded
     /// bytes below this the same way, at a smaller limit, since a decoded
     /// bitmap is the bigger of the two.
-    private let images = NSCache<NSString, NSImage>()
+    @ObservationIgnored private let images = NSCache<NSString, Slot>()
     /// Ids already tried and found to have no art, so a missing cover is not
     /// re-requested on every redraw. Unbounded on purpose: it holds only
     /// keys, and is bounded in practice by the size of the library.
-    private var misses: Set<String> = []
-    private var inFlight: Set<String> = []
-    /// Bumped whenever a new image lands in `images`. Observation instruments
-    /// stored properties, not the objects they point to, so mutating the
-    /// cache in place — as `NSCache` requires — would otherwise never tell a
-    /// waiting view that its artwork arrived.
+    ///
+    /// This and `inFlight` are bookkeeping, not anything a view draws, so
+    /// they are kept out of Observation: every request inserting a key would
+    /// otherwise redraw every view that had checked the set.
+    @ObservationIgnored private var misses: Set<String> = []
+    /// Loads under way, holding the slot their views are waiting on.
+    @ObservationIgnored private var inFlight: [String: Slot] = [:]
+    /// Bumped by `forget(_:)` and when a bloom lands — rare events that every
+    /// view asking for artwork should re-ask after. Covers landing go through
+    /// their `Slot` instead.
     private var generation = 0
 
     /// Roughly a screenful or two of covers across the sizes the app
@@ -46,13 +60,16 @@ final class ArtworkLoader {
     /// `size` is the longest edge in points; the store cuts a thumbnail to
     /// match rather than handing back a full-resolution cover.
     func image(for id: Artwork.ID?, size: Int) -> NSImage? {
-        _ = generation // establishes the Observation dependency even on a cache hit
+        _ = generation // establishes the Observation dependency on `forget(_:)`
         guard let id, let store else { return nil }
         let key = "\(id)-\(size)"
-        if let image = images.object(forKey: key as NSString) { return image }
-        guard !misses.contains(key), !inFlight.contains(key) else { return nil }
+        if let slot = images.object(forKey: key as NSString) { return slot.image }
+        if let slot = inFlight[key] { return slot.image }
+        guard !misses.contains(key) else { return nil }
 
-        inFlight.insert(key)
+        let slot = Slot()
+        _ = slot.image // the dependency this view redraws on when it lands
+        inFlight[key] = slot
         Task { [weak self] in
             // Retina: ask for twice the point size so the thumbnail is sharp.
             let data = try? await store.thumbnail(for: id, maxPixelSize: size * 2)
@@ -65,10 +82,11 @@ final class ArtworkLoader {
             // key and likely kicked off a fresh attempt — this one must not
             // land its result, least of all resurrect a miss the retry is
             // meant to clear.
-            guard self.inFlight.remove(key) != nil else { return }
+            guard self.inFlight[key] === slot else { return }
+            self.inFlight[key] = nil
             if let image {
-                self.images.setObject(image, forKey: key as NSString, cost: Self.decodedCost(of: image))
-                self.generation += 1
+                self.images.setObject(slot, forKey: key as NSString, cost: Self.decodedCost(of: image))
+                slot.image = image
             } else {
                 self.misses.insert(key)
             }
@@ -99,7 +117,7 @@ final class ArtworkLoader {
     func forget(_ id: Artwork.ID) {
         let prefix = "\(id)-"
         misses = misses.filter { !$0.hasPrefix(prefix) }
-        inFlight = inFlight.filter { !$0.hasPrefix(prefix) }
+        inFlight = inFlight.filter { !$0.key.hasPrefix(prefix) }
         bloomMisses = bloomMisses.filter { !$0.hasPrefix(prefix) }
         generation += 1
     }
@@ -113,9 +131,9 @@ final class ArtworkLoader {
 
     // MARK: - Ambient bloom
 
-    private let bloomCache = NSCache<NSString, BloomPalette>()
-    private var bloomMisses: Set<String> = []
-    private var bloomInFlight: Set<String> = []
+    @ObservationIgnored private let bloomCache = NSCache<NSString, BloomPalette>()
+    @ObservationIgnored private var bloomMisses: Set<String> = []
+    @ObservationIgnored private var bloomInFlight: Set<String> = []
 
     private static let ciContext = CIContext(options: [.workingColorSpace: NSNull()])
 
