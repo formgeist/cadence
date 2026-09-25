@@ -10,7 +10,7 @@ SNAPSHOT_DIR ?= Snapshots
 # so `make …` generates an empty stub before SwiftPM compiles the app target.
 CREDENTIALS := Sources/Cadence/LastFMCredentials.swift
 
-.PHONY: build test run app shots scan audio-check a11y bench clean
+.PHONY: build test run app dmg shots scan audio-check a11y bench clean
 
 $(CREDENTIALS):
 	@./Scripts/gen-lastfm-credentials.sh
@@ -30,6 +30,12 @@ run: $(CREDENTIALS)
 app: $(CREDENTIALS)
 	@mkdir -p build
 	@SANDBOX=$(or $(SANDBOX),1) CONFIG=$(or $(CONFIG),debug) ./Scripts/make-app.sh
+
+## Package a release Cadence.app as a drag-to-install disk image.
+##   make dmg            build/Cadence-<version>.dmg, sandboxed, ad-hoc signed
+dmg: CONFIG ?= release
+dmg: app
+	@./Scripts/make-dmg.sh
 
 ## Answer PLAN.md §3: can a sandboxed build set the output sample rate?
 audio-check: app

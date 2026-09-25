@@ -14,6 +14,7 @@ not required and the project deliberately has no `.xcodeproj`.
 make run      # launch the app
 make test     # run every suite
 make app      # assemble a signed, sandboxed Cadence.app
+make dmg      # package a release Cadence.app as a drag-to-install disk image
 ```
 
 `make test` links against `swift-testing`, which ships inside Xcode's toolchain
@@ -24,6 +25,30 @@ but not the Command Line Tools SDK — the Makefile passes the linker the path t
 Some behaviour only exists with a real bundle identity — Now Playing, media
 keys, the app sandbox, security-scoped bookmarks, window restoration. Verify
 those with `make app` and the assembled bundle, not `make run`.
+
+### A stable signature for local builds
+
+Without a certificate, `make app` signs ad-hoc. An ad-hoc signature is the hash of the exact
+binary, so after every rebuild the keychain treats Cadence as a new app and asks
+for your login password before handing over the Last.fm session key. "Always
+Allow" only lasts until the next build.
+
+A self-signed code-signing certificate gives every build the same identity, so
+"Always Allow" sticks. Create one once:
+
+1. Open **Keychain Access** (`/System/Library/CoreServices/Applications/`).
+2. Choose **Keychain Access → Certificate Assistant → Create a Certificate…**
+3. Name it `Cadence Local Signing`, set **Identity Type** to *Self Signed Root*
+   and **Certificate Type** to *Code Signing*, then create it.
+
+`make app` and `make dmg` sign with it automatically whenever it is in your
+keychain — the build's first line says which identity it used. Pass
+`SIGN_IDENTITY=-` to force an ad-hoc build.
+
+The first launch after switching prompts once more; choose "Always Allow".
+Leave `TEAM_ID` unset — a self-signed certificate has no team, and the
+team-prefixed keychain access group would stop the app launching. A build
+signed this way still runs only on your own Mac.
 
 ### Last.fm credentials
 

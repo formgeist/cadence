@@ -20,9 +20,23 @@ APP="${APP:-build/Cadence.app}"
 BUNDLE_ID="${BUNDLE_ID:-com.formgeist.cadence}"
 VERSION="${VERSION:-0.1.0}"
 ICONSET="${ICONSET:-Icon/AppIcon.iconset}"
-# Ad-hoc by default. Set SIGN_IDENTITY to a Developer ID for distribution, and
-# TEAM_ID alongside it so the keychain access group can be team-prefixed.
-SIGN_IDENTITY="${SIGN_IDENTITY:--}"
+# Set SIGN_IDENTITY to a Developer ID for distribution, and TEAM_ID alongside it
+# so the keychain access group can be team-prefixed.
+#
+# Ad-hoc identity is the hash of the exact binary, so every rebuild is a new app
+# to the keychain and the Last.fm session key prompts for a password again. A
+# self-signed code-signing certificate (see CONTRIBUTING.md) gives rebuilds a
+# stable identity instead, so when one named LOCAL_IDENTITY is in the keychain
+# it is the default. Otherwise the build signs ad-hoc; SIGN_IDENTITY=- forces
+# that. The self-signed certificate is untrusted, so it is listed without -v.
+LOCAL_IDENTITY="${LOCAL_IDENTITY:-Cadence Local Signing}"
+if [ -z "${SIGN_IDENTITY:-}" ]; then
+    if security find-identity -p codesigning 2>/dev/null | grep -qF "\"$LOCAL_IDENTITY\""; then
+        SIGN_IDENTITY="$LOCAL_IDENTITY"
+    else
+        SIGN_IDENTITY="-"
+    fi
+fi
 TEAM_ID="${TEAM_ID:-}"
 
 BUILT=$(swift build -c "$CONFIG" --show-bin-path)
@@ -33,7 +47,7 @@ if [ ! -x "$BINARY" ]; then
     exit 1
 fi
 
-echo "Assembling $APP from $CONFIG"
+echo "Assembling $APP from $CONFIG, signed by ${SIGN_IDENTITY/#-/ad-hoc}"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
 
@@ -153,18 +167,18 @@ if [ "${SANDBOX:-1}" = "1" ]; then
 ENTITLEMENTS
 
         # keychain-access-groups is checked against the signature's team
-        # identifier. Ad-hoc signing (SIGN_IDENTITY=-) has none, and on current
-        # macOS an unvalidatable access group is not a soft keychain failure —
-        # the whole process is killed at spawn ("Launchd job spawn failed",
-        # RBSRequestErrorDomain 5). So it goes in only for a real Developer ID
-        # build, which needs the team prefix on the group; an ad-hoc build ships
-        # without it and uses the app's own default access group, which is all a
-        # single app needs. `swift run` is unaffected — it uses the login
+        # identifier. Ad-hoc signing (SIGN_IDENTITY=-) has none, and neither
+        # does a self-signed local certificate; on current macOS an
+        # unvalidatable access group is not a soft keychain failure — the whole
+        # process is killed at spawn ("Launchd job spawn failed",
+        # RBSRequestErrorDomain 5). So it goes in only when TEAM_ID names the
+        # Developer ID team the group is prefixed with; every other build ships
+        # without it and uses the app's own default access group, which is all
+        # a single app needs. `swift run` is unaffected — it uses the login
         # keychain. See KeychainStore, and issue #8 for the signed build.
-        if [ "$SIGN_IDENTITY" != "-" ]; then
+        if [ -n "$TEAM_ID" ]; then
             printf '    <key>keychain-access-groups</key>\n'
-            printf '    <array><string>%s.%s</string></array>\n' \
-                "${TEAM_ID:?TEAM_ID is required when SIGN_IDENTITY is set}" "$BUNDLE_ID"
+            printf '    <array><string>%s.%s</string></array>\n' "$TEAM_ID" "$BUNDLE_ID"
         fi
 
         cat <<'ENTITLEMENTS'
