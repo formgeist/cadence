@@ -67,37 +67,80 @@ struct MenuBarLabel: View {
 
 /// The transport shown when the status item is clicked — play/pause, next
 /// and previous, the same three the Playback menu and the dock menu offer.
+///
+/// On macOS 26 the panel is Liquid Glass: the panel itself is one glass
+/// sheet, and the transport sits on it as morphing circular buttons.
 struct MenuBarPlaybackView: View {
     @Environment(PlaybackController.self) private var playback
 
+    private static let coverSide: CGFloat = 176
+
     var body: some View {
         VStack(spacing: Tokens.Space.m) {
-            if let track = playback.currentTrack {
-                ArtworkView(artworkID: track.artworkID,
-                            cornerRadius: Tokens.Radius.card,
-                            displaySize: 176)
-                    .frame(width: 176, height: 176)
+            cover
+            caption
+            transport
+        }
+        .padding(Tokens.Space.l)
+        .frame(width: 208)
+        .modifier(PanelSurface())
+        // Cadence is dark-only; the panel's material and glass follow suit
+        // regardless of the system appearance.
+        .preferredColorScheme(.dark)
+    }
 
-                VStack(spacing: 2) {
-                    Text(track.title)
-                        .font(Tokens.Typography.trackTitle)
-                        .foregroundStyle(Tokens.Palette.textPrimary)
-                        .lineLimit(1)
-                    Text(track.artist)
-                        .font(Tokens.Typography.caption)
-                        .foregroundStyle(Tokens.Palette.textSecondary)
-                        .lineLimit(1)
-                }
-            } else {
-                ArtworkPlaceholder()
-                    .frame(width: 176, height: 176)
-                    .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous))
+    @ViewBuilder
+    private var cover: some View {
+        if let track = playback.currentTrack {
+            ArtworkView(artworkID: track.artworkID,
+                        cornerRadius: Tokens.Radius.card,
+                        displaySize: Int(Self.coverSide))
+                .frame(width: Self.coverSide, height: Self.coverSide)
+                .shadow(color: .black.opacity(0.45), radius: 14, y: 6)
+        } else {
+            ArtworkPlaceholder()
+                .frame(width: Self.coverSide, height: Self.coverSide)
+                .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous))
+        }
+    }
 
-                Text("Not Playing")
+    @ViewBuilder
+    private var caption: some View {
+        if let track = playback.currentTrack {
+            VStack(spacing: 2) {
+                Text(track.title)
+                    .font(Tokens.Typography.trackTitle)
+                    .foregroundStyle(Tokens.Palette.textPrimary)
+                    .lineLimit(1)
+                Text(track.artist)
                     .font(Tokens.Typography.caption)
                     .foregroundStyle(Tokens.Palette.textSecondary)
+                    .lineLimit(1)
             }
+        } else {
+            Text("Not Playing")
+                .font(Tokens.Typography.caption)
+                .foregroundStyle(Tokens.Palette.textSecondary)
+        }
+    }
 
+    @ViewBuilder
+    private var transport: some View {
+        if #available(macOS 26, *) {
+            GlassEffectContainer(spacing: Tokens.Space.m) {
+                HStack(spacing: Tokens.Space.m) {
+                    GlassTransportButton(systemImage: "backward.fill", label: "Previous",
+                                         glyphSize: 13, side: 36) { playback.previous() }
+                        .disabled(playback.currentTrack == nil)
+                    GlassTransportButton(systemImage: playback.isPlaying ? "pause.fill" : "play.fill",
+                                         label: playback.isPlaying ? "Pause" : "Play",
+                                         glyphSize: 17, side: 46) { playback.togglePlayPause() }
+                    GlassTransportButton(systemImage: "forward.fill", label: "Next",
+                                         glyphSize: 13, side: 36) { playback.next() }
+                        .disabled(playback.currentTrack == nil)
+                }
+            }
+        } else {
             HStack(spacing: Tokens.Space.xxl) {
                 IconButton(systemImage: "backward.fill", label: "Previous", glyphSize: 13, side: 26) {
                     playback.previous()
@@ -116,8 +159,92 @@ struct MenuBarPlaybackView: View {
                 .disabled(playback.currentTrack == nil)
             }
         }
-        .padding(Tokens.Space.l)
-        .frame(width: 208)
-        .background(Tokens.Palette.popover)
     }
 }
+
+/// macOS 26: the whole panel is one sheet of Liquid Glass. `MenuBarExtra`
+/// still backs its window with the pre-26 menu material — a heavily blurred,
+/// grey-tinted backdrop that makes the panel far murkier than the system's
+/// own menu bar panels — and `containerBackground(.clear, for: .window)`
+/// does not reach it, so `StockBackdropRemover` hides it from AppKit.
+/// Earlier systems keep the flat popover surface the rest of Cadence's
+/// popovers use.
+private struct PanelSurface: ViewModifier {
+    /// Matches the corner radius the window server gives the panel, so the
+    /// glass and the window's own outline and shadow share one edge.
+    private static let windowCornerRadius: CGFloat = 12
+
+    func body(content: Content) -> some View {
+        if #available(macOS 26, *) {
+            content
+                .glassEffect(.regular, in: .rect(cornerRadius: Self.windowCornerRadius))
+                .background(StockBackdropRemover())
+        } else {
+            content.background(Tokens.Palette.popover)
+        }
+    }
+}
+
+/// Hides the menu material `MenuBarExtra` layers behind its content: a
+/// `CABackdropLayer` doing the blur, and a near-black sibling composited
+/// with a lighten blend that tints it. Both are direct sublayers of the
+/// window's hosting view. Matching on the layer's class and blend mode
+/// rather than position means an SDK that drops them just finds nothing.
+private struct StockBackdropRemover: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView { RemoverView() }
+    func updateNSView(_ view: NSView, context: Context) { (view as? RemoverView)?.strip() }
+
+    private final class RemoverView: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            strip()
+        }
+
+        override func layout() {
+            super.layout()
+            strip()
+        }
+
+        func strip() {
+            guard let layers = window?.contentView?.layer?.sublayers else { return }
+            for layer in layers where Self.isStockBackdrop(layer) && !layer.isHidden {
+                layer.isHidden = true
+            }
+        }
+
+        private static func isStockBackdrop(_ layer: CALayer) -> Bool {
+            if String(describing: type(of: layer)) == "CABackdropLayer" { return true }
+            return (layer.compositingFilter as? String) == "lightenBlendMode"
+        }
+    }
+}
+
+/// A transport glyph on its own disc of interactive Liquid Glass — the disc
+/// flexes and lights under the pointer, and siblings in the same
+/// `GlassEffectContainer` blend into one another as they press.
+@available(macOS 26, *)
+private struct GlassTransportButton: View {
+    var systemImage: String
+    var label: String
+    var glyphSize: CGFloat
+    var side: CGFloat
+    var action: () -> Void
+
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: glyphSize, weight: .semibold))
+                .contentTransition(.symbolEffect(.replace))
+                .foregroundStyle(.white.opacity(isEnabled ? 0.95 : 0.35))
+                .frame(width: side, height: side)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .glassEffect(.regular.interactive(isEnabled), in: .circle)
+        .accessibilityLabel(label)
+        .help(label)
+    }
+}
+
