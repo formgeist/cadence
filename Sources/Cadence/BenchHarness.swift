@@ -96,19 +96,34 @@ enum BenchHarness {
         try await measureScrolling(model: model, tab: .albums,
                                    label: "Albums grid", loader: loader)
 
+        // The artist page, at the synthetic library's per-artist size (about
+        // ten albums of twelve tracks), in both layouts.
+        if let artist = model.artists.first {
+            for layout in AppModel.ArtistAlbumLayout.allCases {
+                model.artistAlbumLayout = layout
+                try await measureScrolling(
+                    model: model, tab: nil, label: "Artist page (\(layout.label.lowercased()))",
+                    loader: loader, rows: model.albums(byArtist: artist.name).count,
+                    content: ArtistDetailView(artist: artist))
+            }
+        }
+
         return 0
     }
 
     // MARK: - Scrolling
 
     private static func measureScrolling(
-        model: AppModel, tab: AppModel.Tab, label: String, loader: ArtworkLoader
+        model: AppModel, tab: AppModel.Tab?, label: String, loader: ArtworkLoader,
+        rows: Int? = nil, content: some View = LibraryView()
     ) async throws {
-        model.tab = tab
-        model.show(.library)
+        if let tab {
+            model.tab = tab
+            model.show(.library)
+        }
 
         let container = AppContainer(mode: .preview)
-        let view = LibraryView()
+        let view = content
             .environment(model)
             .environment(container.playback)
             .environment(container.importer)
@@ -136,7 +151,7 @@ enum BenchHarness {
             return
         }
 
-        let count = model.tab == .artists ? model.artists.count : model.albums.count
+        let count = rows ?? (model.tab == .artists ? model.artists.count : model.albums.count)
         let documentHeight = scrollView.documentView?.bounds.height ?? 0
         let travel = max(0, documentHeight - scrollView.contentSize.height)
         guard travel > 0 else {
