@@ -824,6 +824,7 @@ private struct RecentCard: View {
     /// see `AlbumCard.onSelect`.
     var onSelect: () -> Void = {}
     @State private var isHovering = false
+    @State private var isHoveringArt = false
 
     var body: some View {
         Button {
@@ -833,6 +834,14 @@ private struct RecentCard: View {
             VStack(alignment: .leading, spacing: 11) {
                 artwork
                     .aspectRatio(1, contentMode: .fit)
+                    // Built only while hovered — see `AlbumCard`.
+                    .overlay {
+                        if isHoveringArt, canPlay {
+                            playOverlay.transition(.opacity)
+                        }
+                    }
+                    .animation(.easeOut(duration: 0.12), value: isHoveringArt)
+                    .onHover { isHoveringArt = $0 }
                     .keyboardFocusRing(isKeyboardFocused,
                                        in: RoundedRectangle(cornerRadius: Tokens.Radius.control,
                                                             style: .continuous))
@@ -858,6 +867,38 @@ private struct RecentCard: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(spokenLabel)
         .accessibilityAddTraits(.isButton)
+        // The hover pill is hidden from VoiceOver with the card's children.
+        .accessibilityAction(named: "Play", play)
+    }
+
+    private var canPlay: Bool {
+        switch item {
+        case .album: true
+        case .playlist(let playlist): !model.tracks(in: playlist).isEmpty
+        }
+    }
+
+    private func play() {
+        switch item {
+        case .album(let album):
+            playback.play(album)
+        case .playlist(let playlist):
+            playback.play(model.tracks(in: playlist), fromPlaylist: playlist.id)
+        }
+    }
+
+    /// Scrim and "Play" pill over the cover, as on `AlbumCard`: starts the
+    /// album or playlist from the top without opening it.
+    private var playOverlay: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: Tokens.Radius.control, style: .continuous)
+                .fill(.black.opacity(0.55))
+                .allowsHitTesting(false)
+
+            CapsuleButton(title: "Play", systemImage: "play.fill",
+                          accessibilityLabel: "Play \(title)", action: play)
+                .scaleEffect(0.82)
+        }
     }
 
     @ViewBuilder

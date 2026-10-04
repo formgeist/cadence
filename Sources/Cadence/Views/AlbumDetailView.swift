@@ -7,50 +7,20 @@ struct AlbumDetailView: View {
 
     var album: Album
 
-    /// The row a single click put under the cursor, and the row an arrow key
-    /// last moved to — the same state serves both, so a keyboard user picks up
-    /// exactly where a mouse user would have left off. Playback needs a
-    /// second click or a `Return`, so something has to show what either one
-    /// did.
-    @State private var selectedTrackID: Track.ID?
-    /// Set alongside `selectedTrackID` only when the keyboard moved the
-    /// selection — arrow keys, type-ahead, first focus — so the list scrolls
-    /// to follow it. A click or ⌘-click sets `selectedTrackID` directly and
-    /// leaves this alone: that row is already on screen, and centering it
-    /// anyway reads as the list jumping under the pointer.
-    @State private var keyboardScrollTarget: Track.ID?
-    @FocusState private var isTrackListFocused: Bool
-    @State private var typeAhead = TypeAheadBuffer()
-    @State private var isShowingCredits = false
-
     private var orderedTracks: [Track] { album.discs.flatMap(\.tracks) }
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                VStack(spacing: 0) {
-                    header
-                    trackList
-                }
-            }
-            .scrollContentBackground(.hidden)
-            .background(Tokens.Palette.surface)
-            .onChange(of: keyboardScrollTarget) { _, new in
-                guard let new else { return }
-                proxy.scrollTo(new, anchor: .center)
+        ScrollView {
+            VStack(spacing: 0) {
+                header
+                AlbumTrackList(album: album)
+                    .padding(.horizontal, Tokens.Space.albumInset)
+                    .padding(.top, 22)
+                    .padding(.bottom, 44)
             }
         }
-        // A different album, reached without this view ever leaving the
-        // screen — `RootView` keeps the same `.album` case on the switch when
-        // you jump from one record to another — so a stale id here would
-        // otherwise point at a track that isn't on screen at all.
-        .onChange(of: album.key) { _, _ in
-            selectedTrackID = nil
-            keyboardScrollTarget = nil
-        }
-        .sheet(isPresented: $isShowingCredits) {
-            AlbumCreditsSheet(album: album)
-        }
+        .scrollContentBackground(.hidden)
+        .background(Tokens.Palette.surface)
     }
 
     // MARK: Header
@@ -172,10 +142,60 @@ struct AlbumDetailView: View {
         }
         .padding(.top, 2)
     }
+}
 
-    // MARK: Tracks
+/// One album's column header and rows, with the selection, keyboard and
+/// credits behaviour that goes with them. Shared by the album page and the
+/// artist page, which stacks one of these per record.
+struct AlbumTrackList: View {
+    @Environment(AppModel.self) private var model
+    @Environment(PlaybackController.self) private var playback
 
-    private var trackList: some View {
+    var album: Album
+
+    /// The row a single click put under the cursor, and the row an arrow key
+    /// last moved to — the same state serves both, so a keyboard user picks up
+    /// exactly where a mouse user would have left off. Playback needs a
+    /// second click or a `Return`, so something has to show what either one
+    /// did.
+    @State private var selectedTrackID: Track.ID?
+    /// Set alongside `selectedTrackID` only when the keyboard moved the
+    /// selection — arrow keys, type-ahead, first focus — so the list scrolls
+    /// to follow it. A click or ⌘-click sets `selectedTrackID` directly and
+    /// leaves this alone: that row is already on screen, and centering it
+    /// anyway reads as the list jumping under the pointer.
+    @State private var keyboardScrollTarget: Track.ID?
+    @FocusState private var isTrackListFocused: Bool
+    @State private var typeAhead = TypeAheadBuffer()
+    @State private var isShowingCredits = false
+
+    private var orderedTracks: [Track] { album.discs.flatMap(\.tracks) }
+
+    var body: some View {
+        // The reader sits inside the caller's `ScrollView`, so its proxy
+        // scrolls that one — the album page and the artist page both host
+        // this list in their own.
+        ScrollViewReader { proxy in
+            list
+                .onChange(of: keyboardScrollTarget) { _, new in
+                    guard let new else { return }
+                    proxy.scrollTo(new, anchor: .center)
+                }
+        }
+        // A different album, reached without this view ever leaving the
+        // screen — `RootView` keeps the same `.album` case on the switch when
+        // you jump from one record to another — so a stale id here would
+        // otherwise point at a track that isn't on screen at all.
+        .onChange(of: album.key) { _, _ in
+            selectedTrackID = nil
+            keyboardScrollTarget = nil
+        }
+        .sheet(isPresented: $isShowingCredits) {
+            AlbumCreditsSheet(album: album)
+        }
+    }
+
+    private var list: some View {
         // Lazy so a box set or a 200-track classical box doesn't instantiate
         // every row on open — only what the shared `ScrollView` can show. The
         // header scrolls away with the list, so this is the inner list only;
@@ -250,9 +270,6 @@ struct AlbumDetailView: View {
                 keyboardScrollTarget = orderedTracks.first?.id
             }
         }
-        .padding(.horizontal, Tokens.Space.albumInset)
-        .padding(.top, 22)
-        .padding(.bottom, 44)
     }
 
     private func handleTrackListKeyPress(_ press: KeyPress) -> KeyPress.Result {

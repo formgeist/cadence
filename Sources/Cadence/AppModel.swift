@@ -61,6 +61,38 @@ final class AppModel {
         }
     }
 
+    /// How an artist page shows their albums. `list` stacks each record with
+    /// its full tracklist; `grid` is the cover grid the Albums tab uses.
+    enum ArtistAlbumLayout: String, CaseIterable, Identifiable {
+        case list, grid
+
+        var id: String { rawValue }
+
+        /// Separate from `rawValue`, which is what gets persisted.
+        var label: String {
+            switch self {
+            case .list: "List"
+            case .grid: "Grid"
+            }
+        }
+
+        var systemImage: String {
+            switch self {
+            case .list: "list.bullet"
+            case .grid: "square.grid.2x2"
+            }
+        }
+
+        /// Tooltip and VoiceOver label: says what the view shows, not just
+        /// its name.
+        var help: String {
+            switch self {
+            case .list: "List view: each album with its full tracklist"
+            case .grid: "Grid view: album covers only"
+            }
+        }
+    }
+
     // MARK: Navigation
 
     private(set) var screen: Screen = .library
@@ -83,9 +115,9 @@ final class AppModel {
     /// top — the grid itself is torn down and recreated on every navigation.
     var artistGridScrollAnchor: String?
 
-    /// Same idea, for `AlbumGrid` — but that view is reused for two different
-    /// lists (the Library "Albums" tab, and one artist's discography inside
-    /// `ArtistDetailView`), so each needs its own anchor. Sharing one would
+    /// Same idea, for `AlbumGrid` — reused for the Library "Albums" tab and,
+    /// with the grid layout chosen, one artist's discography inside
+    /// `ArtistDetailView`, so each needs its own anchor. Sharing one would
     /// restore the wrong grid's scroll position after a detour through the
     /// other.
     var libraryAlbumGridScrollAnchor: Album.Key?
@@ -220,6 +252,12 @@ final class AppModel {
             sortArtists()
         }
     }
+    var artistAlbumLayout: ArtistAlbumLayout = .list {
+        didSet {
+            guard oldValue != artistAlbumLayout else { return }
+            settings.set(artistAlbumLayout.rawValue, forKey: .artistAlbumLayout)
+        }
+    }
     var albumSort: LibrarySort = .alphabetical {
         didSet {
             guard oldValue != albumSort else { return }
@@ -310,6 +348,10 @@ final class AppModel {
         }
         if let raw = settings.string(forKey: .albumSort), let restored = LibrarySort(rawValue: raw) {
             albumSort = restored
+        }
+        if let raw = settings.string(forKey: .artistAlbumLayout),
+           let restored = ArtistAlbumLayout(rawValue: raw) {
+            artistAlbumLayout = restored
         }
         recentSearches = Self.decode(settings.string(forKey: .recentSearches))
         recentlyPlayedIDs = Self.decode(settings.string(forKey: .recentlyPlayed)).compactMap(UUID.init)
