@@ -181,6 +181,8 @@ public enum SettingsKey: String, Sendable {
     case shuffleMode, repeatMode, replayGainMode
     case tab, gridZoom
     case artistSort, albumSort
+    /// How an artist page lays out their albums: `list` or `grid`.
+    case artistAlbumLayout
     /// JSON-encoded `[String]` — recent search terms and recently played
     /// track ids, most-recent first. See #72.
     case recentSearches, recentlyPlayed

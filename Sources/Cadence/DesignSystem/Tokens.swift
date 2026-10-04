@@ -112,6 +112,8 @@ enum Tokens {
         static let searchFieldMaxWidth: CGFloat = 480
         static let albumHeaderArt: CGFloat = 248
         static let artistHeaderArt: CGFloat = 156
+        /// Cover on each record of the artist page, where several share a screen.
+        static let artistAlbumArt: CGFloat = 140
         /// Narrower than an album card: an artist card carries a name and two
         /// counts, not a title that wraps.
         static let artistColumnWidth: CGFloat = 152

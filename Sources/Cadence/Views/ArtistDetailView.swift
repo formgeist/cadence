@@ -26,14 +26,33 @@ struct ArtistDetailView: View {
     var body: some View {
         @Bindable var model = model
 
-        // The grid brings the scroll view; the header rides inside it so it
-        // scrolls away rather than pinning a 200pt band over the covers.
-        AlbumGrid(albums: albums, subtitle: .year,
-                 scrollAnchor: $model.artistAlbumGridScrollAnchor) { header }
+        // The header rides inside the scroll view either way, so it scrolls
+        // away rather than pinning a 200pt band over the records.
+        switch model.artistAlbumLayout {
+        case .grid:
+            AlbumGrid(albums: albums, subtitle: .year,
+                      scrollAnchor: $model.artistAlbumGridScrollAnchor) { header }
+                .background(Tokens.Palette.surface)
+        case .list:
+            // Lazy so a long discography only builds the albums near the
+            // viewport.
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    header
+                    ForEach(albums) { album in
+                        AlbumSection(album: album)
+                    }
+                }
+            }
+            .scrollContentBackground(.hidden)
             .background(Tokens.Palette.surface)
+        }
     }
 
     private var header: some View {
+        @Bindable var model = model
+
+        return
         HStack(alignment: .bottom, spacing: 32) {
             ArtworkView(artworkID: model.artworkID(forArtist: artist.name),
                         isCircular: true,
@@ -70,6 +89,9 @@ struct ArtistDetailView: View {
                 .padding(.top, 6)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Next to the albums it rearranges, not buried in Preferences.
+            layoutPicker
         }
         .padding(.horizontal, Tokens.Space.contentInset)
         .padding(.top, 34)
@@ -82,6 +104,41 @@ struct ArtistDetailView: View {
         }
         .overlay(alignment: .bottom) {
             Rectangle().fill(Color(hex: 0x1C1C21)).frame(height: 1)
+        }
+    }
+
+    private var layoutPicker: some View {
+        HStack(spacing: 2) {
+            ForEach(AppModel.ArtistAlbumLayout.allCases) { layout in
+                let isSelected = model.artistAlbumLayout == layout
+                Button { model.artistAlbumLayout = layout } label: {
+                    Image(systemName: layout.systemImage)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(isSelected
+                                         ? Tokens.Palette.textPrimary
+                                         : Tokens.Palette.textSecondary)
+                        .frame(width: 34, height: 28)
+                        .background {
+                            RoundedRectangle(cornerRadius: Tokens.Radius.control,
+                                             style: .continuous)
+                                .fill(isSelected ? Tokens.Palette.navActive : .clear)
+                        }
+                        .contentShape(Rectangle())
+                }
+                .plainControl()
+                .help(layout.help)
+                .accessibilityLabel(layout.help)
+                .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+            }
+        }
+        .padding(2)
+        .background {
+            RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous)
+                .fill(Tokens.Palette.fieldBackground)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous)
+                .strokeBorder(Tokens.Palette.fieldBorder, lineWidth: 1)
         }
     }
 
@@ -115,5 +172,92 @@ struct ArtistDetailView: View {
     private var summary: String {
         let total = orderedTracks.reduce(0) { $0 + $1.duration }
         return "\(artist.summary) · \(DurationFormat.approximate(total))"
+    }
+}
+
+/// One record on the artist page: a small cover and title block, then the full
+/// tracklist the album page would show. The cover is a fraction of the album
+/// page's so several records fit on screen at once.
+private struct AlbumSection: View {
+    @Environment(AppModel.self) private var model
+    @Environment(PlaybackController.self) private var playback
+
+    var album: Album
+
+    private var tracks: [Track] { album.discs.flatMap(\.tracks) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            header
+            AlbumTrackList(album: album)
+                .padding(.horizontal, Tokens.Space.contentInset)
+                .padding(.top, 18)
+                .padding(.bottom, 30)
+        }
+    }
+
+    private var header: some View {
+        HStack(alignment: .center, spacing: 20) {
+            ArtworkView(artworkID: album.artworkID,
+                        cornerRadius: Tokens.Radius.card,
+                        displaySize: 280)
+                .frame(width: Tokens.Layout.artistAlbumArt,
+                       height: Tokens.Layout.artistAlbumArt)
+                .shadow(color: .black.opacity(0.45), radius: 14, y: 6)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Button { model.show(.album(album.key)) } label: {
+                    Text(album.title)
+                        .font(Tokens.Typography.sans(20, .heavy))
+                        .tracking(Tokens.Typography.Tracking.display)
+                        .foregroundStyle(Color(hex: 0xF4F4F8))
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                }
+                .plainControl()
+                .accessibilityHint("Opens the album page")
+
+                Text(metadata)
+                    .font(Tokens.Typography.sans(12.5, .medium))
+                    .foregroundStyle(Color(hex: 0x82828D))
+
+                if let format = album.dominantFormat {
+                    HStack(spacing: Tokens.Space.s) {
+                        QualityBadge(text: format.codec.name, emphasis: .accent)
+                        QualityBadge(text: format.longDescription,
+                                     spokenText: NowPlayingPane.spokenFormat(format))
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            HStack(spacing: 8) {
+                CapsuleButton(systemImage: "play.fill", kind: .filled,
+                              accessibilityLabel: "Play \(album.title)") {
+                    playback.play(album)
+                }
+                CapsuleButton(systemImage: "shuffle",
+                              accessibilityLabel: "Shuffle \(album.title)") {
+                    playback.shuffle(album)
+                }
+                MenuButton(systemImage: "plus",
+                           accessibilityLabel: "Add album to queue or a playlist") {
+                    PlaylistMenu.albumAdditions(model: model, playback: playback,
+                                                tracks: tracks)
+                }
+            }
+        }
+        .padding(.horizontal, Tokens.Space.contentInset)
+        .padding(.top, 26)
+        .padding(.bottom, 4)
+    }
+
+    private var metadata: String {
+        var parts: [String] = []
+        if let year = album.year { parts.append(String(year)) }
+        parts.append(album.trackCount == 1 ? "1 track" : "\(album.trackCount) tracks")
+        if album.hasMultipleDiscs { parts.append("\(album.discCount) discs") }
+        parts.append(DurationFormat.approximate(album.duration))
+        return parts.joined(separator: "  ·  ")
     }
 }
