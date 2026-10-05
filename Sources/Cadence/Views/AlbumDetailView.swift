@@ -9,6 +9,12 @@ struct AlbumDetailView: View {
 
     private var orderedTracks: [Track] { album.discs.flatMap(\.tracks) }
 
+    /// The artist's other records, so a neighbouring album is one click from
+    /// the bottom of this one.
+    private var otherAlbums: [Album] {
+        model.albums(byArtist: album.albumArtist).filter { $0.key != album.key }
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
@@ -16,7 +22,8 @@ struct AlbumDetailView: View {
                 AlbumTrackList(album: album)
                     .padding(.horizontal, Tokens.Space.albumInset)
                     .padding(.top, 22)
-                    .padding(.bottom, 44)
+                    .padding(.bottom, otherAlbums.isEmpty ? 44 : 36)
+                MoreFromArtist(artist: album.albumArtist, albums: otherAlbums)
             }
         }
         .scrollContentBackground(.hidden)
@@ -451,5 +458,51 @@ private struct TrackRow: View {
         parts.append(NowPlayingPane.spokenFormat(track.format))
         if isCurrent { parts.append("Now playing") }
         return parts.joined(separator: ", ")
+    }
+}
+
+/// "More from <artist>" under the tracklist. A plain grid, not `AlbumGrid`:
+/// that one owns a `ScrollView`, and this sits inside the album page's.
+private struct MoreFromArtist: View {
+    @Environment(AppModel.self) private var model
+
+    var artist: String
+    var albums: [Album]
+
+    /// Past this many the section stops being a shortcut and starts being the
+    /// artist page again, so the rest sit behind a link to it.
+    static let limit = 5
+
+    var body: some View {
+        if !albums.isEmpty {
+            VStack(alignment: .leading, spacing: Tokens.Space.l) {
+                HStack(spacing: 14) {
+                    SectionLabel("More from \(artist)", size: 10,
+                                 color: Tokens.Palette.textMuted)
+                    Rectangle().fill(Tokens.Palette.separator).frame(height: 1)
+                }
+                // Adaptive is fine at this size; it is only the full library
+                // grid where it stops being lazy. See `AlbumGrid`.
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: model.albumColumnWidth),
+                                       spacing: Tokens.Space.xl, alignment: .top)],
+                    alignment: .leading,
+                    spacing: Tokens.Space.xxl
+                ) {
+                    ForEach(Array(albums.prefix(Self.limit).enumerated()), id: \.element.id) { index, album in
+                        AlbumCard(album: album, subtitle: .year, index: index)
+                            .equatable()
+                    }
+                }
+                if albums.count > Self.limit {
+                    CapsuleButton(title: "View all", systemImage: "arrow.right",
+                                  accessibilityLabel: "View all albums by \(artist)") {
+                        model.show(.artist(artist))
+                    }
+                }
+            }
+            .padding(.horizontal, Tokens.Space.albumInset)
+            .padding(.bottom, 44)
+        }
     }
 }

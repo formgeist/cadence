@@ -133,6 +133,12 @@ enum Snapshot {
             open(container, album: "Sound of the Slow Hours", year: 2025)
         },
 
+        // Tall enough to show "More from <artist>" under the tracklist.
+        Shot(name: "04c-album-more-from-artist",
+             size: CGSize(width: Tokens.Layout.defaultWindow.width, height: 1500)) { container in
+            open(container, album: "Sound of the Slow Hours", year: 2023)
+        },
+
         // Three discs. A flat track list gets this wrong.
         Shot(name: "05-album-box-set", size: Tokens.Layout.defaultWindow) { container in
             open(container, album: "The Complete Aldeburgh Recordings")
