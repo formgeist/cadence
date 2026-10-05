@@ -17,10 +17,21 @@ struct MenuBarLabel: View {
     /// the icon was, so the gap has to live in the image's own reported size.
     private static let iconTrailingGap: CGFloat = 4
 
+    /// The status item never clips its label — it grows and pushes other menu
+    /// bar items out — so the text is shortened by character count up front.
+    /// The title gets the larger share; the artist is usually short anyway.
+    private static let maxTitleLength = 28
+    private static let maxArtistLength = 18
+
+    private static func truncated(_ text: String, to limit: Int) -> String {
+        guard text.count > limit else { return text }
+        return text.prefix(limit).trimmingCharacters(in: .whitespaces) + "…"
+    }
+
     var body: some View {
         if let track = playback.currentTrack {
             Label {
-                Text("\(track.title) · \(track.artist)")
+                Text("\(Self.truncated(track.title, to: Self.maxTitleLength)) · \(Self.truncated(track.artist, to: Self.maxArtistLength))")
                     .lineLimit(1)
                     .truncationMode(.tail)
             } icon: {
