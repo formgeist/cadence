@@ -23,6 +23,14 @@ struct ArtistDetailView: View {
         albums.flatMap { $0.discs.flatMap(\.tracks) }
     }
 
+    /// The loaded track is one of this artist's — Play resumes it.
+    private var isArtistLoaded: Bool {
+        guard let id = playback.currentTrack?.id else { return false }
+        return orderedTracks.contains { $0.id == id }
+    }
+
+    private var isArtistPlaying: Bool { isArtistLoaded && playback.isPlaying }
+
     var body: some View {
         @Bindable var model = model
 
@@ -78,10 +86,14 @@ struct ArtistDetailView: View {
                     .foregroundStyle(Color(hex: 0x82828D))
 
                 HStack(spacing: 10) {
-                    CapsuleButton(title: "Play", systemImage: "play.fill", kind: .filled) {
-                        guard let first = orderedTracks.first else { return }
-                        playback.play(first, in: orderedTracks)
+                    PlayPauseButton(isPlaying: isArtistPlaying, subject: artist.name) {
+                        if isArtistLoaded {
+                            playback.togglePlayPause()
+                        } else if let first = orderedTracks.first {
+                            playback.play(first, in: orderedTracks)
+                        }
                     }
+                    .disabled(orderedTracks.isEmpty)
                     CapsuleButton(title: "Shuffle") {
                         playback.shuffle(orderedTracks)
                     }
@@ -186,6 +198,13 @@ private struct AlbumSection: View {
 
     private var tracks: [Track] { album.discs.flatMap(\.tracks) }
 
+    private var isAlbumLoaded: Bool {
+        guard let id = playback.currentTrack?.id else { return false }
+        return tracks.contains { $0.id == id }
+    }
+
+    private var isAlbumPlaying: Bool { isAlbumLoaded && playback.isPlaying }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
@@ -232,9 +251,8 @@ private struct AlbumSection: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             HStack(spacing: 8) {
-                CapsuleButton(systemImage: "play.fill", kind: .filled,
-                              accessibilityLabel: "Play \(album.title)") {
-                    playback.play(album)
+                PlayPauseButton(isPlaying: isAlbumPlaying, size: 38, subject: album.title) {
+                    if isAlbumLoaded { playback.togglePlayPause() } else { playback.play(album) }
                 }
                 CapsuleButton(systemImage: "shuffle",
                               accessibilityLabel: "Shuffle \(album.title)") {

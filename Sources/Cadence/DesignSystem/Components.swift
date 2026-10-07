@@ -513,6 +513,41 @@ struct EmptyState<Action: View>: View {
     }
 }
 
+/// The big round accent Play/Pause button — the transport bar's centre
+/// button, sized up for a page header where it is the primary verb.
+struct PlayPauseButton: View {
+    var isPlaying: Bool
+    var size: CGFloat = 52
+    /// Names what the button does *now*, so a header can say which record.
+    var subject: String?
+    var action: () -> Void
+
+    @State private var isHovering = false
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Circle().fill(isHovering && isEnabled
+                              ? Tokens.Palette.accentHover : Tokens.Palette.accent)
+                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: size * 0.36, weight: .bold))
+                    .foregroundStyle(.white)
+                    // The play triangle is optically left-heavy; nudging it
+                    // right centres it in the circle.
+                    .offset(x: isPlaying ? 0 : size * 0.04)
+            }
+            .frame(width: size, height: size)
+            .shadow(color: Tokens.Palette.accent.opacity(0.32), radius: size * 0.3, y: size * 0.2)
+            .opacity(isEnabled ? 1 : 0.4)
+        }
+        .plainControl()
+        .onHover { isHovering = $0 }
+        .accessibilityLabel([isPlaying ? "Pause" : "Play", subject]
+            .compactMap { $0 }.joined(separator: " "))
+    }
+}
+
 /// The accent-filled Play pill and its outlined siblings on the album header.
 struct CapsuleButton: View {
     enum Kind { case filled, outlined }
