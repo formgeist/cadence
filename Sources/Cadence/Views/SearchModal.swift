@@ -132,8 +132,7 @@ struct SearchModal: View {
         @Bindable var model = model
 
         return HStack(spacing: Tokens.Space.m) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 15, weight: .semibold))
+            CadenceIcon("magnifyingglass", size: 15)
                 .foregroundStyle(Color(hex: 0x7A7A85))
                 .accessibilityHidden(true)
 
@@ -155,8 +154,7 @@ struct SearchModal: View {
             Button {
                 model.endSearch()
             } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 15))
+                CadenceIcon("xmark.circle.fill", size: 15)
                     .foregroundStyle(Color(hex: 0x7A7A85))
             }
             .plainControl()
@@ -512,8 +510,7 @@ private func modalGroup(_ label: String, _ rows: [SearchRow],
             Button(action: row.action) {
                 HStack(spacing: Tokens.Space.m) {
                     if let icon = row.icon {
-                        Image(systemName: icon)
-                            .font(.system(size: 15, weight: .medium))
+                        CadenceIcon(icon, size: 15)
                             .foregroundStyle(Color(hex: 0x7A7A85))
                             .frame(width: 40, height: 40)
                     } else {

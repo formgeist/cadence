@@ -146,8 +146,7 @@ private struct NavigationRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 11) {
-                Image(systemName: tab.icon)
-                    .font(.system(size: 13, weight: .regular))
+                CadenceIcon(tab.icon, size: 13)
                     .frame(width: 16, height: 16)
                 Text(tab.rawValue)
                     .font(Tokens.Typography.navItem)

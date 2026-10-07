@@ -61,8 +61,7 @@ private struct NavigationChevron: View {
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: direction == .backward ? "chevron.left" : "chevron.right")
-                .font(.system(size: 12, weight: .medium))
+            CadenceIcon(direction == .backward ? "chevron.left" : "chevron.right", size: 12)
                 .foregroundStyle(isEnabled
                                  ? (isHovering ? Color(hex: 0xC9C9D2) : Color(hex: 0x6E6E78))
                                  : Color(hex: 0x43434C))
@@ -97,8 +96,7 @@ struct SearchTrigger: View {
             focusRequester?.requestFocus()
         } label: {
             HStack(spacing: Tokens.Space.s + 2) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 11, weight: .semibold))
+                CadenceIcon("magnifyingglass", size: 11)
                     .foregroundStyle(Color(hex: 0x7A7A85))
                 Text("Search artists, albums, tracks")
                     .font(Tokens.Typography.sans(13.5, .medium))

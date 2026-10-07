@@ -81,8 +81,7 @@ struct TrackDragPreview: View {
 
     var body: some View {
         HStack(spacing: 7) {
-            Image(systemName: systemImage)
-                .font(.system(size: 10, weight: .medium))
+            CadenceIcon(systemImage, size: 10)
                 .foregroundStyle(Tokens.Palette.accent)
                 .frame(width: 18, height: 18)
                 .background {
@@ -188,7 +187,7 @@ enum PlaylistMenu {
         static let play = "play.fill"
         static let shuffle = "shuffle"
         static let addToQueue = "text.append"
-        static let addToPlaylist = "music.note.list"
+        static let addToPlaylist = "text.badge.plus"
         static let newPlaylist = "plus"
         static let rename = "pencil"
         static let delete = "trash"

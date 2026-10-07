@@ -15,8 +15,7 @@ struct EmptyLibraryView: View {
                 Circle()
                     .strokeBorder(Tokens.Palette.accent.opacity(0.25), lineWidth: 1)
                     .frame(width: 88, height: 88)
-                Image(systemName: "waveform")
-                    .font(.system(size: 30, weight: .ultraLight))
+                CadenceIcon("waveform", size: 30)
                     .foregroundStyle(Tokens.Palette.accent)
             }
             .accessibilityHidden(true)

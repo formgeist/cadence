@@ -344,8 +344,7 @@ private struct PlaylistTrackRow: View {
             Group {
                 if isHovering {
                     Button(action: onToggle) {
-                        Image(systemName: isCurrent && isPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 13))
+                        CadenceIcon(isCurrent && isPlaying ? "pause.fill" : "play.fill", size: 13, boxScale: 1.25)
                             .frame(width: 28, height: 18, alignment: .leading)
                             .contentShape(Rectangle())
                     }

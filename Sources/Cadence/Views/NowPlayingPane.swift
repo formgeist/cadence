@@ -188,8 +188,7 @@ struct NowPlayingPane: View {
         if !skipped.isEmpty {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 9))
+                    CadenceIcon("exclamationmark.triangle.fill", size: 9)
                         .foregroundStyle(Tokens.Palette.accent)
                         .accessibilityHidden(true)
                     Text(skipped.count == 1
@@ -256,8 +255,7 @@ struct NowPlayingPane: View {
     private var idle: some View {
         VStack(spacing: Tokens.Space.m) {
             Spacer()
-            Image(systemName: "waveform")
-                .font(.system(size: 28, weight: .ultraLight))
+            CadenceIcon("waveform", size: 28)
                 .foregroundStyle(Tokens.Palette.textMuted)
             Text("Nothing playing")
                 .font(Tokens.Typography.caption)
@@ -299,8 +297,7 @@ struct TransportControls: View {
             Button { playback.togglePlayPause() } label: {
                 ZStack {
                     Circle().fill(Tokens.Palette.accent)
-                    Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: glyphSize, weight: .bold))
+                    CadenceIcon(playback.isPlaying ? "pause.fill" : "play.fill", size: glyphSize)
                         .foregroundStyle(.white)
                         // The play triangle is optically left-heavy; nudging it
                         // right centres it in the circle.
@@ -337,8 +334,7 @@ private struct TransportButton: View {
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: size, weight: .medium))
+            CadenceIcon(systemImage, size: size)
                 .foregroundStyle(isHovering ? .white : Color(hex: 0x9B9BA5))
                 .frame(width: 26)
         }
@@ -357,8 +353,7 @@ private struct ModeButton: View {
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: 13, weight: .medium))
+            CadenceIcon(systemImage, size: 13)
                 .foregroundStyle(isOn
                                  ? Tokens.Palette.accent
                                  : (isHovering ? .white : Color(hex: 0x71717B)))
@@ -375,8 +370,7 @@ private struct ModeButton: View {
 /// Hover-only affordance on the artwork; the artwork button itself does the work.
 private struct FullScreenBadge: View {
     var body: some View {
-        Image(systemName: "arrow.up.left.and.arrow.down.right")
-            .font(.system(size: 11, weight: .semibold))
+        CadenceIcon("arrow.up.left.and.arrow.down.right", size: 11)
             .foregroundStyle(.white)
             .frame(width: 26, height: 26)
             .background(.black.opacity(0.55), in: Circle())

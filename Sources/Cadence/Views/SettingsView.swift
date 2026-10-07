@@ -155,8 +155,7 @@ private struct LibrarySettings: View {
 
             if let error = importer.errorMessage {
                 HStack(spacing: Tokens.Space.s) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.system(size: 10))
+                    CadenceIcon("exclamationmark.triangle", size: 10)
                         .foregroundStyle(Tokens.Palette.textMuted)
                     Text(error)
                         .font(Tokens.Typography.captionSmall)
@@ -190,8 +189,7 @@ private struct LibrarySettings: View {
             Button {
                 model.folderPendingRemoval = folder
             } label: {
-                Image(systemName: "minus.circle")
-                    .font(.system(size: 14))
+                CadenceIcon("minus.circle", size: 14)
                     .foregroundStyle(Tokens.Palette.textSecondary)
             }
             .plainControl()
@@ -229,8 +227,7 @@ private struct UnreadableFiles: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.Space.s) {
             HStack(spacing: Tokens.Space.s) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 10))
+                CadenceIcon("exclamationmark.triangle.fill", size: 10)
                     .foregroundStyle(Tokens.Palette.accent)
                 Text(countLabel)
                     .font(Tokens.Typography.sans(12, .semibold))
@@ -306,8 +303,7 @@ private struct UnreadableFiles: View {
                 NSWorkspace.shared.activateFileViewerSelecting(
                     [URL(fileURLWithPath: failure.path)])
             } label: {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 12))
+                CadenceIcon("magnifyingglass", size: 12)
                     .foregroundStyle(Tokens.Palette.textSecondary)
             }
             .plainControl()
@@ -397,8 +393,7 @@ private struct ScrobbleSettings: View {
 
     private func statusLine(_ text: String, icon: String) -> some View {
         HStack(spacing: Tokens.Space.s) {
-            Image(systemName: icon)
-                .font(.system(size: 10))
+            CadenceIcon(icon, size: 10)
                 .foregroundStyle(Tokens.Palette.textMuted)
             Text(text)
                 .font(Tokens.Typography.captionSmall)

@@ -625,7 +625,7 @@ private struct PlaylistsEmptyState: View {
 
     var body: some View {
         EmptyState(
-            systemImage: "list.bullet",
+            systemImage: "music.note.list",
             title: "No playlists yet",
             message: "A playlist is your own running order.\nMake one, then drop tracks into it as you go."
         ) {
@@ -914,8 +914,7 @@ private struct RecentCard: View {
                         cornerRadius: Tokens.Radius.control,
                         displaySize: 320)
                 .overlay(alignment: .bottomLeading) {
-                    Image(systemName: "music.note.list")
-                        .font(.system(size: 10, weight: .semibold))
+                    CadenceIcon("music.note.list", size: 10)
                         .foregroundStyle(Color(hex: 0xEBEBF0))
                         .padding(5)
                         .background {
