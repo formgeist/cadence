@@ -5,25 +5,10 @@ struct NowPlayingPane: View {
     @Environment(AppModel.self) private var model
     @Environment(PlaybackController.self) private var playback
     @Environment(\.isSilentPlayback) private var isSilentPlayback
+    @State private var isHoveringArt = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                SectionLabel("Now playing")
-                Spacer()
-                Button { model.isImmersive = true } label: {
-                    Image(systemName: "arrow.up.left.and.arrow.down.right")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Color(hex: 0x6C6C76))
-                        .padding(4)
-                }
-                .plainControl()
-                .disabled(playback.currentTrack == nil)
-                .accessibilityLabel("Full-screen artwork")
-            }
-            .padding(.horizontal, Tokens.Space.paneInset)
-            .padding(.top, Tokens.Space.xl)
-
             if let track = playback.currentTrack {
                 content(for: track)
             } else {
@@ -50,15 +35,22 @@ struct NowPlayingPane: View {
                             cornerRadius: Tokens.Radius.card,
                             caption: "ARTWORK",
                             stripe: 7,
-                            displaySize: 320)
+                            displaySize: 360)
                     .aspectRatio(1, contentMode: .fit)
                     .shadow(color: .black.opacity(0.5), radius: 18, y: 9)
+                    .overlay(alignment: .topTrailing) {
+                        FullScreenBadge()
+                            .opacity(isHoveringArt ? 1 : 0)
+                            .padding(8)
+                    }
             }
             .plainControl()
+            .onHover { isHoveringArt = $0 }
+            .animation(.easeOut(duration: 0.12), value: isHoveringArt)
             .accessibilityLabel("Artwork for \(track.albumTitle)")
             .accessibilityHint("Opens full-screen artwork")
             .padding(.horizontal, Tokens.Space.paneInset)
-            .padding(.top, Tokens.Space.l)
+            .padding(.top, Tokens.Space.xl)
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(track.title)
@@ -377,5 +369,17 @@ private struct ModeButton: View {
         .accessibilityLabel(label)
         .accessibilityValue(isOn ? "On" : "Off")
         .accessibilityAddTraits(isOn ? .isSelected : [])
+    }
+}
+
+/// Hover-only affordance on the artwork; the artwork button itself does the work.
+private struct FullScreenBadge: View {
+    var body: some View {
+        Image(systemName: "arrow.up.left.and.arrow.down.right")
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(width: 26, height: 26)
+            .background(.black.opacity(0.55), in: Circle())
+            .accessibilityHidden(true)
     }
 }

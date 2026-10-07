@@ -103,7 +103,7 @@ enum Tokens {
 
     enum Layout {
         static let sidebarWidth: CGFloat = 216
-        static let nowPlayingWidth: CGFloat = 300
+        static let nowPlayingWidth: CGFloat = 340
         static let titleBarHeight: CGFloat = 52
         /// Room for the real traffic lights. The mock draws its own; a native
         /// window with `.hiddenTitleBar` already has them, so this is reserved

@@ -72,8 +72,6 @@ struct ArtistDetailView: View {
                 .onHover { isHoveringArt = $0 }
 
             VStack(alignment: .leading, spacing: 12) {
-                SectionLabel("Artist", size: 10.5, color: Color(hex: 0x8D8D98))
-
                 Text(artist.name)
                     .font(Tokens.Typography.sans(38, .heavy))
                     .tracking(Tokens.Typography.Tracking.display)
