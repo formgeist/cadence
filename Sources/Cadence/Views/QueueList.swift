@@ -155,30 +155,6 @@ struct PlaybackOptions: View {
         @Bindable var playback = playback
 
         VStack(spacing: Tokens.Space.m) {
-            HStack(spacing: Tokens.Space.m) {
-                Spacer()
-
-                MenuAnchor {
-                    ReplayGainMode.allCases.map { mode in
-                        MenuItem.choice(mode.label,
-                                        isOn: playback.replayGainMode == mode) {
-                            playback.replayGainMode = mode
-                        }
-                    }
-                } label: { isOpen, toggle in
-                    Button(action: toggle) {
-                        Text("RG · \(playback.replayGainMode.label)")
-                            .font(Tokens.Typography.mono(9.5, .medium))
-                            .tracking(0.6)
-                            .foregroundStyle(replayGainTint(isOpen: isOpen))
-                    }
-                    .plainControl()
-                    .accessibilityLabel("ReplayGain")
-                    .accessibilityValue(playback.replayGainMode.label)
-                    .help("How loudness is levelled between tracks")
-                }
-            }
-
             HStack(spacing: Tokens.Space.s) {
                 Button {
                     playback.isMuted.toggle()
@@ -199,15 +175,6 @@ struct PlaybackOptions: View {
                 VolumeSlider(value: $playback.volume)
             }
         }
-    }
-
-    /// Lit while its menu is open, the way every other trigger in the app now
-    /// is — this one has no bezel to carry the accent, so the text does.
-    private func replayGainTint(isOpen: Bool) -> Color {
-        if isOpen { return Tokens.Palette.accent }
-        return playback.replayGainMode == .off
-            ? Tokens.Palette.textMuted
-            : Tokens.Palette.textSecondary
     }
 
     private var volumeIcon: String {

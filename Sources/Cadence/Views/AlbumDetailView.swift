@@ -54,9 +54,6 @@ struct AlbumDetailView: View {
             .shadow(color: .black.opacity(0.55), radius: 25, y: 12)
 
             VStack(alignment: .leading, spacing: 14) {
-                SectionLabel(album.isCompilation ? "Compilation" : "Album",
-                             size: 10.5, color: Color(hex: 0x8D8D98))
-
                 Text(album.title)
                     .font(Tokens.Typography.display)
                     .tracking(Tokens.Typography.Tracking.display)
