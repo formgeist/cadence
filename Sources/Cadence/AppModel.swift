@@ -39,7 +39,7 @@ final class AppModel {
             case .recents: "clock"
             case .artists: "person"
             case .albums: "circle.circle"
-            case .playlists: "list.bullet"
+            case .playlists: "music.note.list"
             }
         }
     }

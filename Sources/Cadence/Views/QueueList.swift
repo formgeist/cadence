@@ -159,8 +159,7 @@ struct PlaybackOptions: View {
                 Button {
                     playback.isMuted.toggle()
                 } label: {
-                    Image(systemName: volumeIcon)
-                        .font(.system(size: 11))
+                    CadenceIcon(volumeIcon, size: 11)
                         .foregroundStyle(Tokens.Palette.textSecondary)
                         // The icon changes width with the number of waves; a
                         // fixed box stops the slider shifting as it does.

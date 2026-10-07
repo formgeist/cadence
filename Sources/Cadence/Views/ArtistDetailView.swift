@@ -122,8 +122,7 @@ struct ArtistDetailView: View {
             ForEach(AppModel.ArtistAlbumLayout.allCases) { layout in
                 let isSelected = model.artistAlbumLayout == layout
                 Button { model.artistAlbumLayout = layout } label: {
-                    Image(systemName: layout.systemImage)
-                        .font(.system(size: 13, weight: .semibold))
+                    CadenceIcon(layout.systemImage, size: 13)
                         .foregroundStyle(isSelected
                                          ? Tokens.Palette.textPrimary
                                          : Tokens.Palette.textSecondary)

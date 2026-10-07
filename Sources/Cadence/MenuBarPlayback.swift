@@ -245,8 +245,7 @@ private struct GlassTransportButton: View {
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: glyphSize, weight: .semibold))
+            CadenceIcon(systemImage, size: glyphSize)
                 .contentTransition(.symbolEffect(.replace))
                 .foregroundStyle(.white.opacity(isEnabled ? 0.95 : 0.35))
                 .frame(width: side, height: side)

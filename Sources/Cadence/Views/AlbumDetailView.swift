@@ -425,8 +425,7 @@ private struct TrackRow: View {
                     // A deliberate single click still plays, so the double
                     // click is the safeguard and not the only way in.
                     Button(action: onToggle) {
-                        Image(systemName: isCurrent && isPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 13))
+                        CadenceIcon(isCurrent && isPlaying ? "pause.fill" : "play.fill", size: 13, boxScale: 1.25)
                             .frame(width: 28, height: 18, alignment: .leading)
                             .contentShape(Rectangle())
                     }

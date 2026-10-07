@@ -354,8 +354,7 @@ struct IconButton: View {
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: glyphSize, weight: .semibold))
+            CadenceIcon(systemImage, size: glyphSize)
                 .foregroundStyle(isHovering || isActive
                                  ? Color(hex: 0xEDEDF2) : Color(hex: 0x6E6E78))
                 .frame(width: side, height: side)
@@ -488,8 +487,7 @@ struct EmptyState<Action: View>: View {
                 Circle()
                     .strokeBorder(Tokens.Palette.accent.opacity(0.25), lineWidth: 1)
                     .frame(width: 88, height: 88)
-                Image(systemName: systemImage)
-                    .font(.system(size: 30, weight: .ultraLight))
+                CadenceIcon(systemImage, size: 30)
                     .foregroundStyle(Tokens.Palette.accent)
             }
             .accessibilityHidden(true)
@@ -530,8 +528,7 @@ struct PlayPauseButton: View {
             ZStack {
                 Circle().fill(isHovering && isEnabled
                               ? Tokens.Palette.accentHover : Tokens.Palette.accent)
-                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: size * 0.36, weight: .bold))
+                CadenceIcon(isPlaying ? "pause.fill" : "play.fill", size: size * 0.36)
                     .foregroundStyle(.white)
                     // The play triangle is optically left-heavy; nudging it
                     // right centres it in the circle.
@@ -573,8 +570,7 @@ struct CapsuleButton: View {
         Button(action: action) {
             HStack(spacing: 9) {
                 if let systemImage {
-                    Image(systemName: systemImage)
-                        .font(.system(size: kind == .filled ? 12 : 13, weight: .bold))
+                    CadenceIcon(systemImage, size: kind == .filled ? 12 : 13)
                 }
                 if let title {
                     Text(title)

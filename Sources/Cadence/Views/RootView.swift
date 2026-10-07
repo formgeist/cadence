@@ -280,7 +280,7 @@ private struct Banner: View {
 
     var body: some View {
         HStack(spacing: Tokens.Space.m) {
-            Image(systemName: icon)
+            CadenceIcon(icon, size: 13)
                 .foregroundStyle(tint)
             Text(text)
                 .font(Tokens.Typography.caption)
@@ -296,8 +296,7 @@ private struct Banner: View {
             }
             if let onDismiss {
                 Button(action: onDismiss) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 9, weight: .bold))
+                    CadenceIcon("xmark", size: 9)
                         .foregroundStyle(Tokens.Palette.textMuted)
                 }
                 .plainControl()

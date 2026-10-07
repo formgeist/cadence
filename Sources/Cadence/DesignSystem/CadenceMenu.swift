@@ -282,8 +282,7 @@ private struct MenuRow: View {
             // row still has to line its label up with the ticked one.
             Group {
                 if let systemImage {
-                    Image(systemName: systemImage)
-                        .font(.system(size: isChecked ? 10 : 11, weight: .semibold))
+                    CadenceIcon(systemImage, size: isChecked ? 10 : 11)
                         .foregroundStyle(glyphColor)
                 }
             }
@@ -306,8 +305,7 @@ private struct MenuRow: View {
             }
 
             if hasSubmenu {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 8.5, weight: .bold))
+                CadenceIcon("chevron.right", size: 8.5)
                     .foregroundStyle(isFocused
                                      ? Tokens.Palette.textSecondary
                                      : Tokens.Palette.textFaint)
