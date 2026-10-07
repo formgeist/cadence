@@ -39,7 +39,7 @@ struct MenuBarLabel: View {
             }
             .labelStyle(.titleAndIcon)
         } else {
-            Image(systemName: "music.note")
+            Image(nsImage: CadenceGlyph.templateImage("music.note", side: 18))
         }
     }
 
@@ -246,7 +246,6 @@ private struct GlassTransportButton: View {
     var body: some View {
         Button(action: action) {
             CadenceIcon(systemImage, size: glyphSize)
-                .contentTransition(.symbolEffect(.replace))
                 .foregroundStyle(.white.opacity(isEnabled ? 0.95 : 0.35))
                 .frame(width: side, height: side)
                 .contentShape(Circle())

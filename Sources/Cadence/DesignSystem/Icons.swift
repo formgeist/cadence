@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 // The Cadence icon set.
 //
@@ -7,9 +8,9 @@ import SwiftUI
 // rest are lined. The artwork lives here as SVG path data so it can be
 // compared one-to-one with the design sheet.
 //
-// Call sites keep passing the SF Symbol name they always used. `CadenceIcon`
-// looks the name up in `CadenceGlyph.table` and falls back to the system
-// symbol for anything not drawn yet, so the set can grow one icon at a time.
+// Call sites pass the SF Symbol name the glyph replaced, as a stable key, and
+// `CadenceIcon` looks it up in `CadenceGlyph.table`. No system symbols are
+// drawn anywhere in the app.
 
 /// How a glyph is sized: `size` is the point size an `Image(systemName:)`
 /// would have had at the same call site. The artwork keeps a 2-unit margin
@@ -49,8 +50,10 @@ struct CadenceIcon: View {
             .frame(width: side, height: side)
             .accessibilityHidden(true)
         } else {
-            Image(systemName: name)
-                .font(.system(size: size))
+            // Every name the app passes has art; a miss is a missing table
+            // entry, not something to paper over with a system symbol.
+            let _ = assertionFailure("No Cadence glyph named \(name)")
+            Color.clear.frame(width: size * boxScale, height: size * boxScale)
         }
     }
 }
@@ -106,6 +109,37 @@ struct CadenceGlyph: Sendable {
     }
 
     let parts: [Part]
+
+    /// A template image for places SwiftUI views cannot go, such as the menu
+    /// bar item, which the system tints to match the bar.
+    @MainActor
+    static func templateImage(_ name: String, side: CGFloat) -> NSImage {
+        let image = NSImage(size: NSSize(width: side, height: side), flipped: true) { _ in
+            guard let glyph = table[name], let context = NSGraphicsContext.current?.cgContext else {
+                return false
+            }
+            let scale = side / artboard
+            context.scaleBy(x: scale, y: scale)
+            context.setFillColor(NSColor.black.cgColor)
+            context.setStrokeColor(NSColor.black.cgColor)
+            context.setLineCap(.round)
+            context.setLineJoin(.round)
+            for part in glyph.parts {
+                if part.fill {
+                    context.addPath(part.path.cgPath)
+                    context.fillPath()
+                }
+                if let width = part.stroke {
+                    context.addPath(part.path.cgPath)
+                    context.setLineWidth(width)
+                    context.strokePath()
+                }
+            }
+            return true
+        }
+        image.isTemplate = true
+        return image
+    }
 
     private init(_ parts: [Part]) { self.parts = parts }
 
