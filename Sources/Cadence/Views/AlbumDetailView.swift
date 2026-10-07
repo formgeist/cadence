@@ -172,7 +172,12 @@ struct AlbumTrackList: View {
     /// leaves this alone: that row is already on screen, and centering it
     /// anyway reads as the list jumping under the pointer.
     @State private var keyboardScrollTarget: Track.ID?
-    @FocusState private var isTrackListFocused: Bool
+    /// Focus lives on the rows, not on the list as a whole. Focusing a view
+    /// scrolls it into sight, and a `focusable()` list taller than the window
+    /// scrolled to its own top on every click — the page jumping up whenever
+    /// you had scrolled down and picked a track. A row is on screen already
+    /// when it takes focus, so there is nothing to scroll.
+    @FocusState private var focusedTrackID: Track.ID?
     @State private var typeAhead = TypeAheadBuffer()
     @State private var isShowingCredits = false
 
@@ -187,6 +192,8 @@ struct AlbumTrackList: View {
                 .onChange(of: keyboardScrollTarget) { _, new in
                     guard let new else { return }
                     proxy.scrollTo(new, anchor: .center)
+                    // After the scroll, so the row exists to take focus.
+                    DispatchQueue.main.async { focusedTrackID = new }
                 }
         }
         // A different album, reached without this view ever leaving the
@@ -196,6 +203,7 @@ struct AlbumTrackList: View {
         .onChange(of: album.key) { _, _ in
             selectedTrackID = nil
             keyboardScrollTarget = nil
+            focusedTrackID = nil
         }
         .sheet(isPresented: $isShowingCredits) {
             AlbumCreditsSheet(album: album)
@@ -235,7 +243,17 @@ struct AlbumTrackList: View {
                         }
                     )
                     .id(track.id)
-                    .simultaneousGesture(TapGesture().onEnded { isTrackListFocused = true })
+                    .focusable()
+                    .focusEffectDisabled()
+                    .focused($focusedTrackID, equals: track.id)
+                    .simultaneousGesture(TapGesture().onEnded { focusedTrackID = track.id })
+                    .onKeyPress { handleTrackListKeyPress($0) }
+                    // Arrow keys, not `.onKeyPress`: `ScrollView` implements the same
+                    // `moveUp:`/`moveDown:` responder actions for its own line-scrolling
+                    // and wins them before a nested `.onKeyPress` ever sees the event.
+                    // `.onMoveCommand` hooks those same selectors, so this handler is the
+                    // one that answers instead of the scroll view swallowing them.
+                    .onMoveCommand { handleMove($0) }
                     .cadenceContextMenu(onOpen: { selectedTrackID = track.id }) {
                         PlaylistMenu.track(
                             track,
@@ -252,30 +270,20 @@ struct AlbumTrackList: View {
                 }
             }
         }
-        .focusable()
-        .focusEffectDisabled()
-        .focused($isTrackListFocused)
-        .onKeyPress { handleTrackListKeyPress($0) }
-        // Arrow keys, not `.onKeyPress`: `ScrollView` implements the same
-        // `moveUp:`/`moveDown:` responder actions for its own line-scrolling
-        // and wins them before a nested `.onKeyPress` ever sees the event.
-        // `.onMoveCommand` hooks those same selectors, so this handler is the
-        // one that answers instead of the scroll view swallowing them.
-        .onMoveCommand { direction in
-            guard let direction = GridNavigation.Direction(direction),
-                  direction == .up || direction == .down else { return }
-            let current = orderedTracks.firstIndex { $0.id == selectedTrackID }
-            if let index = GridNavigation.move(from: current, by: direction,
-                                               count: orderedTracks.count, columns: 1) {
-                selectedTrackID = orderedTracks[index].id
-                keyboardScrollTarget = orderedTracks[index].id
-            }
+        // Tabbing into the list lands on a row; selection follows focus.
+        .onChange(of: focusedTrackID) { _, id in
+            if let id { selectedTrackID = id }
         }
-        .onChange(of: isTrackListFocused) { _, focused in
-            if focused, selectedTrackID == nil {
-                selectedTrackID = orderedTracks.first?.id
-                keyboardScrollTarget = orderedTracks.first?.id
-            }
+    }
+
+    private func handleMove(_ direction: MoveCommandDirection) {
+        guard let direction = GridNavigation.Direction(direction),
+              direction == .up || direction == .down else { return }
+        let current = orderedTracks.firstIndex { $0.id == selectedTrackID }
+        if let index = GridNavigation.move(from: current, by: direction,
+                                           count: orderedTracks.count, columns: 1) {
+            selectedTrackID = orderedTracks[index].id
+            keyboardScrollTarget = orderedTracks[index].id
         }
     }
 
