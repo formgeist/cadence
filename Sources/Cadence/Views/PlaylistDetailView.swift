@@ -40,6 +40,16 @@ struct PlaylistDetailView: View {
     private var entries: [AppModel.PlaylistEntry] { model.entries(in: playlist) }
     private var tracks: [Track] { entries.map(\.track) }
 
+    /// The loaded track is one of this playlist's — Play resumes it.
+    private func isPlaylistLoaded(_ tracks: [Track]) -> Bool {
+        guard let id = playback.currentTrack?.id else { return false }
+        return tracks.contains { $0.id == id }
+    }
+
+    private var isPlaylistPlaying: Bool {
+        isPlaylistLoaded(tracks) && playback.isPlaying
+    }
+
     var body: some View {
         let entries = entries
         let tracks = entries.map(\.track)
@@ -95,8 +105,14 @@ struct PlaylistDetailView: View {
                     .foregroundStyle(Color(hex: 0x82828D))
 
                 HStack(spacing: 10) {
-                    CapsuleButton(title: "Play", systemImage: "play.fill", kind: .filled) {
-                        playback.play(tracks, fromPlaylist: playlist.id)
+                    PlayPauseButton(isPlaying: isPlaylistPlaying, subject: playlist.name) {
+                        // Mid-playlist, the button drives the transport; it
+                        // only starts over when something else is loaded.
+                        if isPlaylistLoaded(tracks) {
+                            playback.togglePlayPause()
+                        } else {
+                            playback.play(tracks, fromPlaylist: playlist.id)
+                        }
                     }
                     .disabled(tracks.isEmpty)
 
@@ -162,7 +178,9 @@ struct PlaylistDetailView: View {
                     PlaylistTrackRow(
                         entry: entry,
                         isCurrent: playback.currentTrack?.id == entry.track.id,
-                        isSelected: selectedEntry == entry.id
+                        isPlaying: playback.isPlaying,
+                        isSelected: selectedEntry == entry.id,
+                        onToggle: { toggle(entry) }
                     )
                     .contentShape(Rectangle())
                     .overlay(alignment: .top) {
@@ -243,6 +261,16 @@ struct PlaylistDetailView: View {
         playback.play(entry.track, in: tracks, from: playlist.id)
     }
 
+    /// The hover glyph: pause or resume the current row, play any other.
+    private func toggle(_ entry: AppModel.PlaylistEntry) {
+        if playback.currentTrack?.id == entry.track.id {
+            selectedEntry = entry.id
+            playback.togglePlayPause()
+        } else {
+            play(entry)
+        }
+    }
+
     /// Row offsets translated to stored positions before they reach the
     /// store. The two are the same today, but a deletion aimed at the wrong
     /// row is silent and permanent, so this one does not rely on it.
@@ -305,19 +333,34 @@ private struct PlaylistTrackRow: View {
 
     var entry: AppModel.PlaylistEntry
     var isCurrent: Bool
+    var isPlaying: Bool
     var isSelected: Bool
+    var onToggle: () -> Void
+
+    @State private var isHovering = false
 
     private var track: Track { entry.track }
 
     var body: some View {
         HStack(spacing: Tokens.Space.l) {
             Group {
-                if isCurrent {
+                if isHovering {
+                    Button(action: onToggle) {
+                        Image(systemName: isCurrent && isPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 13))
+                            .frame(width: 28, height: 18, alignment: .leading)
+                            .contentShape(Rectangle())
+                    }
+                    .plainControl()
+                    .focusable(false)
+                    // The row already says all of this, and says it better.
+                    .accessibilityHidden(true)
+                } else if isCurrent {
                     // A shape, not just a color, marks the playing track —
                     // color alone is invisible to colorblind users and under
                     // Differentiate Without Color.
-                    Image(systemName: "speaker.wave.2.fill")
-                        .font(.system(size: 10))
+                    EqualizerBars(isAnimating: isPlaying)
+                        .frame(width: 28, height: 18, alignment: .leading)
                 } else {
                     Text(String(format: "%02d", entry.position + 1))
                         .font(Tokens.Typography.mono(11.5))
@@ -358,5 +401,6 @@ private struct PlaylistTrackRow: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
         .hoverHighlight(isActive: isCurrent || isSelected)
+        .onHover { isHovering = $0 }
     }
 }

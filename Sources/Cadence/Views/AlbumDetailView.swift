@@ -9,6 +9,14 @@ struct AlbumDetailView: View {
 
     private var orderedTracks: [Track] { album.discs.flatMap(\.tracks) }
 
+    /// The loaded track belongs to this album — Play resumes it, not restarts.
+    private var isAlbumLoaded: Bool {
+        guard let id = playback.currentTrack?.id else { return false }
+        return orderedTracks.contains { $0.id == id }
+    }
+
+    private var isAlbumPlaying: Bool { isAlbumLoaded && playback.isPlaying }
+
     /// The artist's other records, so a neighbouring album is one click from
     /// the bottom of this one.
     private var otherAlbums: [Album] {
@@ -63,8 +71,10 @@ struct AlbumDetailView: View {
                 badges
 
                 HStack(spacing: 10) {
-                    CapsuleButton(title: "Play", systemImage: "play.fill", kind: .filled) {
-                        playback.play(album)
+                    PlayPauseButton(isPlaying: isAlbumPlaying, subject: album.title) {
+                        // Mid-album, the button drives the transport; it only
+                        // starts the record over when something else is loaded.
+                        if isAlbumLoaded { playback.togglePlayPause() } else { playback.play(album) }
                     }
                     CapsuleButton(title: "Shuffle") { playback.shuffle(album) }
                     // A menu, not a button: the queue was the only thing an
@@ -234,9 +244,18 @@ struct AlbumTrackList: View {
                     TrackRow(
                         track: track,
                         isCurrent: playback.currentTrack?.id == track.id,
+                        isPlaying: playback.isPlaying,
                         isSelected: selectedTrackID == track.id,
                         showsArtist: album.showsTrackArtists,
                         onSelect: { selectedTrackID = track.id },
+                        onToggle: {
+                            selectedTrackID = track.id
+                            if playback.currentTrack?.id == track.id {
+                                playback.togglePlayPause()
+                            } else {
+                                playback.play(track, in: orderedTracks)
+                            }
+                        },
                         onPlay: {
                             selectedTrackID = track.id
                             playback.play(track, in: orderedTracks)
@@ -337,11 +356,16 @@ private struct TrackRow: View {
 
     var track: Track
     var isCurrent: Bool
+    /// Whether audio is running, so the current row can show pause and a
+    /// moving equalizer rather than a static mark.
+    var isPlaying: Bool
     var isSelected: Bool
     /// On a single-artist album, repeating the album artist under every title
     /// is noise. On a compilation it is the most useful column on the screen.
     var showsArtist: Bool
     var onSelect: () -> Void
+    /// The hover glyph: pause or resume on the current row, play elsewhere.
+    var onToggle: () -> Void
     var onPlay: () -> Void
 
     @State private var isHovering = false
@@ -403,9 +427,9 @@ private struct TrackRow: View {
                 if isHovering {
                     // A deliberate single click still plays, so the double
                     // click is the safeguard and not the only way in.
-                    Button(action: onPlay) {
-                        Image(systemName: "play.fill")
-                            .font(.system(size: 9))
+                    Button(action: onToggle) {
+                        Image(systemName: isCurrent && isPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 13))
                             .frame(width: 28, height: 18, alignment: .leading)
                             .contentShape(Rectangle())
                     }
@@ -417,8 +441,7 @@ private struct TrackRow: View {
                     // A shape, not just a color, marks the playing track —
                     // color alone is invisible to colorblind users and under
                     // Differentiate Without Color.
-                    Image(systemName: "speaker.wave.2.fill")
-                        .font(.system(size: 10))
+                    EqualizerBars(isAnimating: isPlaying)
                         .frame(width: 28, height: 18, alignment: .leading)
                 } else {
                     Text(track.trackNumber.map { String(format: "%02d", $0) } ?? "–")
@@ -466,6 +489,35 @@ private struct TrackRow: View {
         parts.append(NowPlayingPane.spokenFormat(track.format))
         if isCurrent { parts.append("Now playing") }
         return parts.joined(separator: ", ")
+    }
+}
+
+/// Three bars bouncing out of phase — the "this one is playing" mark. Holds
+/// still at a low height when paused, and under Reduce Motion.
+struct EqualizerBars: View {
+    var isAnimating: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private static let height: CGFloat = 14
+    private static let phases: [Double] = [0, 1.7, 3.4]
+    private static let speeds: [Double] = [5.2, 6.8, 4.4]
+
+    var body: some View {
+        let moving = isAnimating && !reduceMotion
+        TimelineView(.animation(paused: !moving)) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            HStack(alignment: .bottom, spacing: 2) {
+                ForEach(0..<3, id: \.self) { i in
+                    let level = moving
+                        ? 0.25 + 0.75 * (0.5 + 0.5 * sin(t * Self.speeds[i] + Self.phases[i]))
+                        : 0.4
+                    RoundedRectangle(cornerRadius: 1)
+                        .frame(width: 3, height: Self.height * level)
+                }
+            }
+            .frame(height: Self.height, alignment: .bottom)
+        }
+        .accessibilityHidden(true)
     }
 }
 
