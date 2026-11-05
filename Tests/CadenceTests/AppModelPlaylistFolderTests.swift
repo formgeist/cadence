@@ -162,6 +162,82 @@ struct AppModelPlaylistFolderTests {
         #expect(model.actionError == "Could not move “Late Desk”: disk is full")
     }
 
+    // MARK: Sidebar drops
+
+    @Test("Tracks drop only onto a playlist, never a folder or the top level")
+    func tracksOnlyLandOnPlaylists() async throws {
+        let work = PlaylistFolder(name: "Work")
+        let late = playlist("Late Desk")
+        let track = stubTrack("Slow Hours")
+        let model = AppModel(store: StubLibraryStore(tracks: [track], playlists: [late],
+                                                     folders: [work]))
+        await model.load()
+        let target = try #require(model.playlist(id: late.id))
+
+        #expect(!model.accepts(.tracks([track.id]), on: .folder(work.id)))
+        #expect(!model.accepts(.tracks([track.id]), on: .topLevel))
+        #expect(!model.accepts(.tracks([]), on: .playlist(target)))
+        #expect(model.accepts(.tracks([track.id]), on: .playlist(target)))
+
+        await model.performDrop(.tracks([track.id]), on: .playlist(target))
+        #expect(model.playlist(id: late.id)?.trackIDs == [track.id])
+    }
+
+    @Test("A playlist dropped on a folder header files it in that folder")
+    func playlistOntoFolder() async {
+        let work = PlaylistFolder(name: "Work")
+        let late = playlist("Late Desk")
+        let model = AppModel(store: StubLibraryStore(playlists: [late], folders: [work]))
+        await model.load()
+
+        #expect(model.accepts(.playlist(late.id), on: .folder(work.id)))
+        await model.performDrop(.playlist(late.id), on: .folder(work.id))
+        #expect(model.playlists(in: work.id).map(\.id) == [late.id])
+    }
+
+    @Test("A playlist dropped on another joins its folder, or the top level")
+    func playlistOntoSibling() async throws {
+        let work = PlaylistFolder(name: "Work")
+        let filed = playlist("Late Desk", in: work)
+        let loose = playlist("Reference Tracks")
+        let moving = playlist("Headphones Only")
+        let model = AppModel(store: StubLibraryStore(playlists: [filed, loose, moving],
+                                                     folders: [work]))
+        await model.load()
+
+        // Onto a playlist inside a folder: into that folder.
+        let inFolder = try #require(model.playlist(id: filed.id))
+        await model.performDrop(.playlist(moving.id), on: .playlist(inFolder))
+        #expect(model.playlist(id: moving.id)?.folderID == work.id)
+
+        // Onto a loose playlist: back out to the top level.
+        let atTop = try #require(model.playlist(id: loose.id))
+        await model.performDrop(.playlist(moving.id), on: .playlist(atTop))
+        #expect(model.playlist(id: moving.id)?.folderID == nil)
+    }
+
+    @Test("A playlist dropped on itself is refused")
+    func playlistOntoItself() async throws {
+        let late = playlist("Late Desk")
+        let model = AppModel(store: StubLibraryStore(playlists: [late]))
+        await model.load()
+        let target = try #require(model.playlist(id: late.id))
+
+        #expect(!model.accepts(.playlist(late.id), on: .playlist(target)))
+    }
+
+    @Test("A playlist dropped on the heading or below the list leaves its folder")
+    func playlistOntoTopLevel() async {
+        let work = PlaylistFolder(name: "Work")
+        let filed = playlist("Late Desk", in: work)
+        let model = AppModel(store: StubLibraryStore(playlists: [filed], folders: [work]))
+        await model.load()
+
+        #expect(model.accepts(.playlist(filed.id), on: .topLevel))
+        await model.performDrop(.playlist(filed.id), on: .topLevel)
+        #expect(model.playlists(in: nil).map(\.id) == [filed.id])
+    }
+
     // MARK: Expanding and collapsing
 
     @Test("Folders start open, and collapsing one survives a relaunch")

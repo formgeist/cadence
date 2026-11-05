@@ -839,6 +839,65 @@ final class AppModel {
         }
     }
 
+    // MARK: Sidebar drops
+
+    /// What can land on the sidebar: tracks from a list, or a playlist
+    /// dragged out of the sidebar itself.
+    enum SidebarDrop {
+        case tracks([Track.ID])
+        case playlist(Playlist.ID)
+    }
+
+    /// Where in the sidebar it landed.
+    enum SidebarDropTarget {
+        case playlist(Playlist)
+        case folder(PlaylistFolder.ID)
+        /// The Playlists heading and the empty space below the list.
+        case topLevel
+    }
+
+    /// Every sidebar drop goes through here, whichever view it landed on, so
+    /// the rules live in one place and can be tested without a drag.
+    ///
+    /// A playlist dropped on another playlist lands in that playlist's
+    /// folder, or at the top level if it has none: the row stands for the
+    /// place it sits, not for itself. That is also one way back out of a
+    /// folder. Returns whether the drop is taken, for SwiftUI's drop handler,
+    /// which has to answer before the write is done.
+    @discardableResult
+    func handleDrop(_ drop: SidebarDrop, on target: SidebarDropTarget) -> Bool {
+        guard accepts(drop, on: target) else { return false }
+        Task { await performDrop(drop, on: target) }
+        return true
+    }
+
+    /// Whether `target` takes `drop` at all. Tracks have no home in a folder
+    /// or at the top level, and a playlist dropped on itself goes nowhere.
+    func accepts(_ drop: SidebarDrop, on target: SidebarDropTarget) -> Bool {
+        switch (drop, target) {
+        case (.tracks(let ids), .playlist): !ids.isEmpty
+        case (.tracks, _): false
+        case (.playlist(let id), .playlist(let sibling)): id != sibling.id
+        case (.playlist, .folder), (.playlist, .topLevel): true
+        }
+    }
+
+    /// The write behind an accepted drop.
+    func performDrop(_ drop: SidebarDrop, on target: SidebarDropTarget) async {
+        switch (drop, target) {
+        case (.tracks(let ids), .playlist(let playlist)):
+            await addTracks(ids, to: playlist.id)
+        case (.tracks, _):
+            break
+        case (.playlist(let id), .playlist(let sibling)):
+            await movePlaylist(id, toFolder: sibling.folderID)
+        case (.playlist(let id), .folder(let folderID)):
+            await movePlaylist(id, toFolder: folderID)
+        case (.playlist(let id), .topLevel):
+            await movePlaylist(id, toFolder: nil)
+        }
+    }
+
     /// Folder edits re-read playlists as well as folders: deleting one moves
     /// its playlists, and the sidebar draws both from the same pass.
     @discardableResult
