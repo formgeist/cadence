@@ -1,4 +1,6 @@
 import SwiftUI
+import UniformTypeIdentifiers
+import OSLog
 import CadenceCore
 import CadenceLibrary
 
@@ -510,26 +512,50 @@ private struct PlaylistRowDropDelegate: DropDelegate {
         // would keep the folder lit after the drag is over.
         dropExited(info: info)
 
-        if let provider = info.itemProviders(for: [.cadencePlaylistMove]).first {
-            _ = provider.loadTransferable(type: PlaylistMoveItem.self) { result in
-                guard case .success(let item) = result else { return }
-                Task { @MainActor in
-                    model.handleDrop(.playlist(item.playlistID), on: .playlist(playlist))
+        // Each provider is asked what it actually carries rather than trusted
+        // to match the type it was looked up by: a tracks provider decoded
+        // as a playlist (or the reverse) fails, and a failed decode is a drop
+        // that silently adds nothing.
+        var handled = false
+        for provider in info.itemProviders(for: [.cadencePlaylistMove, .cadenceTracks]) {
+            if provider.hasItemConformingToTypeIdentifier(UTType.cadencePlaylistMove.identifier) {
+                handled = true
+                _ = provider.loadTransferable(type: PlaylistMoveItem.self) { result in
+                    switch result {
+                    case .success(let item):
+                        Self.log.debug("Playlist drop decoded onto \(playlist.name, privacy: .public)")
+                        Task { @MainActor in
+                            model.handleDrop(.playlist(item.playlistID), on: .playlist(playlist))
+                        }
+                    case .failure(let error):
+                        Self.log.error("Playlist drop failed to decode: \(error, privacy: .public)")
+                    }
                 }
-            }
-            return true
-        }
-
-        let providers = info.itemProviders(for: [.cadenceTracks])
-        guard !providers.isEmpty else { return false }
-        for provider in providers {
-            _ = provider.loadTransferable(type: TrackSelection.self) { result in
-                guard case .success(let selection) = result else { return }
-                Task { @MainActor in
-                    model.handleDrop(.tracks(selection.trackIDs), on: .playlist(playlist))
+            } else if provider.hasItemConformingToTypeIdentifier(UTType.cadenceTracks.identifier) {
+                handled = true
+                _ = provider.loadTransferable(type: TrackSelection.self) { result in
+                    switch result {
+                    case .success(let selection):
+                        Self.log.debug(
+                            "Track drop decoded: \(selection.trackIDs.count) ids onto \(playlist.name, privacy: .public)")
+                        Task { @MainActor in
+                            model.handleDrop(.tracks(selection.trackIDs), on: .playlist(playlist))
+                        }
+                    case .failure(let error):
+                        Self.log.error("Track drop failed to decode: \(error, privacy: .public)")
+                    }
                 }
+            } else {
+                Self.log.error("""
+                    Sidebar drop with no usable type: \
+                    \(provider.registeredTypeIdentifiers, privacy: .public)
+                    """)
             }
         }
-        return true
+        return handled
     }
+
+    /// Drops fail without a word in the UI, so the reason goes to the
+    /// unified log (`log show --predicate 'subsystem == "com.formgeist.cadence"'`).
+    private static let log = Logger(subsystem: "com.formgeist.cadence", category: "SidebarDrop")
 }
