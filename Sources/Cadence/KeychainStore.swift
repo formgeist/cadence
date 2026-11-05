@@ -13,7 +13,8 @@ import CadenceCore
 /// `Scripts/make-app.sh` and issue #8 for the signed build.
 struct KeychainStore: CadenceCore.KeychainStore {
     /// Namespaces the items; shows up as the "where" in Keychain Access.
-    private let service = "com.formgeist.cadence.scrobble"
+    /// Scrobbling keeps the default; the Spotify importer has its own.
+    var service = "com.formgeist.cadence.scrobble"
 
     func string(forAccount account: String) -> String? {
         let query: [String: Any] = [

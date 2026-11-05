@@ -5,6 +5,7 @@ struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(PlaybackController.self) private var playback
     @Environment(LibraryImporter.self) private var importer
+    @Environment(SpotifyImporter.self) private var spotify
     /// Opens the Settings scene — the same window ⌘, reaches. Present but inert
     /// in the snapshot and a11y harnesses, which host this view without an app
     /// scene.
@@ -77,6 +78,11 @@ struct RootView: View {
             // A sheet is its own window; the model has to be handed across.
             PlaylistNameSheet(naming: naming)
                 .environment(model)
+        }
+        .sheet(isPresented: $model.isImportingSpotifyPlaylist) {
+            SpotifyImportSheet()
+                .environment(model)
+                .environment(spotify)
         }
         .sheet(item: $model.infoTrack) { track in
             TrackInfoSheet(track: track)

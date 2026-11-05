@@ -64,6 +64,20 @@ scrobbling as unavailable. To work on scrobbling, register an app
 git ignores the file, so your copy stays local. Official release builds
 overwrite it with real values injected from CI secrets.
 
+### Spotify client id
+
+`Sources/Cadence/SpotifyCredentials.swift` holds the Spotify client id that
+**File ▸ Import Spotify Playlist…** signs in through. It is git-ignored and
+generated the same way, by `Scripts/gen-spotify-credentials.sh`. With the id
+empty, the import sheet says the build has no Spotify app.
+
+To work on the importer, create an app in the
+[Spotify developer dashboard](https://developer.spotify.com/dashboard), tick
+Web API, register the redirect URI `cadence://spotify-callback`, and paste the
+client id in. There is no secret: sign-in uses PKCE. Spotify only returns the
+tracks of playlists the signed-in user owns or collaborates on, and a
+Development Mode app needs its owner on Premium.
+
 ## The layering rule
 
 Cadence is four targets, and the dependency direction is the design:

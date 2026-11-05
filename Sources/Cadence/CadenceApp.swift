@@ -24,6 +24,8 @@ final class AppContainer {
     /// Scrobbles what gets listened to — issue #95. Observes `playback`; the
     /// controller stays unaware of it, same as `nowPlaying`.
     let scrobble: ScrobbleController
+    /// File ▸ Import Spotify Playlist…, and the Spotify sign-in behind it.
+    let spotify: SpotifyImporter
     /// Whether a text field has the keyboard, so the menu bar can get out of
     /// its way — see `TextEntryMonitor`.
     let textEntry: TextEntryMonitor
@@ -124,6 +126,19 @@ final class AppContainer {
         }
         scrobble = ScrobbleController(scrobbler: scrobbler, keychain: keychain, settings: settings)
         AppDelegate.scrobble = scrobble
+
+        // Preview mode has no Spotify app, so it never reaches the network.
+        switch mode {
+        case .live:
+            spotify = SpotifyImporter(
+                api: SpotifyAPI(clientID: SpotifyCredentials.clientID,
+                                redirectURI: SpotifyImporter.redirectURI),
+                keychain: KeychainStore(service: "com.formgeist.cadence.spotify"))
+        case .preview:
+            spotify = SpotifyImporter(
+                api: SpotifyAPI(clientID: "", redirectURI: SpotifyImporter.redirectURI),
+                keychain: InMemoryKeychainStore())
+        }
 
         switch mode {
         case .live:
@@ -226,6 +241,7 @@ struct CadenceApp: App {
                 .environment(container.textEntry)
                 .environment(container.searchFocus)
                 .environment(container.scrobble)
+                .environment(container.spotify)
                 .environment(\.isSilentPlayback, container.isSilentPlayback)
                 .frame(minWidth: Tokens.Layout.minWindow.width,
                        minHeight: Tokens.Layout.minWindow.height)
@@ -281,6 +297,10 @@ struct CadenceCommands: Commands {
                 container.model.naming = .create(seed: [])
             }
             .keyboardShortcut("n", modifiers: [.command, .shift])
+
+            Button("Import Spotify Playlist…") {
+                container.model.isImportingSpotifyPlaylist = true
+            }
 
             Button("Add Music Folder…") {
                 guard let folder = container.importer.chooseFolder() else { return }
