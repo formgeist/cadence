@@ -143,18 +143,15 @@ private struct NavigationRow: View {
 ///
 /// "Back to the top level" has three targets: the heading, the empty space
 /// below the list, and the loose playlists themselves. A playlist dragged
-/// over a loose playlist lights the heading, not the row: what it is aimed
-/// at is the top level, not that playlist. None of these targets wraps
-/// another — see `AppModel.handleDrop`.
+/// over a loose playlist lights nothing. Lighting the row would say "into
+/// this playlist", and lighting the heading, far above the pointer, read as
+/// a stray highlight. Most of the time the dragged playlist is already loose
+/// and is only being moved around among the others. None of these targets
+/// wraps another — see `AppModel.handleDrop`.
 private struct PlaylistSection: View {
     @Environment(AppModel.self) private var model
 
-    @State private var isHeadingTargeted = false
-    /// Loose rows a dragged playlist is over. A count, not a flag, because
-    /// moving from one row to the next can report the enter before the exit.
-    @State private var looseRowHovers = 0
-
-    private var isTargeted: Bool { isHeadingTargeted || looseRowHovers > 0 }
+    @State private var isTargeted = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -190,7 +187,7 @@ private struct PlaylistSection: View {
             .dropDestination(for: PlaylistMoveItem.self) { items, _ in
                 items.first.map { model.handleDrop(.playlist($0.playlistID), on: .topLevel) }
                     ?? false
-            } isTargeted: { isHeadingTargeted = $0 }
+            } isTargeted: { isTargeted = $0 }
 
             if model.playlists.isEmpty && model.playlistFolders.isEmpty {
                 Text("Nothing yet")
@@ -208,9 +205,7 @@ private struct PlaylistSection: View {
                     }
                     ForEach(model.playlists(in: nil)) { playlist in
                         PlaylistRow(playlist: playlist,
-                                    isSelected: model.screen == .playlist(playlist.id)) {
-                            looseRowHovers = max(0, looseRowHovers + ($0 ? 1 : -1))
-                        }
+                                    isSelected: model.screen == .playlist(playlist.id))
                     }
                 }
                 .padding(.horizontal, 10)
@@ -265,8 +260,8 @@ private struct FolderGroup: View {
     @State private var isHovering = false
     @State private var isHeaderTargeted = false
     @State private var isHintTargeted = false
-    /// Member rows a dragged playlist is over — a count for the same reason
-    /// as `PlaylistSection.looseRowHovers`.
+    /// Member rows a dragged playlist is over. A count, not a flag, because
+    /// moving from one row to the next can report the enter before the exit.
     @State private var memberRowHovers = 0
 
     private var isTargeted: Bool {
