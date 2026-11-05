@@ -62,6 +62,7 @@ struct ImmersiveView: View {
             Color.clear.frame(width: Tokens.Layout.trafficLightInset, height: 1)
             Wordmark(isPlaying: playback.isPlaying)
             Spacer()
+            stylePicker
             Button { model.isImmersive = false } label: {
                 Text("Close")
                     .font(Tokens.Typography.sans(13, .semibold))
@@ -79,6 +80,44 @@ struct ImmersiveView: View {
         .frame(height: Tokens.Layout.titleBarHeight)
     }
 
+    /// Cover | Turntable as icons, styled like the artist page's list/grid
+    /// switch.
+    private var stylePicker: some View {
+        HStack(spacing: 2) {
+            ForEach(AppModel.ImmersiveStyle.allCases) { style in
+                let isSelected = model.immersiveStyle == style
+                Button {
+                    withAnimation(Tokens.Motion.controls) { model.immersiveStyle = style }
+                } label: {
+                    CadenceIcon(style.systemImage, size: 13)
+                        .foregroundStyle(isSelected
+                                         ? Tokens.Palette.textPrimary
+                                         : Tokens.Palette.textSecondary)
+                        .frame(width: 34, height: 28)
+                        .background {
+                            RoundedRectangle(cornerRadius: Tokens.Radius.control,
+                                             style: .continuous)
+                                .fill(isSelected ? Tokens.Palette.navActive : .clear)
+                        }
+                        .contentShape(Rectangle())
+                }
+                .plainControl()
+                .help(style.help)
+                .accessibilityLabel(style.help)
+                .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+            }
+        }
+        .padding(2)
+        .background {
+            RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous)
+                .fill(Tokens.Palette.fieldBackground)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous)
+                .strokeBorder(Tokens.Palette.fieldBorder, lineWidth: 1)
+        }
+    }
+
     /// Flexible: it takes whatever height is left once the top bar and a
     /// *fixed* bottom reservation — `immersiveBandHeight`, not band's own
     /// (title-dependent) size — have theirs. Reserving a constant amount
@@ -89,6 +128,21 @@ struct ImmersiveView: View {
     /// still shrinks below its usual 540pt when the window itself is tight,
     /// rather than overflowing into the reserved band space.
     private var stage: some View {
+        ZStack {
+            switch model.immersiveStyle {
+            case .cover: coverStage.transition(.opacity)
+            case .turntable: turntableStage.transition(.opacity)
+            }
+        }
+        .padding(.bottom, Tokens.Layout.immersiveBandHeight)
+    }
+
+    private var artworkLabel: String? {
+        playback.currentTrack.map { "Artwork for \($0.albumTitle)" }
+    }
+
+    /// The cover on its own, as large as the stage allows up to 540pt.
+    private var coverStage: some View {
         GeometryReader { geometry in
             let side = min(
                 Tokens.Layout.immersiveArt,
@@ -102,15 +156,23 @@ struct ImmersiveView: View {
                 captionSize: 11,
                 stripe: 10,
                 displaySize: 600,
-                accessibilityLabel: playback.currentTrack.map {
-                    "Artwork for \($0.albumTitle)"
-                }
+                accessibilityLabel: artworkLabel
             )
             .frame(width: side, height: side)
             .shadow(color: .black.opacity(0.72), radius: 55, y: 30)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .padding(.bottom, Tokens.Layout.immersiveBandHeight)
+    }
+
+    private var turntableStage: some View {
+        TurntableStage(
+            artworkID: playback.currentTrack?.artworkID,
+            isPlaying: playback.isPlaying,
+            progress: playback.progress.fraction,
+            accessibilityLabel: artworkLabel
+        )
+        .padding(.vertical, 12)
+        .padding(.horizontal, 24)
     }
 
     /// Anchored to the window's bottom edge as its own `ZStack` layer

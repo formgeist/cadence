@@ -178,6 +178,12 @@ enum Snapshot {
             container.model.isImmersive = true
         },
 
+        Shot(name: "10c-immersive-cover", size: Tokens.Layout.defaultWindow) { container in
+            open(container, album: "Sound of the Slow Hours", year: 2023)
+            container.model.immersiveStyle = .cover
+            container.model.isImmersive = true
+        },
+
         // The artwork's stage is flexible so the bottom band never has to
         // move it on hover, but that means the smallest supported window
         // gives it less room than its fixed 540pt — worth a look on every
