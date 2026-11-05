@@ -10,3 +10,7 @@ PLAN.md
 # Generated, and carries a Last.fm API key + shared secret — see
 # Scripts/gen-lastfm-credentials.sh.
 Sources/Cadence/LastFMCredentials.swift
+
+# Generated, and carries the Spotify client id — see
+# Scripts/gen-spotify-credentials.sh.
+Sources/Cadence/SpotifyCredentials.swift

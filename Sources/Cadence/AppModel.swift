@@ -604,6 +604,8 @@ final class AppModel {
     var tracksPendingRemoval: [Track]?
     /// Non-nil while the Get Info sheet is up.
     var infoTrack: Track?
+    /// True while the Import Spotify Playlist sheet is up.
+    var isImportingSpotifyPlaylist = false
     /// The music folder the Preferences confirmation dialog is asking about.
     /// Removing a folder takes its tracks out of the library with it, which is
     /// not undoable — see #33.
@@ -687,6 +689,26 @@ final class AppModel {
         } catch {
             actionError = "Could not create “\(chosen)”: \(error.localizedDescription)"
         }
+    }
+
+    /// The last step of a Spotify import: a playlist of whatever the library
+    /// had, and a notice that says how much that was. A playlist with nothing
+    /// matched is not created — an empty one would only need deleting.
+    func importPlaylist(named name: String, matched: [Track], total: Int) async {
+        guard !matched.isEmpty else {
+            actionError = total == 0
+                ? "“\(name)” has no tracks to import."
+                : "None of the \(total) tracks in “\(name)” are in your library."
+            return
+        }
+        actionError = nil
+        await createPlaylist(named: name, containing: matched.map(\.id))
+        guard actionError == nil else { return }
+        let skipped = total - matched.count
+        notice = skipped == 0
+            ? "Imported all \(total) tracks from “\(name)”"
+            : "Imported \(matched.count) of \(total) tracks from “\(name)” — "
+                + "\(skipped) not in your library"
     }
 
     /// Appends to the end, and says so — the playlist is usually off-screen
