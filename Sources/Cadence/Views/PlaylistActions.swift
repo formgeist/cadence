@@ -19,6 +19,24 @@ extension UTType {
         UTType(exportedAs: "com.formgeist.cadence.playlist-reorder")
     static let cadenceQueueReorder =
         UTType(exportedAs: "com.formgeist.cadence.queue-reorder")
+
+    /// A whole playlist moving between sidebar folders. Its own type rather
+    /// than riding on `cadenceTracks`: a playlist dropped on another playlist
+    /// must not read as "add every track in it", and tracks dropped on a
+    /// folder must not read as a move.
+    static let cadencePlaylistMove =
+        UTType(exportedAs: "com.formgeist.cadence.playlist-move")
+}
+
+/// A sidebar playlist in flight, on its way into a folder or back out to the
+/// top level. Just the id: the drop looks the playlist up fresh, so one
+/// deleted mid-drag moves nothing.
+struct PlaylistMoveItem: Codable, Transferable {
+    var playlistID: Playlist.ID
+
+    static var transferRepresentation: some TransferRepresentation {
+        CodableRepresentation(contentType: .cadencePlaylistMove)
+    }
 }
 
 /// A playlist row in flight, for drag-to-reorder within `PlaylistDetailView`.
@@ -196,6 +214,8 @@ enum PlaylistMenu {
         static let revealInFinder = "folder"
         static let getInfo = "info.circle"
         static let credits = "person.2"
+        static let folder = "folder"
+        static let newFolder = "folder.badge.plus"
     }
 
     /// "Add to Playlist" wherever tracks are listed. A submenu rather than a
@@ -225,7 +245,7 @@ enum PlaylistMenu {
         let tracks = model.tracks(in: playlist)
         let hasTracks = !tracks.isEmpty
 
-        return [
+        var items: [MenuItem] = [
             .action("Play", Symbol.play, enabled: hasTracks) {
                 playback.play(tracks, fromPlaylist: playlist.id)
             },
@@ -241,11 +261,48 @@ enum PlaylistMenu {
             .action("Rename…", Symbol.rename) {
                 model.naming = .rename(playlist)
             },
-            // Its own group rather than sharing Rename's. The one destructive
-            // verb should never be a slip away from the one beside it.
+        ]
+        if !model.playlistFolders.isEmpty {
+            items.append(moveDestinations(model: model, playlist: playlist))
+        }
+        // Its own group rather than sharing Rename's. The one destructive
+        // verb should never be a slip away from the one beside it.
+        items.append(.separator)
+        items.append(.action("Delete", Symbol.delete, shortcut: "⌫", destructive: true) {
+            model.playlistPendingDeletion = playlist
+        })
+        return items
+    }
+
+    /// "Move to Folder" — the same move a drag makes, for anyone who cannot or
+    /// would rather not drag. Choices rather than actions, so the folder the
+    /// playlist is already in is ticked and the menu answers "where is it?"
+    /// as well as "where should it go?".
+    private static func moveDestinations(model: AppModel, playlist: Playlist) -> MenuItem {
+        var items: [MenuItem] = [
+            .choice("No Folder", isOn: playlist.folderID == nil) {
+                Task { await model.movePlaylist(playlist.id, toFolder: nil) }
+            },
             .separator,
-            .action("Delete", Symbol.delete, shortcut: "⌫", destructive: true) {
-                model.playlistPendingDeletion = playlist
+        ]
+        items += model.playlistFolders.map { folder in
+            .choice(folder.name, isOn: playlist.folderID == folder.id) {
+                Task { await model.movePlaylist(playlist.id, toFolder: folder.id) }
+            }
+        }
+        return .submenu("Move to Folder", Symbol.folder, items: items)
+    }
+
+    /// A sidebar folder. Deleting it keeps its playlists, so unlike a
+    /// playlist's Delete it goes straight through without a dialog.
+    static func folder(_ folder: PlaylistFolder, model: AppModel) -> [MenuItem] {
+        [
+            .action("Rename…", Symbol.rename) {
+                model.naming = .renameFolder(folder)
+            },
+            .separator,
+            .action("Delete Folder", Symbol.delete, destructive: true) {
+                Task { await model.deleteFolder(folder) }
             },
         ]
     }

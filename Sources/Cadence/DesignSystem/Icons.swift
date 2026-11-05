@@ -226,6 +226,10 @@ struct CadenceGlyph: Sendable {
     private static let waveform = CadenceGlyph([.line("M5 10v4M8.5 7v10M12 4.5v15M15.5 8v8M19 10.5v3")])
     private static let folder = CadenceGlyph([.line(
         "M3.5 17V7a2 2 0 0 1 2-2h3.4l2 2.2h7.6a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z")])
+    /// The folder outline, broken at the lower right for the plus — the same
+    /// way add-to-queue and add-to-playlist make room for theirs.
+    private static let newFolder = CadenceGlyph([.line(
+        "M12.5 19h-7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h3.4l2 2.2h7.6a2 2 0 0 1 2 2v2.8M17.5 14v6M14.5 17h6")])
     private static let info = CadenceGlyph([.ring(12, 12, 8.5), .line("M12 11v5.4"), .disc(12, 7.9, 0.6, width: 0.9)])
     private static let credits = CadenceGlyph([
         .rect(4, 4, 16, 16, radius: 3.5, filled: false), .ring(9.5, 10, 1.9),
@@ -291,6 +295,7 @@ struct CadenceGlyph: Sendable {
         "text.append": addToQueue,
         "waveform": waveform,
         "folder": folder,
+        "folder.badge.plus": newFolder,
         "info.circle": info,
         "person.2": credits,
         "arrow.clockwise": refresh,

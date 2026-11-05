@@ -18,14 +18,26 @@ struct PlaylistNameSheet: View {
     @FocusState private var isFocused: Bool
 
     private var isRenaming: Bool {
-        if case .rename = naming { return true }
-        return false
+        switch naming {
+        case .rename, .renameFolder: true
+        case .create, .createFolder: false
+        }
     }
+
+    /// Folders are named by this same sheet; only the noun changes.
+    private var noun: String {
+        switch naming {
+        case .create, .rename: "playlist"
+        case .createFolder, .renameFolder: "folder"
+        }
+    }
+
+    private var fieldLabel: String { noun == "folder" ? "Folder name" : "Playlist name" }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.Space.xl) {
             VStack(alignment: .leading, spacing: Tokens.Space.xs) {
-                Text(isRenaming ? "Rename playlist" : "New playlist")
+                Text(isRenaming ? "Rename \(noun)" : "New \(noun)")
                     .font(Tokens.Typography.sans(16, .bold))
                     .foregroundStyle(Tokens.Palette.textPrimary)
                 Text(subtitle)
@@ -33,7 +45,7 @@ struct PlaylistNameSheet: View {
                     .foregroundStyle(Tokens.Palette.textTertiary)
             }
 
-            TextField("Playlist name", text: $name)
+            TextField(fieldLabel, text: $name)
                 .textFieldStyle(.plain)
                 .font(Tokens.Typography.sans(13.5, .medium))
                 .foregroundStyle(Tokens.Palette.textPrimary)
@@ -52,7 +64,7 @@ struct PlaylistNameSheet: View {
                                       ? Tokens.Palette.fieldFocusBorder
                                       : Tokens.Palette.fieldBorder, lineWidth: 1)
                 }
-                .accessibilityLabel("Playlist name")
+                .accessibilityLabel(fieldLabel)
 
             HStack(spacing: Tokens.Space.s) {
                 Spacer(minLength: 0)
@@ -68,6 +80,8 @@ struct PlaylistNameSheet: View {
             switch naming {
             case .create: name = model.suggestedPlaylistName
             case .rename(let playlist): name = playlist.name
+            case .createFolder: name = model.suggestedFolderName
+            case .renameFolder(let folder): name = folder.name
             }
             isFocused = true
         }
@@ -88,6 +102,10 @@ struct PlaylistNameSheet: View {
             return "Name it now — tracks can go in whenever."
         case .rename:
             return "The tracks and their order stay as they are."
+        case .createFolder:
+            return "Drag playlists onto it to file them inside."
+        case .renameFolder:
+            return "The playlists inside stay where they are."
         }
     }
 
@@ -101,6 +119,10 @@ struct PlaylistNameSheet: View {
                 await model.createPlaylist(named: chosen, containing: seed.map(\.id))
             case .rename(let playlist):
                 await model.renamePlaylist(playlist, to: chosen)
+            case .createFolder:
+                await model.createFolder(named: chosen)
+            case .renameFolder(let folder):
+                await model.renameFolder(folder, to: chosen)
             }
         }
     }

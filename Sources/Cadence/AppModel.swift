@@ -231,6 +231,7 @@ final class AppModel {
     private(set) var albums: [Album] = []
     private(set) var artists: [Artist] = []
     private(set) var playlists: [Playlist] = []
+    private(set) var playlistFolders: [PlaylistFolder] = []
     private(set) var allTracks: [Track] = []
     private(set) var librarySize: Int64 = 0
     /// One cover per artist, chosen once at load. Asking for it per card meant
@@ -356,6 +357,8 @@ final class AppModel {
         recentSearches = Self.decode(settings.string(forKey: .recentSearches))
         recentlyPlayedIDs = Self.decode(settings.string(forKey: .recentlyPlayed)).compactMap(UUID.init)
         recentPlayRefs = Self.decodeRecentPlays(settings.string(forKey: .recentPlays))
+        collapsedFolderIDs = Set(Self.decode(settings.string(forKey: .collapsedPlaylistFolders))
+            .compactMap(UUID.init))
     }
 
     func load() async {
@@ -373,6 +376,7 @@ final class AppModel {
             async let tracksFetch = store.allTracks()
             async let artistsFetch = store.artists()
             async let playlistsFetch = store.playlists()
+            async let foldersFetch = store.playlistFolders()
             async let librarySizeFetch = store.librarySize()
             async let customArtistImagesFetch = store.customArtistImages()
 
@@ -380,6 +384,7 @@ final class AppModel {
             albums = Album.grouped(from: allTracks)
             artists = try await artistsFetch
             playlists = try await playlistsFetch
+            playlistFolders = try await foldersFetch
             librarySize = try await librarySizeFetch
             artistArtwork = albums.reduce(into: [:]) { result, album in
                 guard let artworkID = album.artworkID else { return }
@@ -571,11 +576,17 @@ final class AppModel {
         /// very tracks it was invoked on.
         case create(seed: [Track])
         case rename(Playlist)
+        /// A folder is named by the same dialog: the question — what should
+        /// this be called? — is the same one.
+        case createFolder
+        case renameFolder(PlaylistFolder)
 
         var id: String {
             switch self {
             case .create: "create"
             case .rename(let playlist): playlist.id.uuidString
+            case .createFolder: "create-folder"
+            case .renameFolder(let folder): "folder-\(folder.id.uuidString)"
             }
         }
     }
@@ -731,6 +742,123 @@ final class AppModel {
             show(.library)
             tab = .playlists
         }
+    }
+
+    // MARK: Playlist folders
+
+    /// The sidebar folders the user has closed. Stored as the collapsed set,
+    /// not the expanded one, so a folder opens until someone closes it — a
+    /// new folder that appears shut would hide the playlist just dropped in.
+    private(set) var collapsedFolderIDs: Set<PlaylistFolder.ID> = []
+
+    func playlistFolder(id: PlaylistFolder.ID) -> PlaylistFolder? {
+        playlistFolders.first { $0.id == id }
+    }
+
+    /// The playlists filed under one folder, or with `nil` the ones at the top
+    /// level, in the sidebar's own order. A playlist whose folder is not in
+    /// `playlistFolders` counts as top level: hiding it under a folder the
+    /// sidebar cannot draw would lose it from view entirely.
+    func playlists(in folderID: PlaylistFolder.ID?) -> [Playlist] {
+        guard let folderID else {
+            let known = Set(playlistFolders.map(\.id))
+            return playlists.filter { $0.folderID.map { !known.contains($0) } ?? true }
+        }
+        return playlists.filter { $0.folderID == folderID }
+    }
+
+    func isExpanded(_ folder: PlaylistFolder) -> Bool {
+        !collapsedFolderIDs.contains(folder.id)
+    }
+
+    func setExpanded(_ expanded: Bool, _ folder: PlaylistFolder) {
+        if expanded {
+            collapsedFolderIDs.remove(folder.id)
+        } else {
+            collapsedFolderIDs.insert(folder.id)
+        }
+        persistCollapsedFolders()
+    }
+
+    /// `New Folder`, then `New Folder 2` — the same courtesy as playlists.
+    var suggestedFolderName: String {
+        let base = "New Folder"
+        let taken = Set(playlistFolders.map(\.name))
+        guard taken.contains(base) else { return base }
+        var suffix = 2
+        while taken.contains("\(base) \(suffix)") { suffix += 1 }
+        return "\(base) \(suffix)"
+    }
+
+    /// Unlike a new playlist, a new folder does not open anything: it has no
+    /// screen of its own, and the sidebar row it adds is already where the
+    /// user is looking.
+    func createFolder(named name: String) async {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let chosen = trimmed.isEmpty ? suggestedFolderName : trimmed
+        do {
+            try await store.createPlaylistFolder(named: chosen)
+            playlistFolders = try await store.playlistFolders()
+        } catch {
+            actionError = "Could not create “\(chosen)”: \(error.localizedDescription)"
+        }
+    }
+
+    /// Same rule as playlists: an empty name is refused, not applied.
+    func renameFolder(_ folder: PlaylistFolder, to name: String) async {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != folder.name else { return }
+        await editFolders(failing: "rename “\(folder.name)”") {
+            try await store.renamePlaylistFolder(folder.id, to: trimmed)
+        }
+    }
+
+    /// The folder goes; its playlists stay, back at the top level. That is
+    /// why this asks no confirmation where deleting a playlist does — nothing
+    /// is lost that a drag cannot put back.
+    func deleteFolder(_ folder: PlaylistFolder) async {
+        guard await editFolders(failing: "delete “\(folder.name)”", {
+            try await store.deletePlaylistFolder(folder.id)
+        }) else { return }
+        if collapsedFolderIDs.remove(folder.id) != nil { persistCollapsedFolders() }
+    }
+
+    /// Files a playlist under `folderID`, or at the top level with `nil`.
+    /// Dropping a playlist where it already is does nothing, so a drag that
+    /// ends where it began does not cost a write and a reload.
+    func movePlaylist(_ playlistID: Playlist.ID, toFolder folderID: PlaylistFolder.ID?) async {
+        guard let playlist = playlist(id: playlistID), playlist.folderID != folderID else { return }
+        if let folderID, playlistFolder(id: folderID) == nil { return }
+        await edit(playlist, failing: "move") {
+            try await store.movePlaylist(playlistID, toFolder: folderID)
+        }
+        // A playlist dropped onto a closed folder would otherwise disappear
+        // under the pointer; opening it shows where it went.
+        if let folderID, collapsedFolderIDs.remove(folderID) != nil {
+            persistCollapsedFolders()
+        }
+    }
+
+    /// Folder edits re-read playlists as well as folders: deleting one moves
+    /// its playlists, and the sidebar draws both from the same pass.
+    @discardableResult
+    private func editFolders(
+        failing what: String, _ write: () async throws -> Void
+    ) async -> Bool {
+        do {
+            try await write()
+            playlistFolders = try await store.playlistFolders()
+            playlists = try await store.playlists()
+            return true
+        } catch {
+            actionError = "Could not \(what): " + error.localizedDescription
+            return false
+        }
+    }
+
+    private func persistCollapsedFolders() {
+        settings.set(Self.encode(collapsedFolderIDs.map(\.uuidString).sorted()),
+                     forKey: .collapsedPlaylistFolders)
     }
 
     // MARK: Removing from the library

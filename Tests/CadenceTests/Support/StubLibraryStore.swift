@@ -15,6 +15,7 @@ actor StubLibraryStore: LibraryStore {
     enum Operation: Hashable {
         case createPlaylist, addTracks, removeTracks, moveTracks
         case renamePlaylist, deletePlaylist, remove
+        case createFolder, renameFolder, deleteFolder, movePlaylist
     }
 
     private let inner: InMemoryLibraryStore
@@ -25,8 +26,9 @@ actor StubLibraryStore: LibraryStore {
     /// to check what a removal actually asked for reads this.
     private(set) var removedTrackIDs: [Track.ID] = []
 
-    init(tracks: [Track] = [], playlists: [Playlist] = [], failing: Set<Operation> = []) {
-        self.inner = InMemoryLibraryStore(tracks: tracks, playlists: playlists)
+    init(tracks: [Track] = [], playlists: [Playlist] = [], folders: [PlaylistFolder] = [],
+         failing: Set<Operation> = []) {
+        self.inner = InMemoryLibraryStore(tracks: tracks, playlists: playlists, folders: folders)
         self.failing = failing
     }
 
@@ -88,6 +90,29 @@ actor StubLibraryStore: LibraryStore {
     func deletePlaylist(_ id: Playlist.ID) async throws {
         try guardAgainst(.deletePlaylist)
         try await inner.deletePlaylist(id)
+    }
+
+    func playlistFolders() async throws -> [PlaylistFolder] { try await inner.playlistFolders() }
+
+    @discardableResult
+    func createPlaylistFolder(named name: String) async throws -> PlaylistFolder {
+        try guardAgainst(.createFolder)
+        return try await inner.createPlaylistFolder(named: name)
+    }
+
+    func renamePlaylistFolder(_ id: PlaylistFolder.ID, to name: String) async throws {
+        try guardAgainst(.renameFolder)
+        try await inner.renamePlaylistFolder(id, to: name)
+    }
+
+    func deletePlaylistFolder(_ id: PlaylistFolder.ID) async throws {
+        try guardAgainst(.deleteFolder)
+        try await inner.deletePlaylistFolder(id)
+    }
+
+    func movePlaylist(_ id: Playlist.ID, toFolder folderID: PlaylistFolder.ID?) async throws {
+        try guardAgainst(.movePlaylist)
+        try await inner.movePlaylist(id, toFolder: folderID)
     }
 
     func upsert(_ tracks: [Track]) async throws { try await inner.upsert(tracks) }
