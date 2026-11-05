@@ -510,50 +510,55 @@ struct AlbumCard: View, Equatable {
         }
     }
 
-    var body: some View {
-        Button {
-            onSelect()
-            model.show(.album(album.key))
-        } label: {
-            VStack(alignment: .leading, spacing: 11) {
-                ArtworkView(artworkID: album.artworkID,
-                            cornerRadius: Tokens.Radius.control,
-                            caption: album.artworkID == nil ? "NO COVER ART" : "COVER ART",
-                            displaySize: 320)
-                    .aspectRatio(1, contentMode: .fit)
-                    // Built only while hovered. An idle, transparent scrim on
-                    // every card measurably added long frames scrolling 2,500
-                    // albums; this matched having no overlay at all.
-                    .overlay {
-                        if isHoveringArt {
-                            playOverlay.transition(.opacity)
-                        }
-                    }
-                    .animation(.easeOut(duration: 0.12), value: isHoveringArt)
-                    .onHover { isHoveringArt = $0 }
-                    .keyboardFocusRing(isKeyboardFocused,
-                                      in: RoundedRectangle(cornerRadius: Tokens.Radius.control,
-                                                           style: .continuous))
+    private func open() {
+        onSelect()
+        model.show(.album(album.key))
+    }
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(album.title)
-                        .font(Tokens.Typography.cardTitle)
-                        .foregroundStyle(Color(hex: 0xEBEBF0))
-                        // Two lines, so a long title truncates predictably
-                        // rather than pushing the grid rows out of alignment.
-                        .lineLimit(2, reservesSpace: true)
-                        .multilineTextAlignment(.leading)
-                    Text(subtitleText)
-                        .font(Tokens.Typography.caption)
-                        .foregroundStyle(Tokens.Palette.textTertiary)
-                        .lineLimit(1)
+    /// Not a `Button`. A `.draggable` on a button never lifts: the button
+    /// keeps the press for itself and the drag is never handed over, so a
+    /// record could not be dragged onto a playlist. The track rows, which
+    /// drag fine, are plain views with a tap gesture, and so is this. The
+    /// hover pill's own button still wins its clicks over the tap.
+    var body: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            ArtworkView(artworkID: album.artworkID,
+                        cornerRadius: Tokens.Radius.control,
+                        caption: album.artworkID == nil ? "NO COVER ART" : "COVER ART",
+                        displaySize: 320)
+                .aspectRatio(1, contentMode: .fit)
+                // Built only while hovered. An idle, transparent scrim on
+                // every card measurably added long frames scrolling 2,500
+                // albums; this matched having no overlay at all.
+                .overlay {
+                    if isHoveringArt {
+                        playOverlay.transition(.opacity)
+                    }
                 }
+                .animation(.easeOut(duration: 0.12), value: isHoveringArt)
+                .onHover { isHoveringArt = $0 }
+                .keyboardFocusRing(isKeyboardFocused,
+                                  in: RoundedRectangle(cornerRadius: Tokens.Radius.control,
+                                                       style: .continuous))
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(album.title)
+                    .font(Tokens.Typography.cardTitle)
+                    .foregroundStyle(Color(hex: 0xEBEBF0))
+                    // Two lines, so a long title truncates predictably
+                    // rather than pushing the grid rows out of alignment.
+                    .lineLimit(2, reservesSpace: true)
+                    .multilineTextAlignment(.leading)
+                Text(subtitleText)
+                    .font(Tokens.Typography.caption)
+                    .foregroundStyle(Tokens.Palette.textTertiary)
+                    .lineLimit(1)
             }
-            .opacity(isHovering ? 0.86 : 1)
         }
-        .plainControl()
-        .focusable(false)
+        .opacity(isHovering ? 0.86 : 1)
+        .contentShape(Rectangle())
         .onHover { isHovering = $0 }
+        .pointingHandCursor()
         .background {
             GeometryReader { geometry in
                 Color.clear
@@ -570,12 +575,17 @@ struct AlbumCard: View, Equatable {
         .draggable(TrackSelection(album.discs.flatMap(\.tracks))) {
             TrackDragPreview.album(album).anchored(in: cardSize, at: pointer)
         }
+        // After `.draggable`, the order the track rows use.
+        .onTapGesture(perform: open)
         .cadenceContextMenu {
             PlaylistMenu.album(album, model: model, playback: playback)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(spokenLabel)
         .accessibilityAddTraits(.isButton)
+        // With no button underneath, this is what VoiceOver's press (and
+        // AXPress) runs.
+        .accessibilityAction(.default, open)
         // The hover pill is hidden from VoiceOver along with the rest of the
         // card's children, so the same action is offered here instead.
         .accessibilityAction(named: "Play") { playback.play(album) }

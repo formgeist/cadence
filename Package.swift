@@ -72,6 +72,9 @@ let package = Package(
             dependencies: [
                 "CadenceCore",
                 "CadenceLibrary",
+                // Migration tests build a database at an older schema version
+                // by hand, which needs the migrator's own API.
+                .product(name: "GRDB", package: "GRDB.swift"),
                 .product(name: "Testing", package: "swift-testing"),
             ]
         ),

@@ -48,6 +48,20 @@ private struct SlowStore: LibraryStore {
         try await wrapped.renamePlaylist(id, to: name)
     }
     func deletePlaylist(_ id: Playlist.ID) async throws { try await wrapped.deletePlaylist(id) }
+    func playlistFolders() async throws -> [PlaylistFolder] { try await wrapped.playlistFolders() }
+    @discardableResult
+    func createPlaylistFolder(named name: String) async throws -> PlaylistFolder {
+        try await wrapped.createPlaylistFolder(named: name)
+    }
+    func renamePlaylistFolder(_ id: PlaylistFolder.ID, to name: String) async throws {
+        try await wrapped.renamePlaylistFolder(id, to: name)
+    }
+    func deletePlaylistFolder(_ id: PlaylistFolder.ID) async throws {
+        try await wrapped.deletePlaylistFolder(id)
+    }
+    func movePlaylist(_ id: Playlist.ID, toFolder folderID: PlaylistFolder.ID?) async throws {
+        try await wrapped.movePlaylist(id, toFolder: folderID)
+    }
     func tracks(matching query: String) async throws -> [Track] {
         try await wrapped.tracks(matching: query)
     }

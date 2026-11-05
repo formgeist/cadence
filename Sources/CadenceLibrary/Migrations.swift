@@ -161,6 +161,24 @@ public enum Migrations {
             }
         }
 
+        // Sidebar folders for playlists. Membership is a nullable column on
+        // `playlist` rather than a join table, because a playlist sits in at
+        // most one folder. `ON DELETE SET NULL` is what makes deleting a
+        // folder move its playlists back to the top level instead of taking
+        // them with it — the database keeps that promise, not each caller.
+        migrator.registerMigration("v6-playlist-folders") { db in
+            try db.create(table: "playlistFolder") { t in
+                t.primaryKey("id", .text)
+                t.column("name", .text).notNull()
+                t.column("position", .integer).notNull().defaults(to: 0)
+            }
+            try db.alter(table: "playlist") { t in
+                t.add(column: "folderID", .text)
+                    .references("playlistFolder", onDelete: .setNull)
+            }
+            try db.create(index: "playlist_on_folder", on: "playlist", columns: ["folderID"])
+        }
+
         return migrator
     }
 }

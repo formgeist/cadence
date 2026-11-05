@@ -566,16 +566,41 @@ public struct Playlist: Identifiable, Hashable, Sendable {
     public var name: String
     public var trackIDs: [Track.ID]
     public var duration: TimeInterval
+    /// The sidebar folder the playlist is filed under, or `nil` for the top
+    /// level. A playlist sits in at most one folder: folders are a way of
+    /// tidying the sidebar, not tags, and a playlist shown in two places
+    /// would make dragging it "out" of one ambiguous.
+    public var folderID: PlaylistFolder.ID?
 
-    public init(id: UUID = UUID(), name: String, trackIDs: [Track.ID], duration: TimeInterval) {
+    public init(id: UUID = UUID(), name: String, trackIDs: [Track.ID], duration: TimeInterval,
+                folderID: PlaylistFolder.ID? = nil) {
         self.id = id
         self.name = name
         self.trackIDs = trackIDs
         self.duration = duration
+        self.folderID = folderID
     }
 
     public var summary: String {
         trackIDs.count == 1 ? "1 track" : "\(trackIDs.count) tracks"
+    }
+}
+
+/// A named group of playlists in the sidebar.
+///
+/// Holds no list of its own members: membership lives on the playlist
+/// (`Playlist.folderID`), so a playlist can never be in two folders at once,
+/// and deleting a folder only has to clear that one field to put its
+/// playlists back at the top level. Folders do not nest — one level is enough
+/// to tidy a sidebar, and a tree would turn every drop into a question of
+/// which level the pointer meant.
+public struct PlaylistFolder: Identifiable, Hashable, Sendable {
+    public var id: UUID
+    public var name: String
+
+    public init(id: UUID = UUID(), name: String) {
+        self.id = id
+        self.name = name
     }
 }
 

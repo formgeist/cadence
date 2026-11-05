@@ -93,7 +93,7 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
     public func playlists() async throws -> [Playlist] {
         try await pool.read { db in
             let rows = try Row.fetchAll(db, sql: """
-                SELECT p.id AS id, p.name AS name,
+                SELECT p.id AS id, p.name AS name, p.folderID AS folderID,
                        IFNULL(SUM(t.duration), 0) AS duration
                 FROM playlist p
                 LEFT JOIN playlistItem i ON i.playlistID = p.id
@@ -120,7 +120,8 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
                     id: UUID(uuidString: id) ?? UUID(),
                     name: row["name"],
                     trackIDs: trackIDsByPlaylist[id] ?? [],
-                    duration: row["duration"])
+                    duration: row["duration"],
+                    folderID: (row["folderID"] as String?).flatMap(UUID.init))
             }
         }
     }
@@ -212,6 +213,63 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
     public func deletePlaylist(_ id: Playlist.ID) async throws {
         try await pool.write { db in
             try db.execute(sql: "DELETE FROM playlist WHERE id = ?", arguments: [id.uuidString])
+        }
+    }
+
+    // MARK: - Playlist folders
+
+    public func playlistFolders() async throws -> [PlaylistFolder] {
+        try await pool.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT id, name FROM playlistFolder ORDER BY position, name
+                """)
+            .compactMap { row in
+                guard let id = UUID(uuidString: row["id"] as String) else { return nil }
+                return PlaylistFolder(id: id, name: row["name"])
+            }
+        }
+    }
+
+    /// A new folder at the end of the folder order, the same way a new
+    /// playlist goes at the end of the playlists.
+    @discardableResult
+    public func createPlaylistFolder(named name: String) async throws -> PlaylistFolder {
+        let folder = PlaylistFolder(name: name)
+        try await pool.write { db in
+            let position = try Int.fetchOne(
+                db, sql: "SELECT IFNULL(MAX(position), -1) + 1 FROM playlistFolder") ?? 0
+            try db.execute(
+                sql: "INSERT INTO playlistFolder (id, name, position) VALUES (?, ?, ?)",
+                arguments: [folder.id.uuidString, name, position])
+        }
+        return folder
+    }
+
+    public func renamePlaylistFolder(_ id: PlaylistFolder.ID, to name: String) async throws {
+        try await pool.write { db in
+            try db.execute(sql: "UPDATE playlistFolder SET name = ? WHERE id = ?",
+                           arguments: [name, id.uuidString])
+        }
+    }
+
+    /// The playlists stay: `playlist.folderID` is `ON DELETE SET NULL`, so
+    /// they land back at the top level in the same statement.
+    public func deletePlaylistFolder(_ id: PlaylistFolder.ID) async throws {
+        try await pool.write { db in
+            try db.execute(sql: "DELETE FROM playlistFolder WHERE id = ?",
+                           arguments: [id.uuidString])
+        }
+    }
+
+    /// A folder id with no folder behind it fails the foreign key rather than
+    /// leaving an orphan: the sidebar draws playlists under the folders that
+    /// exist, so one filed under nothing would vanish from it.
+    public func movePlaylist(
+        _ id: Playlist.ID, toFolder folderID: PlaylistFolder.ID?
+    ) async throws {
+        try await pool.write { db in
+            try db.execute(sql: "UPDATE playlist SET folderID = ? WHERE id = ?",
+                           arguments: [folderID?.uuidString, id.uuidString])
         }
     }
 

@@ -148,6 +148,20 @@ public protocol LibraryStore: Sendable {
                     in playlistID: Playlist.ID) async throws
     func renamePlaylist(_ id: Playlist.ID, to name: String) async throws
     func deletePlaylist(_ id: Playlist.ID) async throws
+
+    /// Sidebar folders in the order they were made.
+    func playlistFolders() async throws -> [PlaylistFolder]
+    /// Returned for the same reason `createPlaylist` returns its playlist:
+    /// names are not unique, so the id is the only way to find it again.
+    @discardableResult
+    func createPlaylistFolder(named name: String) async throws -> PlaylistFolder
+    func renamePlaylistFolder(_ id: PlaylistFolder.ID, to name: String) async throws
+    /// Removes the folder, never the playlists in it: they move back to the
+    /// top level. A folder is a way of arranging the sidebar, and tidying one
+    /// away should not cost anyone a playlist.
+    func deletePlaylistFolder(_ id: PlaylistFolder.ID) async throws
+    /// Files a playlist under a folder, or with `nil` back at the top level.
+    func movePlaylist(_ id: Playlist.ID, toFolder folderID: PlaylistFolder.ID?) async throws
     func tracks(matching query: String) async throws -> [Track]
     func upsert(_ tracks: [Track]) async throws
     /// Removes tracks from the library outright — not from one playlist, from
@@ -189,6 +203,10 @@ public enum SettingsKey: String, Sendable {
     /// JSON-encoded `[AppModel.RecentPlay]` — the albums and playlists behind
     /// the Recents grid, most-recent first.
     case recentPlays
+    /// JSON-encoded `[String]` of the sidebar playlist folders the user has
+    /// collapsed. Collapsed rather than expanded, so a folder nobody has
+    /// touched — including one just made — opens by default.
+    case collapsedPlaylistFolders
     /// The queue across a relaunch — see #42. `queueTrackIDs` and
     /// `queueOrderedTrackIDs` are JSON-encoded `[String]` of track ids, in
     /// play order and in pre-shuffle order respectively; `queueCurrentTrackID`

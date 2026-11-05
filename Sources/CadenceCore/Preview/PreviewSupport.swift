@@ -256,10 +256,12 @@ public final class MockPlayerEngine: PlayerEngine {
 public actor InMemoryLibraryStore: LibraryStore {
     private let tracks: [Track]
     private var storedPlaylists: [Playlist]
+    private var storedFolders: [PlaylistFolder]
 
-    public init(tracks: [Track], playlists: [Playlist] = []) {
+    public init(tracks: [Track], playlists: [Playlist] = [], folders: [PlaylistFolder] = []) {
         self.tracks = tracks
         self.storedPlaylists = playlists
+        self.storedFolders = folders
     }
 
     public func allTracks() async throws -> [Track] { tracks }
@@ -330,6 +332,40 @@ public actor InMemoryLibraryStore: LibraryStore {
 
     public func deletePlaylist(_ id: Playlist.ID) async throws {
         storedPlaylists.removeAll { $0.id == id }
+    }
+
+    public func playlistFolders() async throws -> [PlaylistFolder] { storedFolders }
+
+    @discardableResult
+    public func createPlaylistFolder(named name: String) async throws -> PlaylistFolder {
+        let folder = PlaylistFolder(name: name)
+        storedFolders.append(folder)
+        return folder
+    }
+
+    public func renamePlaylistFolder(_ id: PlaylistFolder.ID, to name: String) async throws {
+        guard let index = storedFolders.firstIndex(where: { $0.id == id }) else { return }
+        storedFolders[index].name = name
+    }
+
+    /// Clears the folder from its playlists by hand — the job the real
+    /// store's `ON DELETE SET NULL` does — so they return to the top level.
+    public func deletePlaylistFolder(_ id: PlaylistFolder.ID) async throws {
+        storedFolders.removeAll { $0.id == id }
+        for index in storedPlaylists.indices where storedPlaylists[index].folderID == id {
+            storedPlaylists[index].folderID = nil
+        }
+    }
+
+    /// A folder that does not exist is ignored, the way the real store's
+    /// foreign key would refuse it, rather than filing the playlist under
+    /// nothing.
+    public func movePlaylist(
+        _ id: Playlist.ID, toFolder folderID: PlaylistFolder.ID?
+    ) async throws {
+        if let folderID, !storedFolders.contains(where: { $0.id == folderID }) { return }
+        guard let index = storedPlaylists.firstIndex(where: { $0.id == id }) else { return }
+        storedPlaylists[index].folderID = folderID
     }
 
     /// Rewrites one playlist's contents and the duration that follows from
