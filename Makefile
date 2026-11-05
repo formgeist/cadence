@@ -8,12 +8,15 @@ SNAPSHOT_DIR ?= Snapshots
 
 # Git-ignored, and absent on a fresh checkout. Every build target depends on it
 # so `make …` generates an empty stub before SwiftPM compiles the app target.
-CREDENTIALS := Sources/Cadence/LastFMCredentials.swift
+CREDENTIALS := Sources/Cadence/LastFMCredentials.swift Sources/Cadence/SpotifyCredentials.swift
 
 .PHONY: build test run app dmg shots scan audio-check a11y bench clean
 
-$(CREDENTIALS):
+Sources/Cadence/LastFMCredentials.swift:
 	@./Scripts/gen-lastfm-credentials.sh
+
+Sources/Cadence/SpotifyCredentials.swift:
+	@./Scripts/gen-spotify-credentials.sh
 
 build: $(CREDENTIALS)
 	swift build

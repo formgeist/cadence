@@ -38,6 +38,9 @@ jobs:
       - name: Generate Last.fm credentials stub
         run: ./Scripts/gen-lastfm-credentials.sh
 
+      - name: Generate Spotify credentials stub
+        run: ./Scripts/gen-spotify-credentials.sh
+
       # Run swift-testing directly — the Makefile's TESTING_LIB flags point at
       # a Command Line Tools path that does not exist under a full Xcode.
       - name: Test
