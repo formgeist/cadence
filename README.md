@@ -258,6 +258,18 @@ track rows and playlist rows; the album header's `+`; and dragging either onto
 a playlist row in the sidebar or on the Playlists shelf. Creating a playlist
 from one of those menus seeds it with the tracks the menu was opened on.
 
+Playlists can be filed in sidebar folders, one level deep. Membership is a
+nullable `playlist.folderID` with `ON DELETE SET NULL`, so a playlist is in at
+most one folder, and deleting a folder puts its playlists back at the top
+level instead of deleting them. A playlist moves by dragging it onto a folder,
+onto another playlist (it joins that playlist's folder), or onto the heading or
+the space below the list (top level), or through its Move to Folder menu.
+Which folders are collapsed is a setting, so it survives a relaunch.
+
+Anything in the sidebar that is dragged is a plain view with a tap gesture,
+never a `Button`: a `.draggable` on a button never lifts, because the button
+keeps the press. The album cards are built the same way, for the same reason.
+
 Two things worth knowing:
 
 - Rows in the playlist screen are not `.draggable`. `onMove` brings its own
