@@ -370,14 +370,22 @@ enum GridMetrics {
     }
 }
 
-/// The album grid, optionally under a header that scrolls away with it — the
-/// artist screen puts its name and counts there.
-struct AlbumGrid<Header: View>: View {
-    @Environment(AppModel.self) private var model
-    var albums: [Album]
-    var subtitle: AlbumCard.Subtitle = .artist
-    @Binding var scrollAnchor: Album.Key?
+/// The card grid every library screen shares: fixed columns, keyboard focus,
+/// Return to open, optional type-ahead, and an optional header that scrolls
+/// away with it — the artist screen puts its name and counts there. What a
+/// card looks like and what opening one does are the caller's.
+struct CardGrid<Item: Identifiable, Card: View, Header: View>: View where Item.ID: Hashable {
+    var items: [Item]
+    var columnWidth: CGFloat
+    @Binding var scrollAnchor: Item.ID?
+    /// What type-ahead matches against; nil turns type-ahead off, for a list
+    /// with no stable key to type against.
+    var typeAheadKey: ((Item) -> String)?
+    var open: (Item) -> Void
     @ViewBuilder var header: Header
+    /// Builds one card from its item, its position, whether it holds keyboard
+    /// focus, and the callback that marks it focused from its own click.
+    @ViewBuilder var card: (Item, Int, Bool, @escaping () -> Void) -> Card
 
     @State private var focusedIndex: Int?
     @FocusState private var isFocused: Bool
@@ -391,8 +399,7 @@ struct AlbumGrid<Header: View>: View {
         // seconds. Fixed columns keep it to the rows on screen.
         GeometryReader { geometry in
             let available = geometry.size.width - Tokens.Space.contentInset * 2
-            let columns = GridMetrics.columnCount(for: available,
-                                                  minimum: model.albumColumnWidth)
+            let columns = GridMetrics.columnCount(for: available, minimum: columnWidth)
             ScrollView {
                 header
                 LazyVGrid(
@@ -402,19 +409,12 @@ struct AlbumGrid<Header: View>: View {
                     alignment: .leading,
                     spacing: Tokens.Space.xxl
                 ) {
-                    ForEach(Array(albums.enumerated()), id: \.element.id) { index, album in
-                        AlbumCard(album: album, subtitle: subtitle, index: index,
-                                 isKeyboardFocused: isFocused && focusedIndex == index) {
+                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                        card(item, index, isFocused && focusedIndex == index) {
                             focusedIndex = index
                             isFocused = true
                         }
-                        // This body re-runs on every scrolled row, because
-                        // `.scrollPosition(id:)` writes the anchor binding it
-                        // holds. A closure never compares equal, so without
-                        // this every card the grid has built re-ran with it:
-                        // over a thousand bodies a frame at 2,500 albums.
-                        .equatable()
-                        .id(album.id)
+                        .id(item.id)
                     }
                 }
                 // See `ArtistGrid` above — required for `.scrollPosition(id:)`
@@ -433,7 +433,7 @@ struct AlbumGrid<Header: View>: View {
             .onMoveCommand { direction in
                 guard let direction = GridNavigation.Direction(direction) else { return }
                 move(to: GridNavigation.move(from: focusedIndex, by: direction,
-                                             count: albums.count, columns: columns))
+                                             count: items.count, columns: columns))
             }
             .onKeyPress { handleKeyPress($0) }
             // No default focused index on gaining focus — see `ArtistGrid`
@@ -441,34 +441,63 @@ struct AlbumGrid<Header: View>: View {
             // after clicking any album (which navigates away and back).
         }
         // The grid's identity changes with its data — an artist screen swaps
-        // in a different `albums` array entirely — so focus from the last
-        // screen cannot mean anything on this one.
-        .onChange(of: albums.map(\.id)) { _, _ in focusedIndex = nil }
+        // in a different array entirely, and Recents reorders whenever
+        // something plays — so a focused index from before cannot mean
+        // anything now.
+        .onChange(of: items.map(\.id)) { _, _ in focusedIndex = nil }
     }
 
     /// Moves keyboard focus and scrolls it into view — see `ArtistGrid.move`.
     private func move(to index: Int?) {
         focusedIndex = index
-        guard let index, albums.indices.contains(index) else { return }
-        scrollAnchor = albums[index].id
+        guard let index, items.indices.contains(index) else { return }
+        scrollAnchor = items[index].id
     }
 
     private func handleKeyPress(_ press: KeyPress) -> KeyPress.Result {
         guard press.modifiers.isEmpty else { return .ignored }
         if press.key == .return {
-            if let focusedIndex, albums.indices.contains(focusedIndex) {
-                model.show(.album(albums[focusedIndex].key))
+            if let focusedIndex, items.indices.contains(focusedIndex) {
+                open(items[focusedIndex])
             }
             return .handled
         }
-        if let character = press.characters.first, character.isLetter || character.isNumber {
+        if let typeAheadKey,
+           let character = press.characters.first, character.isLetter || character.isNumber {
             if let index = typeAhead.index(for: character, current: focusedIndex,
-                                           keys: albums.map(\.title)) {
+                                           keys: items.map(typeAheadKey)) {
                 move(to: index)
             }
             return .handled
         }
         return .ignored
+    }
+}
+
+/// Albums, A–Z or by date added, under an optional header.
+struct AlbumGrid<Header: View>: View {
+    @Environment(AppModel.self) private var model
+    var albums: [Album]
+    var subtitle: AlbumCard.Subtitle = .artist
+    @Binding var scrollAnchor: Album.Key?
+    @ViewBuilder var header: Header
+
+    var body: some View {
+        CardGrid(items: albums,
+                 columnWidth: model.albumColumnWidth,
+                 scrollAnchor: $scrollAnchor,
+                 typeAheadKey: \.title,
+                 open: { model.show(.album($0.key)) },
+                 header: { header }) { album, index, isFocused, onSelect in
+            AlbumCard(album: album, subtitle: subtitle, index: index,
+                      isKeyboardFocused: isFocused, onSelect: onSelect)
+                // This body re-runs on every scrolled row, because
+                // `.scrollPosition(id:)` writes the anchor binding the grid
+                // holds. A closure never compares equal, so without this
+                // every card the grid has built re-ran with it: over a
+                // thousand bodies a frame at 2,500 albums.
+                .equatable()
+        }
     }
 }
 
@@ -545,10 +574,11 @@ struct AlbumCard: View, Equatable {
                 Text(album.title)
                     .font(Tokens.Typography.cardTitle)
                     .foregroundStyle(Color(hex: 0xEBEBF0))
-                    // Two lines, so a long title truncates predictably
-                    // rather than pushing the grid rows out of alignment.
-                    .lineLimit(2, reservesSpace: true)
-                    .multilineTextAlignment(.leading)
+                    // One line, so the subtitle sits right under the title
+                    // and a long title truncates instead of pushing the
+                    // grid rows out of alignment.
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                 Text(subtitleText)
                     .font(Tokens.Typography.caption)
                     .foregroundStyle(Tokens.Palette.textTertiary)
@@ -741,76 +771,31 @@ private struct RecentsEmptyState: View {
     }
 }
 
-/// Albums and playlists, most-recently played first, in one grid. No sort and
-/// no zoom — recency *is* the order, and the header drops the options menu to
-/// match. Type-ahead is gone with the sort: there is no stable key to type
+/// Albums and playlists, most-recently played first, on the shared grid. No
+/// sort — recency *is* the order, and the header drops the options menu to
+/// match. Type-ahead is off with the sort: there is no stable key to type
 /// against a list that reorders itself every time something plays.
 private struct RecentsGrid: View {
     @Environment(AppModel.self) private var model
     var items: [AppModel.RecentlyPlayed]
-
-    @State private var focusedIndex: Int?
-    @FocusState private var isFocused: Bool
+    @State private var scrollAnchor: String?
 
     var body: some View {
-        // Fixed columns, computed from the width — see `AlbumGrid` for why
-        // adaptive columns are avoided.
-        GeometryReader { geometry in
-            let available = geometry.size.width - Tokens.Space.contentInset * 2
-            let columns = GridMetrics.columnCount(
-                for: available, minimum: Tokens.Layout.recentColumnWidth)
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVGrid(
-                        columns: Array(repeating: GridItem(.flexible(),
-                                                           spacing: Tokens.Space.xl),
-                                       count: columns),
-                        alignment: .leading,
-                        spacing: Tokens.Space.xxl
-                    ) {
-                        ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                            RecentCard(item: item,
-                                       isKeyboardFocused: isFocused && focusedIndex == index) {
-                                focusedIndex = index
-                                isFocused = true
-                            }
-                            .id(item.id)
-                        }
-                    }
-                    .padding(.horizontal, Tokens.Space.contentInset)
-                    .padding(.vertical, Tokens.Space.xxl)
-                }
-                .scrollContentBackground(.hidden)
-                .focusable()
-                .focusEffectDisabled()
-                .focused($isFocused)
-                // Arrow keys via `.onMoveCommand`, not `.onKeyPress` — see
-                // `ArtistGrid` for the `ScrollView` responder conflict.
-                .onMoveCommand { direction in
-                    guard let direction = GridNavigation.Direction(direction) else { return }
-                    move(to: GridNavigation.move(from: focusedIndex, by: direction,
-                                                 count: items.count, columns: columns),
-                         proxy: proxy)
-                }
-                .onKeyPress { press in
-                    guard press.key == .return, press.modifiers.isEmpty,
-                          let focusedIndex, items.indices.contains(focusedIndex) else {
-                        return .ignored
-                    }
-                    open(items[focusedIndex])
-                    return .handled
-                }
+        CardGrid(items: items,
+                 columnWidth: model.albumColumnWidth,
+                 scrollAnchor: $scrollAnchor,
+                 typeAheadKey: nil,
+                 open: open,
+                 header: { EmptyView() }) { item, index, isFocused, onSelect in
+            switch item {
+            case .album(let album):
+                AlbumCard(album: album, subtitle: .artist, index: index,
+                          isKeyboardFocused: isFocused, onSelect: onSelect)
+                    .equatable()
+            case .playlist:
+                RecentCard(item: item, isKeyboardFocused: isFocused, onSelect: onSelect)
             }
         }
-        // The grid reorders itself when something plays; an index captured
-        // against the old order can't mean anything against the new one.
-        .onChange(of: items.map(\.id)) { _, _ in focusedIndex = nil }
-    }
-
-    private func move(to index: Int?, proxy: ScrollViewProxy) {
-        focusedIndex = index
-        guard let index, items.indices.contains(index) else { return }
-        proxy.scrollTo(items[index].id, anchor: .center)
     }
 
     private func open(_ item: AppModel.RecentlyPlayed) {
@@ -821,10 +806,10 @@ private struct RecentsGrid: View {
     }
 }
 
-/// One recents tile. An album card and a playlist card in one, because the
-/// grid mixes them — square art, a title, and a single detail line (the
-/// artist, or the track count). A corner glyph on playlists is the only thing
-/// that tells the two kinds apart at a glance, since neither says its type.
+/// A playlist tile in the Recents grid. Albums there use `AlbumCard`, so this
+/// matches it: square art, a one-line title, and a detail line (the track
+/// count). A corner glyph on the art tells a playlist from a record at a
+/// glance, since neither says its type.
 private struct RecentCard: View {
     @Environment(AppModel.self) private var model
     @Environment(PlaybackController.self) private var playback
@@ -860,8 +845,9 @@ private struct RecentCard: View {
                     Text(title)
                         .font(Tokens.Typography.cardTitle)
                         .foregroundStyle(Color(hex: 0xEBEBF0))
-                        .lineLimit(2, reservesSpace: true)
-                        .multilineTextAlignment(.leading)
+                        // One line, matching `AlbumCard`.
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                     Text(detail)
                         .font(Tokens.Typography.caption)
                         .foregroundStyle(Tokens.Palette.textTertiary)

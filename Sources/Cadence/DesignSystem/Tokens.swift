@@ -120,7 +120,6 @@ enum Tokens {
         /// The Recents grid has no zoom control, so its cards take one fixed
         /// width — a touch wider than the album grid's default so a mixed wall
         /// of covers and playlists reads calmly.
-        static let recentColumnWidth: CGFloat = 184
         static let immersiveArt: CGFloat = 540
         /// Fixed regardless of hover, so the artwork above it never has to
         /// move to make room for the transport controls fading in.
