@@ -183,6 +183,7 @@ enum HeroSequence {
             .environment(container.textEntry)
             .environment(container.searchFocus)
             .environment(container.scrobble)
+            .environment(container.playLog)
             .environment(container.spotify)
             .environment(\.isSilentPlayback, false)
             .preferredColorScheme(.dark))

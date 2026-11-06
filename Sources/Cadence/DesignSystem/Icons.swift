@@ -172,6 +172,9 @@ struct CadenceGlyph: Sendable {
     private static let volumeHigh = CadenceGlyph([speaker, .line("M15 9.4a3.9 3.9 0 0 1 0 5.2M17.8 6.6a7.8 7.8 0 0 1 0 10.8")])
 
     private static let recents = CadenceGlyph([.ring(12, 12, 8.5), .line("M12 7.4V12l3.1 1.9")])
+    private static let home = CadenceGlyph([
+        .line("M4 11.2L12 4.6l8 6.6V19.2a.8.8 0 0 1-.8.8H15v-5.4H9V20H4.8a.8.8 0 0 1-.8-.8z"),
+    ])
     private static let artists = CadenceGlyph([
         .ring(9.5, 8.5, 3.1),
         .line("M3.5 19c.6-3 3-4.8 6-4.8s5.4 1.8 6 4.8M15.5 5.6a3.1 3.1 0 0 1 0 5.8M17.8 14.6c1.6.7 2.6 2.1 3 4.4"),
@@ -274,6 +277,7 @@ struct CadenceGlyph: Sendable {
         "speaker.wave.1.fill": volumeLow,
         "speaker.wave.2.fill": volumeHigh,
         "clock": recents,
+        "house": home,
         "person": artists,
         "circle.circle": albums,
         "music.note.list": playlists,

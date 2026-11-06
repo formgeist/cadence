@@ -24,6 +24,7 @@ final class AppContainer {
     /// Scrobbles what gets listened to — issue #95. Observes `playback`; the
     /// controller stays unaware of it, same as `nowPlaying`.
     let scrobble: ScrobbleController
+    let playLog: PlayLogController
     /// File ▸ Import Spotify Playlist…, and the Spotify sign-in behind it.
     let spotify: SpotifyImporter
     /// Whether a text field has the keyboard, so the menu bar can get out of
@@ -140,6 +141,11 @@ final class AppContainer {
                 keychain: InMemoryKeychainStore())
         }
 
+        // Where the listening history is kept: the library database when it
+        // opened, memory otherwise (preview mode, or a failed open).
+        var playLogStore: any PlayLogStore = InMemoryPlayLogStore(
+            plays: mode == .preview ? PreviewData.playHistory() : [])
+
         switch mode {
         case .live:
             // A database that cannot be opened must not take the app down with
@@ -149,6 +155,8 @@ final class AppContainer {
             folders = scoped
             do {
                 let store = try SQLiteLibraryStore(url: try Self.libraryURL())
+                playLogStore = MockPlayLogStore.isRequested
+                    ? MockPlayLogStore(library: store) : store
                 let artwork = try DiskArtworkStore.makeDefault()
                 let scanner = LibraryScanner(
                     store: store, artwork: artwork, router: Self.metadataRouter)
@@ -193,14 +201,18 @@ final class AppContainer {
         // Play history is recorded here, not inside `PlaybackController`,
         // which knows nothing about `AppModel` or persistence — see #72. The
         // same start event feeds the scrobbler's "now playing" update (#95).
+        playLog = PlayLogController(store: playLogStore)
         playback.onTrackStarted = { [weak model = self.model, weak scrobble = self.scrobble,
+                                     weak playLog = self.playLog,
                                      weak playback = self.playback] track in
             model?.recordPlayed(track, from: playback?.startedFromPlaylist)
             scrobble?.trackStarted(track)
+            playLog?.trackStarted(track)
         }
 
         // Starts the poll loop and retries anything held from last launch.
         scrobble.observe(playback)
+        playLog.observe(playback)
     }
 }
 
@@ -241,6 +253,7 @@ struct CadenceApp: App {
                 .environment(container.textEntry)
                 .environment(container.searchFocus)
                 .environment(container.scrobble)
+                .environment(container.playLog)
                 .environment(container.spotify)
                 .environment(\.isSilentPlayback, container.isSilentPlayback)
                 .frame(minWidth: Tokens.Layout.minWindow.width,
@@ -389,7 +402,7 @@ struct CadenceCommands: Commands {
         }
 
         CommandGroup(replacing: .toolbar) {
-            Button("Recents") { container.model.show(.library); container.model.tab = .recents }
+            Button("Home") { container.model.show(.library); container.model.tab = .home }
                 .keyboardShortcut("1", modifiers: .command)
             Button("Artists") { container.model.show(.library); container.model.tab = .artists }
                 .keyboardShortcut("2", modifiers: .command)

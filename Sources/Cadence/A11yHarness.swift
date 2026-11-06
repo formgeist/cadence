@@ -47,6 +47,7 @@ enum A11yHarness {
                 .environment(container.textEntry)
                 .environment(container.searchFocus)
                 .environment(container.scrobble)
+                .environment(container.playLog)
                 .environment(container.spotify)
                 .environment(\.isSilentPlayback, container.isSilentPlayback)
                 .preferredColorScheme(.dark)
@@ -87,11 +88,11 @@ enum A11yHarness {
     }
 
     private enum Screen: CaseIterable {
-        case recents, artists, artist, album, playlist, settings, immersive
+        case home, artists, artist, album, playlist, settings, immersive
 
         var title: String {
             switch self {
-            case .recents: "Library — Recents"
+            case .home: "Library — Home"
             case .artists: "Library — Artists"
             case .artist: "Artist detail"
             case .album: "Album detail"
@@ -104,10 +105,10 @@ enum A11yHarness {
         @MainActor
         func configure(_ container: AppContainer) {
             switch self {
-            case .recents:
+            case .home:
                 container.model.isImmersive = false
                 container.model.show(.library)
-                container.model.tab = .recents
+                container.model.tab = .home
             case .artists:
                 container.model.isImmersive = false
                 container.model.show(.library)

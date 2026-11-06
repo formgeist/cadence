@@ -13,13 +13,11 @@ struct LibraryView: View {
         VStack(spacing: 0) {
             header
             switch model.tab {
-            case .recents:
+            case .home:
                 if model.isInitialLoading {
                     SkeletonAlbumGrid()
-                } else if model.recentPlays.isEmpty {
-                    RecentsEmptyState()
                 } else {
-                    RecentsGrid(items: model.recentPlays)
+                    HomeView()
                 }
             case .albums:
                 if model.isInitialLoading {
@@ -62,7 +60,7 @@ struct LibraryView: View {
             Spacer()
 
             HStack(spacing: Tokens.Space.l) {
-                // Recents has no sort (it is recency order) and no zoom, and
+                // Home has no sort and no zoom, and
                 // Playlists neither — so the options menu is for the two grids
                 // that actually have something to configure.
                 if (model.tab == .artists || model.tab == .albums) && !model.isInitialLoading {
@@ -751,66 +749,11 @@ private struct PlaylistShelfRow: View {
 
 // MARK: - Recents
 
-/// A library with nothing played yet — the same shape the Playlists shelf uses
-/// for its own empty state, pointing at the one thing that fills this one.
-private struct RecentsEmptyState: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        EmptyState(
-            systemImage: "clock",
-            title: "Nothing played yet",
-            message: "Play an album or a playlist and it turns up here,\nnewest first."
-        ) {
-            CapsuleButton(title: "Browse Albums", systemImage: "circle.circle") {
-                model.tab = .albums
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Tokens.Palette.surface)
-    }
-}
-
-/// Albums and playlists, most-recently played first, on the shared grid. No
-/// sort — recency *is* the order, and the header drops the options menu to
-/// match. Type-ahead is off with the sort: there is no stable key to type
-/// against a list that reorders itself every time something plays.
-private struct RecentsGrid: View {
-    @Environment(AppModel.self) private var model
-    var items: [AppModel.RecentlyPlayed]
-    @State private var scrollAnchor: String?
-
-    var body: some View {
-        CardGrid(items: items,
-                 columnWidth: model.albumColumnWidth,
-                 scrollAnchor: $scrollAnchor,
-                 typeAheadKey: nil,
-                 open: open,
-                 header: { EmptyView() }) { item, index, isFocused, onSelect in
-            switch item {
-            case .album(let album):
-                AlbumCard(album: album, subtitle: .artist, index: index,
-                          isKeyboardFocused: isFocused, onSelect: onSelect)
-                    .equatable()
-            case .playlist:
-                RecentCard(item: item, isKeyboardFocused: isFocused, onSelect: onSelect)
-            }
-        }
-    }
-
-    private func open(_ item: AppModel.RecentlyPlayed) {
-        switch item {
-        case .album(let album): model.show(.album(album.key))
-        case .playlist(let playlist): model.show(.playlist(playlist.id))
-        }
-    }
-}
-
-/// A playlist tile in the Recents grid. Albums there use `AlbumCard`, so this
+/// A playlist tile on the Home screen. Albums there use `AlbumCard`, so this
 /// matches it: square art, a one-line title, and a detail line (the track
 /// count). A corner glyph on the art tells a playlist from a record at a
 /// glance, since neither says its type.
-private struct RecentCard: View {
+struct RecentCard: View {
     @Environment(AppModel.self) private var model
     @Environment(PlaybackController.self) private var playback
     var item: AppModel.RecentlyPlayed

@@ -690,6 +690,21 @@ public enum PreviewData {
         Playlist(name: "24/96 Showcase", trackIDs: Array(tracks.prefix(12).map(\.id)), duration: 3_480),
     ]
 
+    /// A fortnight of listening that leans on the first few tracks, so the Home
+    /// screen has a believable top list — and leaves the rest of the library
+    /// untouched, for the album of the day to find.
+    public static func playHistory(now: Date = Date()) -> [PlayRecord] {
+        // One track per artist, so the top lists have several names.
+        var seen = Set<String>()
+        let favourites = tracks.filter { seen.insert($0.artist).inserted }.prefix(6).map { $0 }
+        return (0..<48).map { i in
+            // Triangular weighting: earlier tracks come up more often.
+            let track = favourites[Int((Double(i % 21)).squareRoot() * 1.3) % favourites.count]
+            return PlayRecord(track: track,
+                              playedAt: now.addingTimeInterval(-Double(i) * 6 * 3_600 - 1_800))
+        }.reversed()
+    }
+
     public static func store(playlists: [Playlist] = PreviewData.playlists)
         -> InMemoryLibraryStore {
         InMemoryLibraryStore(tracks: tracks, playlists: playlists)
