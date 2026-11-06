@@ -27,7 +27,7 @@ final class AppModel {
     }
 
     enum Tab: String, CaseIterable, Identifiable {
-        case recents = "Recents"
+        case home = "Home"
         case artists = "Artists"
         case albums = "Albums"
         case playlists = "Playlists"
@@ -36,7 +36,7 @@ final class AppModel {
 
         var icon: String {
             switch self {
-            case .recents: "clock"
+            case .home: "house"
             case .artists: "person"
             case .albums: "circle.circle"
             case .playlists: "music.note.list"
@@ -338,7 +338,9 @@ final class AppModel {
         self.store = store
         self.settings = settings
         self.artwork = artwork
-        if let raw = settings.string(forKey: .tab), let restored = Tab(rawValue: raw) {
+        // "Recents" is the pre-Home name of the first tab.
+        if let raw = settings.string(forKey: .tab),
+           let restored = Tab(rawValue: raw == "Recents" ? Tab.home.rawValue : raw) {
             tab = restored
         }
         if let zoom = settings.double(forKey: .gridZoom) {
@@ -1024,7 +1026,7 @@ final class AppModel {
     /// The mono figure beside the screen title.
     var screenCount: String {
         switch tab {
-        case .recents: recentPlays.count == 1 ? "1 RECENT" : "\(recentPlays.count) RECENTS"
+        case .home: ""
         case .artists: "\(artists.count) ARTISTS"
         case .albums: "\(albums.count) ALBUMS"
         case .playlists: "\(playlists.count) PLAYLISTS"

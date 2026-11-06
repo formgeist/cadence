@@ -120,7 +120,7 @@ enum Snapshot {
         // harness never starts a track, which is what would fill the grid.
         Shot(name: "03a-library-recents-empty", size: Tokens.Layout.defaultWindow,
              loadsBeforeConfigure: false) { container in
-            container.model.tab = .recents
+            container.model.tab = .home
         },
 
         // Albums and playlists mixed in one grid, newest first — the state the
@@ -133,7 +133,7 @@ enum Snapshot {
             if let playlist = container.model.playlists.first {
                 container.model.recordPlayed(PreviewData.tracks[0], from: playlist.id)
             }
-            container.model.tab = .recents
+            container.model.tab = .home
         },
 
         // The album the design was drawn against.
@@ -343,6 +343,7 @@ enum Snapshot {
                 .environment(container.textEntry)
                 .environment(container.searchFocus)
                 .environment(container.scrobble)
+                .environment(container.playLog)
                 .environment(container.spotify)
                 .environment(\.isSilentPlayback, container.isSilentPlayback)
                 .preferredColorScheme(.dark)
@@ -444,6 +445,7 @@ enum Snapshot {
                 .environment(container.textEntry)
                 .environment(container.searchFocus)
                 .environment(container.scrobble)
+                .environment(container.playLog)
                 .environment(container.spotify)
                 .environment(\.isSilentPlayback, container.isSilentPlayback)
                 .preferredColorScheme(.dark)

@@ -179,6 +179,21 @@ public enum Migrations {
             try db.create(index: "playlist_on_folder", on: "playlist", columns: ["folderID"])
         }
 
+        // Cadence's own listening history. Names rather than track ids, so it
+        // survives a rescan or a re-import — see `PlayRecord`.
+        migrator.registerMigration("v7-play-log") { db in
+            try db.create(table: "playLog") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("playedAt", .double).notNull().indexed()
+                t.column("title", .text).notNull()
+                t.column("artist", .text).notNull()
+                t.column("albumArtist", .text).notNull()
+                t.column("albumTitle", .text).notNull()
+                t.column("albumYear", .integer)
+                t.column("duration", .double).notNull()
+            }
+        }
+
         return migrator
     }
 }

@@ -242,7 +242,7 @@ enum Showcase {
                 }
             }
             play(container, "Glow Season", track: 0, at: 58)
-            container.model.tab = .recents
+            container.model.tab = .home
         },
         // Spare: full-screen artwork.
         Shot(name: "extra-immersive", size: CGSize(width: 1_440, height: 900)) { container, _ in
@@ -278,6 +278,7 @@ enum Showcase {
                 .environment(container.textEntry)
                 .environment(container.searchFocus)
                 .environment(container.scrobble)
+                .environment(container.playLog)
                 .environment(container.spotify)
                 // The mock engine is silent, but a marketing shot should not say so.
                 .environment(\.isSilentPlayback, false)

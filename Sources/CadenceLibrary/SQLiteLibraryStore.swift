@@ -530,3 +530,28 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
             .map { Album(key: $0.key, tracks: $0.value) }
     }
 }
+
+// MARK: - Play history
+
+extension SQLiteLibraryStore: PlayLogStore {
+    public func record(_ play: PlayRecord) async throws {
+        try await pool.write { db in
+            try db.execute(sql: """
+                INSERT INTO playLog (playedAt, title, artist, albumArtist, albumTitle, albumYear, duration)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, arguments: [play.playedAt.timeIntervalSince1970, play.title, play.artist,
+                                 play.albumArtist, play.albumTitle, play.albumYear, play.duration])
+        }
+    }
+
+    public func allPlays() async throws -> [PlayRecord] {
+        try await pool.read { db in
+            try Row.fetchAll(db, sql: "SELECT * FROM playLog ORDER BY playedAt").map { row in
+                PlayRecord(title: row["title"], artist: row["artist"],
+                           albumArtist: row["albumArtist"], albumTitle: row["albumTitle"],
+                           albumYear: row["albumYear"], duration: row["duration"],
+                           playedAt: Date(timeIntervalSince1970: row["playedAt"]))
+            }
+        }
+    }
+}
