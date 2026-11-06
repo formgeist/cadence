@@ -211,6 +211,19 @@ struct CadenceGlyph: Sendable {
         .rect(13.5, 13.5, 6.5, 6.5, radius: 1.8, filled: false),
     ])
     private static let list = CadenceGlyph([.line("M4 6.5h16M4 12h16M4 17.5h16")])
+    /// A square sleeve with a hill and sun on it: the cover on its own.
+    private static let albumCover = CadenceGlyph([
+        .rect(4, 4, 16, 16, radius: 3, filled: false),
+        .line("M4.8 17.2l4.6-4.6 3.4 3.4 2.2-2.2 4.2 4.2"),
+        .ring(15, 9, 1.6),
+    ])
+    /// A deck from above: plinth, record and the arm swung onto it.
+    private static let turntable = CadenceGlyph([
+        .rect(3, 4, 18, 16, radius: 2.5, filled: false),
+        .ring(10.5, 12, 5),
+        .dot(10.5, 12, 1.1),
+        .line("M17.5 6.8v6.4l-2.8 2.8"),
+    ])
     private static let track = CadenceGlyph([
         .line("M9.5 17V6.2l10-2V15"), .ring(7, 17.2, 2.5), .ring(17, 15.2, 2.5),
     ])
@@ -263,7 +276,8 @@ struct CadenceGlyph: Sendable {
 
     /// Keyed by the SF Symbol each glyph replaces, plus two names with no SF
     /// equivalent that the app reuses for a verb: `text.badge.plus` (add to
-    /// playlist) and `music.note.list` (the playlist itself).
+    /// playlist) and `music.note.list` (the playlist itself). `turntable` has
+    /// no SF Symbol at all and is keyed by what it draws.
     static let table: [String: CadenceGlyph] = [
         "play.fill": play,
         "pause.fill": pause,
@@ -290,6 +304,8 @@ struct CadenceGlyph: Sendable {
         "arrow.up.left.and.arrow.down.right": expand,
         "square.grid.2x2": grid,
         "list.bullet": list,
+        "photo": albumCover,
+        "turntable": turntable,
         "music.note": track,
         "headphones": headphones,
         "plus": plus,

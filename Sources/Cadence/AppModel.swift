@@ -61,6 +61,37 @@ final class AppModel {
         }
     }
 
+    /// What the immersive view centres on: the cover on its own, or the cover
+    /// on a shelf above a turntable playing the record.
+    enum ImmersiveStyle: String, CaseIterable, Identifiable {
+        case cover, turntable
+
+        var id: String { rawValue }
+
+        /// Separate from `rawValue`, which is what gets persisted.
+        var label: String {
+            switch self {
+            case .cover: "Cover"
+            case .turntable: "Turntable"
+            }
+        }
+
+        var systemImage: String {
+            switch self {
+            case .cover: "photo"
+            case .turntable: "turntable"
+            }
+        }
+
+        /// Tooltip and VoiceOver label.
+        var help: String {
+            switch self {
+            case .cover: "Album cover"
+            case .turntable: "Turntable"
+            }
+        }
+    }
+
     /// How an artist page shows their albums. `list` stacks each record with
     /// its full tracklist; `grid` is the cover grid the Albums tab uses.
     enum ArtistAlbumLayout: String, CaseIterable, Identifiable {
@@ -253,6 +284,12 @@ final class AppModel {
             sortArtists()
         }
     }
+    var immersiveStyle: ImmersiveStyle = .turntable {
+        didSet {
+            guard oldValue != immersiveStyle else { return }
+            settings.set(immersiveStyle.rawValue, forKey: .immersiveStyle)
+        }
+    }
     var artistAlbumLayout: ArtistAlbumLayout = .list {
         didSet {
             guard oldValue != artistAlbumLayout else { return }
@@ -351,6 +388,10 @@ final class AppModel {
         }
         if let raw = settings.string(forKey: .albumSort), let restored = LibrarySort(rawValue: raw) {
             albumSort = restored
+        }
+        if let raw = settings.string(forKey: .immersiveStyle),
+           let restored = ImmersiveStyle(rawValue: raw) {
+            immersiveStyle = restored
         }
         if let raw = settings.string(forKey: .artistAlbumLayout),
            let restored = ArtistAlbumLayout(rawValue: raw) {

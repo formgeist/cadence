@@ -197,6 +197,8 @@ public enum SettingsKey: String, Sendable {
     case artistSort, albumSort
     /// How an artist page lays out their albums: `list` or `grid`.
     case artistAlbumLayout
+    /// What the immersive view centres on: `cover` or `turntable`.
+    case immersiveStyle
     /// JSON-encoded `[String]` — recent search terms and recently played
     /// track ids, most-recent first. See #72.
     case recentSearches, recentlyPlayed
