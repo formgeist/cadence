@@ -135,6 +135,11 @@ final class AppModel {
     var genreAlbumGridScrollAnchor: Album.Key?
 
     func show(_ screen: Screen) {
+        // The immersive view covers the whole window, so navigating anywhere —
+        // search is the way in from there — has to leave it, or the new screen
+        // loads out of sight. Before the guard: picking the screen already
+        // underneath still needs to surface it.
+        isImmersive = false
         guard screen != self.screen else { return }
         backStack.append(self.screen)
         forwardStack.removeAll()
