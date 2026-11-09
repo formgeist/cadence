@@ -262,6 +262,12 @@ enum PlaylistMenu {
                 model.naming = .rename(playlist)
             },
         ]
+        // Hidden, like the artist editor, when nothing could store the image.
+        if model.canEditPlaylistImage {
+            items.append(.action("Change Cover…", "photo") {
+                model.editingPlaylist = playlist
+            })
+        }
         if !model.playlistFolders.isEmpty {
             items.append(moveDestinations(model: model, playlist: playlist))
         }

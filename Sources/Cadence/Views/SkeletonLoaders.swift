@@ -170,6 +170,8 @@ private struct SkeletonAlbumCard: View {
 /// change made while this is still on screen keeps matching.
 struct SkeletonAlbumGrid: View {
     @Environment(AppModel.self) private var model
+    /// What VoiceOver says is loading — the Playlists grid borrows this one.
+    var label = "Loading albums"
 
     var body: some View {
         GeometryReader { geometry in
@@ -196,49 +198,7 @@ struct SkeletonAlbumGrid: View {
             }
             .scrollContentBackground(.hidden)
         }
-        .skeletonAccessibility("Loading albums")
-    }
-}
-
-// MARK: - Playlists
-
-/// Mirrors `PlaylistShelfRow`. A fixed run of rows, not tied to a real
-/// count nobody has yet — same idea as the design's eight-row queue mock.
-struct SkeletonPlaylistList: View {
-    private let titleWidths: [CGFloat] = [148, 176, 118, 160, 104, 184, 132, 140]
-    private let subtitleWidths: [CGFloat] = [72, 96, 60, 84, 52, 100, 68, 76]
-
-    var body: some View {
-        ScrollView {
-            LazyVStack(spacing: Tokens.Space.xxs) {
-                ForEach(0..<titleWidths.count, id: \.self) { index in
-                    row(index: index)
-                }
-            }
-            .padding(.horizontal, Tokens.Space.xl)
-            .padding(.top, Tokens.Space.xl)
-            .padding(.bottom, 44)
-        }
-        .scrollContentBackground(.hidden)
-        .skeletonAccessibility("Loading playlists")
-    }
-
-    private func row(index: Int) -> some View {
-        let delay = Double(index) * 0.07
-        let opacity = max(0.35, 1 - Double(index) * 0.09)
-        return HStack(spacing: Tokens.Space.l) {
-            SkeletonBlock(cornerRadius: 5, delay: delay).frame(width: 56, height: 56)
-            VStack(alignment: .leading, spacing: 4) {
-                SkeletonBlock(cornerRadius: 4, delay: delay)
-                    .frame(width: titleWidths[index], height: 13)
-                SkeletonBar(width: subtitleWidths[index])
-            }
-            Spacer(minLength: Tokens.Space.l)
-            SkeletonBar(width: 34, height: 9)
-        }
-        .padding(.horizontal, Tokens.Space.m)
-        .padding(.vertical, 10)
-        .opacity(opacity)
+        .skeletonAccessibility(label)
     }
 }
 

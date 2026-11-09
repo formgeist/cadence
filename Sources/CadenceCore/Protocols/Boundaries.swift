@@ -148,6 +148,11 @@ public protocol LibraryStore: Sendable {
                     in playlistID: Playlist.ID) async throws
     func renamePlaylist(_ id: Playlist.ID, to name: String) async throws
     func deletePlaylist(_ id: Playlist.ID) async throws
+    /// Sets (or, with `nil`, clears) the user's own cover for a playlist. As
+    /// with artist images, the bytes live in the `ArtworkStore`; this records
+    /// which id the playlist points at. A no-op by default, for stores that
+    /// carry no covers.
+    func setPlaylistImage(_ id: Artwork.ID?, forPlaylist playlistID: Playlist.ID) async throws
 
     /// Sidebar folders in the order they were made.
     func playlistFolders() async throws -> [PlaylistFolder]
@@ -182,6 +187,7 @@ public protocol LibraryStore: Sendable {
 }
 
 extension LibraryStore {
+    public func setPlaylistImage(_ id: Artwork.ID?, forPlaylist playlistID: Playlist.ID) async throws {}
     public func customArtistImages() async throws -> [String: Artwork.ID] { [:] }
     public func setCustomArtistImage(_ id: Artwork.ID?, forArtist name: String) async throws {}
 }
@@ -194,9 +200,12 @@ public enum SettingsKey: String, Sendable {
     case volume, isMuted, volumeBeforeMute
     case shuffleMode, repeatMode, replayGainMode
     case tab, gridZoom
-    case artistSort, albumSort
+    case artistSort, albumSort, playlistSort
     /// How an artist page lays out their albums: `list` or `grid`.
     case artistAlbumLayout
+    /// The same choice for a genre page, kept apart: a genre holds far more
+    /// albums than an artist, so the layout that suits one rarely suits both.
+    case genreAlbumLayout
     /// JSON-encoded `[String]` — recent search terms and recently played
     /// track ids, most-recent first. See #72.
     case recentSearches, recentlyPlayed

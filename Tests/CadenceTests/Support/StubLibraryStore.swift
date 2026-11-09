@@ -14,7 +14,7 @@ struct StubStoreError: LocalizedError {
 actor StubLibraryStore: LibraryStore {
     enum Operation: Hashable {
         case createPlaylist, addTracks, removeTracks, moveTracks
-        case renamePlaylist, deletePlaylist, remove
+        case renamePlaylist, deletePlaylist, remove, setPlaylistImage
         case createFolder, renameFolder, deleteFolder, movePlaylist
     }
 
@@ -80,6 +80,11 @@ actor StubLibraryStore: LibraryStore {
     ) async throws {
         try guardAgainst(.moveTracks)
         try await inner.moveTracks(fromOffsets: source, toOffset: destination, in: playlistID)
+    }
+
+    func setPlaylistImage(_ id: Artwork.ID?, forPlaylist playlistID: Playlist.ID) async throws {
+        try guardAgainst(.setPlaylistImage)
+        try await inner.setPlaylistImage(id, forPlaylist: playlistID)
     }
 
     func renamePlaylist(_ id: Playlist.ID, to name: String) async throws {

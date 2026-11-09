@@ -34,14 +34,21 @@ struct LibraryView: View {
                 } else {
                     ArtistGrid()
                 }
+            case .genres:
+                if model.isInitialLoading {
+                    SkeletonAlbumGrid()
+                } else if model.genres.isEmpty {
+                    GenresEmptyState()
+                } else {
+                    GenreGrid()
+                }
             case .playlists:
                 if model.isInitialLoading {
-                    SkeletonPlaylistList()
+                    SkeletonAlbumGrid(label: "Loading playlists")
                 } else if model.playlists.isEmpty {
                     PlaylistsEmptyState()
                 } else {
-                    ScrollView { PlaylistList() }
-                        .scrollContentBackground(.hidden)
+                    PlaylistGrid()
                 }
             }
         }
@@ -60,10 +67,11 @@ struct LibraryView: View {
             Spacer()
 
             HStack(spacing: Tokens.Space.l) {
-                // Home has no sort and no zoom, and
-                // Playlists neither — so the options menu is for the two grids
-                // that actually have something to configure.
-                if (model.tab == .artists || model.tab == .albums) && !model.isInitialLoading {
+                // Home has no sort and no zoom — so the options menu is for the
+                // grids that actually have something to configure.
+                if [.artists, .albums, .playlists].contains(model.tab)
+                    && !model.isInitialLoading
+                    && !(model.tab == .playlists && model.playlists.isEmpty) {
                     LibraryActionsMenu()
                 }
                 if model.isInitialLoading {
@@ -149,8 +157,16 @@ private struct LibraryActionsMenu: View {
     @Environment(AppModel.self) private var model
 
     private var sort: AppModel.LibrarySort {
-        model.tab == .albums ? model.albumSort : model.artistSort
+        switch model.tab {
+        case .albums: model.albumSort
+        case .playlists: model.playlistSort
+        default: model.artistSort
+        }
     }
+
+    /// Cards in the grid are sized by the zoom, which only Albums and
+    /// Playlists have.
+    private var hasZoom: Bool { model.tab == .albums || model.tab == .playlists }
 
     var body: some View {
         @Bindable var model = model
@@ -163,18 +179,19 @@ private struct LibraryActionsMenu: View {
 
     private func menuItems(zoom: Binding<Double>) -> [MenuItem] {
         var items = AppModel.LibrarySort.allCases.map { option in
-            MenuItem.choice(option.label, isOn: sort == option) {
-                if model.tab == .albums {
-                    model.albumSort = option
-                } else {
-                    model.artistSort = option
+            MenuItem.choice(model.tab == .playlists ? option.playlistLabel : option.label,
+                            isOn: sort == option) {
+                switch model.tab {
+                case .albums: model.albumSort = option
+                case .playlists: model.playlistSort = option
+                default: model.artistSort = option
                 }
             }
         }
-        // The two lists keep separate sort preferences — sorting Albums by
-        // date added says nothing about how Artists should be ordered — and
-        // only Albums has a grid to zoom in the first place.
-        if model.tab == .albums {
+        // The lists keep separate sort preferences — sorting Albums by date
+        // added says nothing about how Artists should be ordered — and only
+        // the album-sized grids have artwork to zoom.
+        if hasZoom {
             items.append(.separator)
             items.append(.custom { ZoomMenuRow(zoom: zoom) })
         }
@@ -654,6 +671,95 @@ struct AlbumCard: View, Equatable {
     }
 }
 
+// MARK: - Genres
+
+/// Files with no genre tag make no genres, and a grid of nothing says less than
+/// naming the cause.
+private struct GenresEmptyState: View {
+    var body: some View {
+        EmptyState(
+            systemImage: "tag",
+            title: "No genres yet",
+            message: "Genres come from the genre tag in your files.\nNone of your music carries one."
+        ) { EmptyView() }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Tokens.Palette.surface)
+    }
+}
+
+private struct GenreGrid: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        @Bindable var model = model
+
+        CardGrid(items: model.genres,
+                 columnWidth: Tokens.Layout.artistColumnWidth,
+                 scrollAnchor: $model.genreGridScrollAnchor,
+                 typeAheadKey: \.name,
+                 open: { model.show(.genre($0.id)) },
+                 header: { EmptyView() }) { genre, _, isFocused, onSelect in
+            GenreCard(genre: genre, isKeyboardFocused: isFocused, onSelect: onSelect)
+        }
+    }
+}
+
+/// A genre has no cover of its own, so it borrows its albums' — see `CoverMosaic`.
+struct GenreArtwork: View {
+    var genre: Genre
+    var cornerRadius: CGFloat = Tokens.Radius.control
+    var displaySize: Int = 200
+
+    var body: some View {
+        CoverMosaic(artworkIDs: genre.artworkIDs, cornerRadius: cornerRadius,
+                    displaySize: displaySize)
+    }
+}
+
+private struct GenreCard: View {
+    @Environment(AppModel.self) private var model
+    var genre: Genre
+    var isKeyboardFocused: Bool = false
+    /// See `ArtistCard.onSelect`.
+    var onSelect: () -> Void = {}
+    @State private var isHovering = false
+
+    var body: some View {
+        Button {
+            onSelect()
+            model.show(.genre(genre.id))
+        } label: {
+            VStack(alignment: .leading, spacing: 11) {
+                GenreArtwork(genre: genre)
+                    .aspectRatio(1, contentMode: .fit)
+                    .keyboardFocusRing(isKeyboardFocused,
+                                      in: RoundedRectangle(cornerRadius: Tokens.Radius.control,
+                                                           style: .continuous))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(genre.name)
+                        .font(Tokens.Typography.cardTitle)
+                        .foregroundStyle(Color(hex: 0xEBEBF0))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Text(genre.summary)
+                        .font(Tokens.Typography.caption)
+                        .foregroundStyle(Tokens.Palette.textTertiary)
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .opacity(isHovering ? 0.86 : 1)
+        }
+        .plainControl()
+        .focusable(false)
+        .onHover { isHovering = $0 }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(genre.name), \(genre.summary)")
+        .accessibilityAddTraits(.isButton)
+    }
+}
+
 // MARK: - Playlists
 
 /// A library can have no playlists for a long time — the shelf should say so
@@ -676,54 +782,103 @@ private struct PlaylistsEmptyState: View {
     }
 }
 
-private struct PlaylistList: View {
+private struct PlaylistGrid: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        LazyVStack(spacing: Tokens.Space.xxs) {
-            ForEach(model.playlists) { playlist in
-                PlaylistShelfRow(playlist: playlist)
-            }
+        @Bindable var model = model
+
+        CardGrid(items: model.sortedPlaylists,
+                 columnWidth: model.albumColumnWidth,
+                 scrollAnchor: $model.playlistGridScrollAnchor,
+                 typeAheadKey: \.name,
+                 open: { model.show(.playlist($0.id)) },
+                 header: { EmptyView() }) { playlist, _, isFocused, onSelect in
+            PlaylistCard(playlist: playlist, isKeyboardFocused: isFocused, onSelect: onSelect)
         }
-        .padding(.horizontal, Tokens.Space.xl)
-        .padding(.top, Tokens.Space.xl)
-        .padding(.bottom, 44)
     }
 }
 
-private struct PlaylistShelfRow: View {
+/// One playlist in the Playlists grid: its cover, name and size. Also a drop
+/// target — dragging tracks or an album onto it adds them.
+///
+/// Not a `Button`, for the reason `AlbumCard` is not: the hover Play pill is a
+/// button of its own, and nesting one inside another leaves the inner one
+/// unreliable. A tap gesture opens the playlist; the pill wins its own clicks.
+private struct PlaylistCard: View {
     @Environment(AppModel.self) private var model
     @Environment(PlaybackController.self) private var playback
     var playlist: Playlist
+    var isKeyboardFocused: Bool = false
+    /// See `ArtistCard.onSelect`.
+    var onSelect: () -> Void = {}
 
+    @State private var isHovering = false
+    @State private var isHoveringArt = false
     @State private var isTargeted = false
 
+    private var detail: String {
+        "\(playlist.summary) · \(DurationFormat.approximate(playlist.duration))"
+    }
+
+    private func open() {
+        onSelect()
+        model.show(.playlist(playlist.id))
+    }
+
+    private func play() {
+        let tracks = model.tracks(in: playlist)
+        guard !tracks.isEmpty else { return }
+        playback.play(tracks, fromPlaylist: playlist.id)
+    }
+
     var body: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            CoverMosaic(artworkIDs: model.coverIDs(forPlaylist: playlist),
+                        cornerRadius: Tokens.Radius.control, displaySize: 320)
+                .aspectRatio(1, contentMode: .fit)
+                // Built only while hovered, like `AlbumCard`'s: an idle scrim
+                // on every card is measurable cost in a long grid. An empty
+                // playlist has nothing to play, so it gets no pill.
+                .overlay {
+                    if isHoveringArt && !playlist.trackIDs.isEmpty {
+                        playOverlay.transition(.opacity)
+                    }
+                }
+                .animation(.easeOut(duration: 0.12), value: isHoveringArt)
+                .onHover { isHoveringArt = $0 }
+                .overlay {
+                    if isTargeted {
+                        RoundedRectangle(cornerRadius: Tokens.Radius.control,
+                                         style: .continuous)
+                            .strokeBorder(Tokens.Palette.accent, lineWidth: 2)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .keyboardFocusRing(isKeyboardFocused,
+                                  in: RoundedRectangle(cornerRadius: Tokens.Radius.control,
+                                                       style: .continuous))
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(playlist.name)
+                    .font(Tokens.Typography.cardTitle)
+                    .foregroundStyle(Color(hex: 0xEBEBF0))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Text(detail)
+                    .font(Tokens.Typography.caption)
+                    .foregroundStyle(Tokens.Palette.textTertiary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .opacity(isHovering && !isTargeted ? 0.86 : 1)
+        .contentShape(Rectangle())
+        .onHover { isHovering = $0 }
+        .pointingHandCursor()
         // Opening it is what clicking a playlist has to do; that it did
         // nothing here was half of issue #1.
-        Button { model.show(.playlist(playlist.id)) } label: {
-            HStack(spacing: Tokens.Space.l) {
-                ArtworkView(artworkID: artworkID, cornerRadius: 5, displaySize: 64)
-                    .frame(width: 56, height: 56)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(playlist.name)
-                        .font(Tokens.Typography.sans(14, .bold))
-                        .foregroundStyle(Color(hex: 0xEAEAEF))
-                    Text(playlist.summary)
-                        .font(Tokens.Typography.caption)
-                        .foregroundStyle(Tokens.Palette.textTertiary)
-                }
-                Spacer(minLength: Tokens.Space.l)
-                Text(DurationFormat.approximate(playlist.duration))
-                    .font(Tokens.Typography.mono(11))
-                    .foregroundStyle(Tokens.Palette.textFaint)
-            }
-            .padding(.horizontal, Tokens.Space.m)
-            .padding(.vertical, 10)
-            .hoverHighlight(isActive: isTargeted, radius: Tokens.Radius.card)
-            .contentShape(Rectangle())
-        }
-        .plainControl()
+        .onTapGesture(perform: open)
         .dropDestination(for: TrackSelection.self) { selections, _ in
             let ids = selections.flatMap(\.trackIDs)
             guard !ids.isEmpty else { return false }
@@ -734,16 +889,28 @@ private struct PlaylistShelfRow: View {
             PlaylistMenu.actions(model: model, playback: playback, playlist: playlist)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(playlist.name), \(playlist.summary), "
-            + DurationFormat.approximate(playlist.duration))
+        .accessibilityLabel("\(playlist.name), \(detail)")
         .accessibilityAddTraits(.isButton)
+        // With no button underneath, this is what VoiceOver's press runs.
+        .accessibilityAction(.default, open)
+        // The hover pill is hidden from VoiceOver with the rest of the card's
+        // children, so the same action is offered here.
+        .accessibilityAction(named: "Play", play)
     }
 
-    /// Lazily, so a 500-track playlist stops at the first cover rather than
-    /// resolving every id and allocating the whole array to take `.first` —
-    /// on every body pass, for every row. See #86.
-    private var artworkID: Artwork.ID? {
-        playlist.trackIDs.lazy.compactMap { model.track(id: $0)?.artworkID }.first
+    /// Appears over the cover on hover: a scrim behind a "Play" pill that
+    /// starts the playlist from the top without opening it — the same
+    /// treatment as `AlbumCard`.
+    private var playOverlay: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: Tokens.Radius.control, style: .continuous)
+                .fill(.black.opacity(0.55))
+                .allowsHitTesting(false)
+
+            CapsuleButton(title: "Play", systemImage: "play.fill",
+                          accessibilityLabel: "Play \(playlist.name)", action: play)
+                .scaleEffect(0.82)
+        }
     }
 }
 
@@ -849,7 +1016,7 @@ struct RecentCard: View {
                         caption: album.artworkID == nil ? "NO COVER ART" : "COVER ART",
                         displaySize: 320)
         case .playlist(let playlist):
-            ArtworkView(artworkID: playlistArtworkID(playlist),
+            CoverMosaic(artworkIDs: model.coverIDs(forPlaylist: playlist),
                         cornerRadius: Tokens.Radius.control,
                         displaySize: 320)
                 .overlay(alignment: .bottomLeading) {
@@ -905,9 +1072,4 @@ struct RecentCard: View {
         }
     }
 
-    /// The playlist's first available cover — lazy, so a long playlist stops
-    /// at the first hit rather than resolving every id. See #86.
-    private func playlistArtworkID(_ playlist: Playlist) -> Artwork.ID? {
-        playlist.trackIDs.lazy.compactMap { model.track(id: $0)?.artworkID }.first
-    }
 }

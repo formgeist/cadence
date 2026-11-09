@@ -52,6 +52,19 @@ struct AppModelNavigationTests {
         #expect(model.screen == .library)
     }
 
+    @Test("Navigating from the immersive view leaves it, even for the screen already underneath")
+    func showLeavesImmersive() {
+        let model = makeModel()
+
+        model.isImmersive = true
+        model.show(.artist("Vera Lindqvist"))
+        #expect(!model.isImmersive)
+
+        model.isImmersive = true
+        model.show(.artist("Vera Lindqvist"))
+        #expect(!model.isImmersive)
+    }
+
     @Test("goBack on an empty stack holds still rather than trapping")
     func goBackWithEmptyStack() {
         let model = makeModel()

@@ -91,6 +91,7 @@ struct SidebarView: View {
         switch model.screen {
         case .library: model.tab == tab
         case .artist: tab == .artists
+        case .genre: tab == .genres
         case .album, .playlist, .settings: false
         }
     }
@@ -396,8 +397,8 @@ private struct PlaylistRow: View {
     /// one too.
     var body: some View {
         HStack(spacing: 10) {
-            ArtworkView(artworkID: artworkID, cornerRadius: Tokens.Radius.thumb,
-                        stripe: 4, displaySize: 32)
+            CoverMosaic(artworkIDs: model.coverIDs(forPlaylist: playlist),
+                        cornerRadius: Tokens.Radius.thumb, stripe: 4, displaySize: 32)
                 .frame(width: 18, height: 18)
             Text(playlist.name)
                 .font(Tokens.Typography.sans(12.5, .medium))
@@ -465,13 +466,6 @@ private struct PlaylistRow: View {
         return isHovering || isTargeted ? Tokens.Palette.navHover : .clear
     }
 
-    /// The first cover in the playlist, so a full one is recognisable at a
-    /// glance rather than being one of five identical placeholders. Lazy so a
-    /// long playlist stops at that first hit instead of resolving every id on
-    /// every body pass. See #86.
-    private var artworkID: Artwork.ID? {
-        playlist.trackIDs.lazy.compactMap { model.track(id: $0)?.artworkID }.first
-    }
 }
 
 /// A sidebar playlist row's drop handling, for both payloads it takes.

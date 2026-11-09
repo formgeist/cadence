@@ -18,6 +18,9 @@ final class AppModel {
         /// Everything one artist has, by name — the same identity `Artist`
         /// uses, since an artist is not a row in a table here.
         case artist(String)
+        /// Every album in one genre, by `Genre.id` — the folded tag, so
+        /// `Rock` and `rock` are one screen.
+        case genre(String)
         /// By id, never by name: two playlists may share one.
         case playlist(Playlist.ID)
         /// Preferences, as a full page inside the window rather than the
@@ -30,6 +33,7 @@ final class AppModel {
         case home = "Home"
         case artists = "Artists"
         case albums = "Albums"
+        case genres = "Genres"
         case playlists = "Playlists"
 
         var id: String { rawValue }
@@ -39,6 +43,7 @@ final class AppModel {
             case .home: "house"
             case .artists: "person"
             case .albums: "circle.circle"
+            case .genres: "tag"
             case .playlists: "music.note.list"
             }
         }
@@ -57,6 +62,15 @@ final class AppModel {
             switch self {
             case .alphabetical: "A-Z"
             case .recentlyAdded: "Recently Added"
+            }
+        }
+
+        /// The Playlists grid's wording: a playlist is made and then edited, so
+        /// "added" would only ever mean when it was created.
+        var playlistLabel: String {
+            switch self {
+            case .alphabetical: "A-Z"
+            case .recentlyAdded: "Recently Updated"
             }
         }
     }
@@ -123,7 +137,20 @@ final class AppModel {
     var libraryAlbumGridScrollAnchor: Album.Key?
     var artistAlbumGridScrollAnchor: Album.Key?
 
+    /// The genre scrolled to the top of the Genres grid, and the album at the
+    /// top of one genre's grid layout — separate anchors for the same reason
+    /// as the two above.
+    var genreGridScrollAnchor: String?
+    /// The playlist at the top of the Playlists grid.
+    var playlistGridScrollAnchor: Playlist.ID?
+    var genreAlbumGridScrollAnchor: Album.Key?
+
     func show(_ screen: Screen) {
+        // The immersive view covers the whole window, so navigating anywhere —
+        // search is the way in from there — has to leave it, or the new screen
+        // loads out of sight. Before the guard: picking the screen already
+        // underneath still needs to surface it.
+        isImmersive = false
         guard screen != self.screen else { return }
         backStack.append(self.screen)
         forwardStack.removeAll()
@@ -259,6 +286,14 @@ final class AppModel {
             settings.set(artistAlbumLayout.rawValue, forKey: .artistAlbumLayout)
         }
     }
+    /// Grid by default: a genre can hold hundreds of records, and a stack of
+    /// full tracklists is the wrong first look at that many.
+    var genreAlbumLayout: ArtistAlbumLayout = .grid {
+        didSet {
+            guard oldValue != genreAlbumLayout else { return }
+            settings.set(genreAlbumLayout.rawValue, forKey: .genreAlbumLayout)
+        }
+    }
     var albumSort: LibrarySort = .alphabetical {
         didSet {
             guard oldValue != albumSort else { return }
@@ -266,6 +301,34 @@ final class AppModel {
             sortAlbums()
         }
     }
+    /// Persisted under its own key. `recentlyAdded` here means recently
+    /// *updated* — made, renamed, or changed — see `LibrarySort.playlistLabel`.
+    var playlistSort: LibrarySort = .alphabetical {
+        didSet {
+            guard oldValue != playlistSort else { return }
+            settings.set(playlistSort.rawValue, forKey: .playlistSort)
+        }
+    }
+
+    /// The Playlists grid's order. Separate from `playlists`, which is the
+    /// sidebar's order and should not shuffle because the grid was re-sorted.
+    var sortedPlaylists: [Playlist] {
+        switch playlistSort {
+        case .alphabetical:
+            return playlists.sorted {
+                $0.name.localizedStandardCompare($1.name) == .orderedAscending
+            }
+        case .recentlyAdded:
+            // Name breaks ties, which also orders playlists that predate the
+            // column (all `distantPast`) the way A-Z would.
+            return playlists.sorted {
+                let (a, b) = ($0.updatedAt ?? .distantPast, $1.updatedAt ?? .distantPast)
+                if a != b { return a > b }
+                return $0.name.localizedStandardCompare($1.name) == .orderedAscending
+            }
+        }
+    }
+
     /// Playlists hold track ids; resolving one per row against `allTracks`
     /// would be a linear scan of the whole library for every line on screen.
     private var tracksByID: [Track.ID: Track] = [:]
@@ -279,6 +342,12 @@ final class AppModel {
     /// filtering and sorting the full album list on every body pass; see #86.
     /// Independent of `albumSort`, which only reorders the flat `albums` grid.
     private var albumsByArtist: [String: [Album]] = [:]
+    /// Genres A–Z, and each one's albums by artist then year. Derived from the
+    /// albums in `load()`, like `albumsByArtist`, so the genre screens never
+    /// regroup the library while drawing.
+    private(set) var genres: [Genre] = []
+    private var genresByID: [String: Genre] = [:]
+    private var albumsByGenre: [String: [Album]] = [:]
     private(set) var isLoading = true
     private(set) var loadError: String?
     /// Set when the real database could not be opened and the preview library
@@ -352,9 +421,16 @@ final class AppModel {
         if let raw = settings.string(forKey: .albumSort), let restored = LibrarySort(rawValue: raw) {
             albumSort = restored
         }
+        if let raw = settings.string(forKey: .playlistSort), let restored = LibrarySort(rawValue: raw) {
+            playlistSort = restored
+        }
         if let raw = settings.string(forKey: .artistAlbumLayout),
            let restored = ArtistAlbumLayout(rawValue: raw) {
             artistAlbumLayout = restored
+        }
+        if let raw = settings.string(forKey: .genreAlbumLayout),
+           let restored = ArtistAlbumLayout(rawValue: raw) {
+            genreAlbumLayout = restored
         }
         recentSearches = Self.decode(settings.string(forKey: .recentSearches))
         recentlyPlayedIDs = Self.decode(settings.string(forKey: .recentlyPlayed)).compactMap(UUID.init)
@@ -405,6 +481,19 @@ final class AppModel {
                             < ($1.year ?? 0, $1.title.localizedLowercase)
                     }
                 }
+            let grouping = Genre.grouped(from: albums)
+            genres = grouping.genres
+            genresByID = Dictionary(genres.map { ($0.id, $0) }) { first, _ in first }
+            albumsByGenre = grouping.albumsByGenre.mapValues { group in
+                group.sorted {
+                    let (a, b) = (Artist.stripArticle($0.albumArtist),
+                                  Artist.stripArticle($1.albumArtist))
+                    let order = a.localizedStandardCompare(b)
+                    if order != .orderedSame { return order == .orderedAscending }
+                    return ($0.year ?? 0, $0.title.localizedLowercase)
+                        < ($1.year ?? 0, $1.title.localizedLowercase)
+                }
+            }
             // A track removed from the library should not sit in this list
             // forever, wasting one of its five slots on something
             // `recentlyPlayed` will never resolve again.
@@ -497,18 +586,7 @@ final class AppModel {
     /// image, if any, is left for the next prune to sweep — it is no longer
     /// referenced once the row is rewritten.
     func setArtistImage(fromFile fileURL: URL, forArtist name: String) async {
-        guard let artwork else { return }
-        let data: Data
-        do {
-            data = try Data(contentsOf: fileURL)
-        } catch {
-            actionError = "Could not read that file: \(error.localizedDescription)"
-            return
-        }
-        guard Self.isReadableImage(data) else {
-            actionError = "“\(fileURL.lastPathComponent)” isn’t an image Cadence can read."
-            return
-        }
+        guard let artwork, let data = readImage(at: fileURL) else { return }
         do {
             let id = try await artwork.store(data)
             try await store.setCustomArtistImage(id, forArtist: name)
@@ -540,6 +618,63 @@ final class AppModel {
         }
     }
 
+    /// The bytes of an image file the user picked, or nil — with the reason in
+    /// `actionError` — when it cannot be read or is not an image.
+    private func readImage(at fileURL: URL) -> Data? {
+        let data: Data
+        do {
+            data = try Data(contentsOf: fileURL)
+        } catch {
+            actionError = "Could not read that file: \(error.localizedDescription)"
+            return nil
+        }
+        guard Self.isReadableImage(data) else {
+            actionError = "“\(fileURL.lastPathComponent)” isn’t an image Cadence can read."
+            return nil
+        }
+        return data
+    }
+
+    // MARK: Playlist covers
+
+    /// Whether playlist covers can be set at all — the same artwork store the
+    /// artist images need.
+    var canEditPlaylistImage: Bool { artwork != nil }
+
+    /// The playlist whose cover editor is open, if any — drives the sheet in
+    /// `RootView`.
+    var editingPlaylist: Playlist?
+
+    func setPlaylistImage(fromFile fileURL: URL, for playlist: Playlist) async {
+        guard let artwork, let data = readImage(at: fileURL) else { return }
+        do {
+            let id = try await artwork.store(data)
+            let saved = await edit(playlist, failing: "set the cover for") {
+                try await store.setPlaylistImage(id, forPlaylist: playlist.id)
+            }
+            guard saved else { return }
+            await pruneArtwork?()
+            // See `setArtistImage`: clear any miss the loader recorded for the
+            // id before its bytes landed.
+            refreshArtwork?(id)
+            notice = "Updated the cover for “\(playlist.name)”"
+        } catch {
+            actionError = "Could not set the cover for “\(playlist.name)”: "
+                + error.localizedDescription
+        }
+    }
+
+    /// Back to the tiled album covers; prunes the now-orphaned upload.
+    func removePlaylistImage(for playlist: Playlist) async {
+        guard playlist.artworkID != nil else { return }
+        let saved = await edit(playlist, failing: "reset the cover for") {
+            try await store.setPlaylistImage(nil, forPlaylist: playlist.id)
+        }
+        guard saved else { return }
+        await pruneArtwork?()
+        notice = "Reset the cover for “\(playlist.name)”"
+    }
+
     /// A cheap gate before handing bytes to the artwork store: ImageIO can name
     /// a type for them and there is at least one frame. Keeps a renamed text
     /// file or a truncated download from becoming an artist's blank avatar.
@@ -560,6 +695,16 @@ final class AppModel {
     /// trip, nor re-filter and re-sort it on every body pass. See #86.
     func albums(byArtist name: String) -> [Album] {
         albumsByArtist[name] ?? []
+    }
+
+    func genre(id: String) -> Genre? {
+        genresByID[id]
+    }
+
+    /// Every album in one genre, by artist then year. Empty for a genre the
+    /// library does not have.
+    func albums(inGenre id: String) -> [Album] {
+        albumsByGenre[id] ?? []
     }
 
     var currentAlbum: Album? {
@@ -661,6 +806,17 @@ final class AppModel {
     /// `PlaybackController.restoreQueue(resolving:)` calls to turn the ids it
     /// persisted back into real `Track`s. See #42.
     func track(id: Track.ID) -> Track? { tracksByID[id] }
+
+    /// What a playlist's tile shows: its own cover if the user chose one, else up
+    /// to four different covers from its tracks —
+    /// see `CoverMosaic`. Lazy, so a long playlist stops at the fourth cover
+    /// instead of resolving every id on every body pass. See #86.
+    func coverIDs(forPlaylist playlist: Playlist) -> [Artwork.ID] {
+        // The user's own cover replaces the tiles outright.
+        if let chosen = playlist.artworkID { return [chosen] }
+        return Artwork.firstDistinct(
+            playlist.trackIDs.lazy.compactMap { self.tracksByID[$0]?.artworkID }, limit: 4)
+    }
 
     /// `New Playlist`, then `New Playlist 2` — what the sheet opens with.
     /// Duplicate names are allowed; suggesting one is just rude.
@@ -1029,6 +1185,7 @@ final class AppModel {
         case .home: ""
         case .artists: "\(artists.count) ARTISTS"
         case .albums: "\(albums.count) ALBUMS"
+        case .genres: "\(genres.count) GENRES"
         case .playlists: "\(playlists.count) PLAYLISTS"
         }
     }

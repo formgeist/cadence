@@ -621,3 +621,39 @@ struct CapsuleButton: View {
         return isHovering && isEnabled ? Color(hex: 0x4A4A55) : Color(hex: 0x32323B)
     }
 }
+
+
+/// A collection's cover: four album covers tiled 2×2 when it has that many
+/// different ones, otherwise the first. Playlists and genres have no artwork of
+/// their own, so both borrow their albums'.
+struct CoverMosaic: View {
+    var artworkIDs: [Artwork.ID]
+    var cornerRadius: CGFloat = Tokens.Radius.control
+    var caption: String?
+    var captionSize: CGFloat = 9.5
+    var stripe: CGFloat = 5
+    var displaySize: Int = 64
+
+    var body: some View {
+        if artworkIDs.count >= 4 {
+            // Each tile is a quarter of the whole, so it asks the loader for
+            // half the size.
+            Grid(horizontalSpacing: 0, verticalSpacing: 0) {
+                ForEach(0..<2, id: \.self) { row in
+                    GridRow {
+                        ForEach(0..<2, id: \.self) { column in
+                            ArtworkView(artworkID: artworkIDs[row * 2 + column],
+                                        cornerRadius: 0, displaySize: max(displaySize / 2, 1))
+                                .aspectRatio(1, contentMode: .fit)
+                        }
+                    }
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        } else {
+            ArtworkView(artworkID: artworkIDs.first, cornerRadius: cornerRadius,
+                        caption: caption, captionSize: captionSize, stripe: stripe,
+                        displaySize: displaySize)
+        }
+    }
+}

@@ -151,6 +151,19 @@ public struct Artwork: Identifiable, Hashable, Sendable {
     }
 
     public var dimensionsDescription: String { "\(pixelWidth) × \(pixelHeight)" }
+
+    /// The first `limit` different covers in `ids`, in order. Lazy, so a long
+    /// playlist stops once it has enough rather than resolving every track.
+    /// Different covers stand in for different albums: a record's tracks share
+    /// one, so this is what decides whether a collection can tile four.
+    public static func firstDistinct(_ ids: some Sequence<ID>, limit: Int) -> [ID] {
+        var found: [ID] = []
+        for id in ids where !found.contains(id) {
+            found.append(id)
+            if found.count == limit { break }
+        }
+        return found
+    }
 }
 
 // MARK: - Track
@@ -559,6 +572,103 @@ public struct Artist: Identifiable, Hashable, Sendable {
     }
 }
 
+// MARK: - Genre
+
+/// A shelf of albums that share a genre tag. Like `Artist`, an aggregate
+/// derived from the tracks rather than a row of its own.
+///
+/// Tags are free text, so `Rock`, `rock` and ` ROCK ` are one genre here: the
+/// identity is the folded spelling, and the display name is whichever spelling
+/// the library uses most.
+public struct Genre: Identifiable, Hashable, Sendable {
+    /// The folded spelling. Stable across a rescan that changes which casing
+    /// wins the display name, so a genre screen survives it.
+    public var id: String
+    public var name: String
+    public var albumCount: Int
+    public var trackCount: Int
+    public var duration: TimeInterval
+    /// Up to four distinct covers from the genre's albums, for a card to tile.
+    public var artworkIDs: [Artwork.ID]
+
+    public init(id: String, name: String, albumCount: Int, trackCount: Int,
+                duration: TimeInterval, artworkIDs: [Artwork.ID]) {
+        self.id = id
+        self.name = name
+        self.albumCount = albumCount
+        self.trackCount = trackCount
+        self.duration = duration
+        self.artworkIDs = artworkIDs
+    }
+
+    /// `4 albums · 41 tracks`
+    public var summary: String {
+        let albums = albumCount == 1 ? "1 album" : "\(albumCount) albums"
+        let tracks = trackCount == 1 ? "1 track" : "\(trackCount) tracks"
+        return "\(albums) · \(tracks)"
+    }
+
+    /// The identity a tag is filed under, or nil for a tag with nothing in it.
+    public static func key(for tag: String?) -> String? {
+        guard let tag else { return nil }
+        let folded = tag
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+        return folded.isEmpty ? nil : folded
+    }
+
+    /// Every genre in `albums`, A–Z, and each genre's albums keyed by `id`.
+    /// Albums with no genre tag belong to no genre and appear in neither.
+    /// Albums keep the order they arrive in.
+    public static func grouped(from albums: [Album])
+        -> (genres: [Genre], albumsByGenre: [String: [Album]])
+    {
+        var albumsByGenre: [String: [Album]] = [:]
+        var spellings: [String: [String: Int]] = [:]
+        for album in albums {
+            guard let key = album.genreKey else { continue }
+            albumsByGenre[key, default: []].append(album)
+            for track in album.tracks {
+                guard Genre.key(for: track.genre) == key, let tag = track.genre else { continue }
+                spellings[key, default: [:]][tag.trimmingCharacters(in: .whitespacesAndNewlines),
+                                             default: 0] += 1
+            }
+        }
+        let genres = albumsByGenre.map { key, group -> Genre in
+            // Most used spelling wins; ties go to the first alphabetically so
+            // the choice does not flip between loads.
+            let name = spellings[key]?
+                .max { ($0.value, $1.key) < ($1.value, $0.key) }?.key ?? key
+            var covers: [Artwork.ID] = []
+            for album in group {
+                guard let id = album.artworkID, !covers.contains(id) else { continue }
+                covers.append(id)
+                if covers.count == 4 { break }
+            }
+            return Genre(id: key, name: name, albumCount: group.count,
+                         trackCount: group.reduce(0) { $0 + $1.trackCount },
+                         duration: group.reduce(0) { $0 + $1.duration },
+                         artworkIDs: covers)
+        }
+        .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        return (genres, albumsByGenre)
+    }
+}
+
+extension Album {
+    /// The identity of the album's genre: whichever tag most of its tracks
+    /// carry, so one stray track does not move a record to another shelf. Nil
+    /// when no track has a genre.
+    public var genreKey: String? {
+        var counts: [String: Int] = [:]
+        for track in tracks {
+            guard let key = Genre.key(for: track.genre) else { continue }
+            counts[key, default: 0] += 1
+        }
+        return counts.max { ($0.value, $1.key) < ($1.value, $0.key) }?.key
+    }
+}
+
 // MARK: - Playlist
 
 public struct Playlist: Identifiable, Hashable, Sendable {
@@ -571,14 +681,24 @@ public struct Playlist: Identifiable, Hashable, Sendable {
     /// tidying the sidebar, not tags, and a playlist shown in two places
     /// would make dragging it "out" of one ambiguous.
     public var folderID: PlaylistFolder.ID?
+    /// A cover the user chose, replacing the tiled album covers a playlist
+    /// otherwise shows. The bytes live in the artwork store; this is the id.
+    public var artworkID: Artwork.ID?
+    /// When the playlist was made or last changed — renamed, given or stripped
+    /// of tracks, reordered, or recovered. Nil for playlists that predate the
+    /// column, which sort as the stalest.
+    public var updatedAt: Date?
 
     public init(id: UUID = UUID(), name: String, trackIDs: [Track.ID], duration: TimeInterval,
-                folderID: PlaylistFolder.ID? = nil) {
+                folderID: PlaylistFolder.ID? = nil, artworkID: Artwork.ID? = nil,
+                updatedAt: Date? = nil) {
         self.id = id
         self.name = name
         self.trackIDs = trackIDs
         self.duration = duration
         self.folderID = folderID
+        self.artworkID = artworkID
+        self.updatedAt = updatedAt
     }
 
     public var summary: String {

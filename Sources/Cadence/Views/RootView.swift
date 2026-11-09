@@ -87,6 +87,10 @@ struct RootView: View {
         .sheet(item: $model.infoTrack) { track in
             TrackInfoSheet(track: track)
         }
+        .sheet(item: $model.editingPlaylist) { playlist in
+            PlaylistImageSheet(playlist: playlist)
+                .environment(model)
+        }
         .sheet(item: $model.editingArtist) { artist in
             ArtistImageSheet(artist: artist)
                 .environment(model)
@@ -181,6 +185,12 @@ struct RootView: View {
                 ArtistDetailView(artist: artist)
             } else {
                 missing("That artist is no longer in your library")
+            }
+        case .genre(let id):
+            if let genre = model.genre(id: id) {
+                GenreDetailView(genre: genre)
+            } else {
+                missing("That genre is no longer in your library")
             }
         case .playlist(let id):
             if let playlist = model.playlist(id: id) {
