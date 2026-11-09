@@ -200,7 +200,7 @@ public enum SettingsKey: String, Sendable {
     case volume, isMuted, volumeBeforeMute
     case shuffleMode, repeatMode, replayGainMode
     case tab, gridZoom
-    case artistSort, albumSort
+    case artistSort, albumSort, playlistSort
     /// How an artist page lays out their albums: `list` or `grid`.
     case artistAlbumLayout
     /// The same choice for a genre page, kept apart: a genre holds far more

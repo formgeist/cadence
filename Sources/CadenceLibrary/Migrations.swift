@@ -203,6 +203,15 @@ public enum Migrations {
             }
         }
 
+        // When a playlist was made or last changed, as seconds since 1970. Null
+        // on playlists that predate the column: nothing recorded when they were
+        // last touched, so they sort as the stalest rather than claiming a date.
+        migrator.registerMigration("v9-playlist-updated") { db in
+            try db.alter(table: "playlist") { t in
+                t.add(column: "updatedAt", .double)
+            }
+        }
+
         return migrator
     }
 }

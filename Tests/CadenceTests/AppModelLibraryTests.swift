@@ -83,3 +83,57 @@ struct AppModelGenreTests {
         #expect(model.screen == .library)
     }
 }
+
+@Suite("AppModel playlist sort")
+@MainActor
+struct AppModelPlaylistSortTests {
+
+    private func playlist(_ name: String, daysAgo: Double?) -> Playlist {
+        Playlist(name: name, trackIDs: [], duration: 0,
+                 updatedAt: daysAgo.map { Date(timeIntervalSinceNow: -$0 * 86_400) })
+    }
+
+    private func model(settings: InMemorySettingsStore = InMemorySettingsStore()) async -> AppModel {
+        let model = AppModel(
+            store: StubLibraryStore(playlists: [
+                playlist("Banana", daysAgo: 1),
+                playlist("apple", daysAgo: 30),
+                playlist("Cherry", daysAgo: nil),
+                playlist("Date", daysAgo: 5),
+            ]),
+            settings: settings)
+        await model.load()
+        return model
+    }
+
+    @Test("A-Z orders by name, ignoring case")
+    func alphabetical() async {
+        let model = await model()
+        #expect(model.sortedPlaylists.map(\.name) == ["apple", "Banana", "Cherry", "Date"])
+    }
+
+    @Test("Recently updated puts the newest first and playlists with no date last")
+    func recentlyUpdated() async {
+        let model = await model()
+        model.playlistSort = .recentlyAdded
+        #expect(model.sortedPlaylists.map(\.name) == ["Banana", "Date", "apple", "Cherry"])
+    }
+
+    @Test("Sorting the grid leaves the sidebar's order alone")
+    func sidebarOrderUntouched() async {
+        let model = await model()
+        let before = model.playlists.map(\.name)
+        model.playlistSort = .recentlyAdded
+        #expect(model.playlists.map(\.name) == before)
+    }
+
+    @Test("The chosen sort is remembered")
+    func persists() async {
+        let settings = InMemorySettingsStore()
+        let first = await model(settings: settings)
+        first.playlistSort = .recentlyAdded
+
+        let second = await model(settings: settings)
+        #expect(second.playlistSort == .recentlyAdded)
+    }
+}

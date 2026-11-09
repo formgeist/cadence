@@ -684,15 +684,21 @@ public struct Playlist: Identifiable, Hashable, Sendable {
     /// A cover the user chose, replacing the tiled album covers a playlist
     /// otherwise shows. The bytes live in the artwork store; this is the id.
     public var artworkID: Artwork.ID?
+    /// When the playlist was made or last changed — renamed, given or stripped
+    /// of tracks, reordered, or recovered. Nil for playlists that predate the
+    /// column, which sort as the stalest.
+    public var updatedAt: Date?
 
     public init(id: UUID = UUID(), name: String, trackIDs: [Track.ID], duration: TimeInterval,
-                folderID: PlaylistFolder.ID? = nil, artworkID: Artwork.ID? = nil) {
+                folderID: PlaylistFolder.ID? = nil, artworkID: Artwork.ID? = nil,
+                updatedAt: Date? = nil) {
         self.id = id
         self.name = name
         self.trackIDs = trackIDs
         self.duration = duration
         self.folderID = folderID
         self.artworkID = artworkID
+        self.updatedAt = updatedAt
     }
 
     public var summary: String {

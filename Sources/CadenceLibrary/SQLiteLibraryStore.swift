@@ -94,7 +94,7 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
         try await pool.read { db in
             let rows = try Row.fetchAll(db, sql: """
                 SELECT p.id AS id, p.name AS name, p.folderID AS folderID,
-                       p.artworkID AS artworkID,
+                       p.artworkID AS artworkID, p.updatedAt AS updatedAt,
                        IFNULL(SUM(t.duration), 0) AS duration
                 FROM playlist p
                 LEFT JOIN playlistItem i ON i.playlistID = p.id
@@ -123,7 +123,8 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
                     trackIDs: trackIDsByPlaylist[id] ?? [],
                     duration: row["duration"],
                     folderID: (row["folderID"] as String?).flatMap(UUID.init),
-                    artworkID: row["artworkID"])
+                    artworkID: row["artworkID"],
+                    updatedAt: (row["updatedAt"] as Double?).map(Date.init(timeIntervalSince1970:)))
             }
         }
     }
@@ -135,13 +136,14 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
     /// returned rather than left for the caller to find again by name.
     @discardableResult
     public func createPlaylist(named name: String) async throws -> Playlist {
-        let playlist = Playlist(name: name, trackIDs: [], duration: 0)
+        let playlist = Playlist(name: name, trackIDs: [], duration: 0, updatedAt: Date())
         try await pool.write { db in
             let position = try Int.fetchOne(
                 db, sql: "SELECT IFNULL(MAX(position), -1) + 1 FROM playlist") ?? 0
             try db.execute(
-                sql: "INSERT INTO playlist (id, name, position) VALUES (?, ?, ?)",
-                arguments: [playlist.id.uuidString, name, position])
+                sql: "INSERT INTO playlist (id, name, position, updatedAt) VALUES (?, ?, ?, ?)",
+                arguments: [playlist.id.uuidString, name, position,
+                            playlist.updatedAt?.timeIntervalSince1970])
         }
         return playlist
     }
@@ -167,6 +169,7 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
                 // unspent keeps the run contiguous.
                 if db.changesCount > 0 { position += 1 }
             }
+            try Self.touch(playlistID, in: db)
         }
     }
 
@@ -187,6 +190,7 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
             // survivor against every doomed row rather than against a hash.
             let doomedSet = Set(doomed)
             try Self.renumber(rowIDs.filter { !doomedSet.contains($0) }, from: rowIDs, in: db)
+            try Self.touch(playlistID, in: db)
         }
     }
 
@@ -201,20 +205,21 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
             var moved = rowIDs
             Ordering.move(&moved, fromOffsets: source, toOffset: destination)
             try Self.renumber(moved, from: rowIDs, in: db)
+            try Self.touch(playlistID, in: db)
         }
     }
 
     public func renamePlaylist(_ id: Playlist.ID, to name: String) async throws {
         try await pool.write { db in
-            try db.execute(sql: "UPDATE playlist SET name = ? WHERE id = ?",
-                           arguments: [name, id.uuidString])
+            try db.execute(sql: "UPDATE playlist SET name = ?, updatedAt = ? WHERE id = ?",
+                           arguments: [name, Date().timeIntervalSince1970, id.uuidString])
         }
     }
 
     public func setPlaylistImage(_ id: Artwork.ID?, forPlaylist playlistID: Playlist.ID) async throws {
         try await pool.write { db in
-            try db.execute(sql: "UPDATE playlist SET artworkID = ? WHERE id = ?",
-                           arguments: [id, playlistID.uuidString])
+            try db.execute(sql: "UPDATE playlist SET artworkID = ?, updatedAt = ? WHERE id = ?",
+                           arguments: [id, Date().timeIntervalSince1970, playlistID.uuidString])
         }
     }
 
@@ -472,8 +477,12 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
             try db.execute(sql: "DELETE FROM playlist")
             for (index, playlist) in playlists.enumerated() {
                 try db.execute(
-                    sql: "INSERT INTO playlist (id, name, position, artworkID) VALUES (?, ?, ?, ?)",
-                    arguments: [playlist.id.uuidString, playlist.name, index, playlist.artworkID])
+                    sql: """
+                        INSERT INTO playlist (id, name, position, artworkID, updatedAt)
+                        VALUES (?, ?, ?, ?, ?)
+                        """,
+                    arguments: [playlist.id.uuidString, playlist.name, index, playlist.artworkID,
+                                playlist.updatedAt?.timeIntervalSince1970])
                 for (position, trackID) in playlist.trackIDs.enumerated() {
                     // Skip ids with no track: a playlist referencing a removed
                     // file should lose the entry, not fail the whole write.
@@ -487,6 +496,12 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
     }
 
     // MARK: - Helpers
+
+    /// Stamps a playlist as changed just now.
+    private static func touch(_ playlistID: Playlist.ID, in db: Database) throws {
+        try db.execute(sql: "UPDATE playlist SET updatedAt = ? WHERE id = ?",
+                       arguments: [Date().timeIntervalSince1970, playlistID.uuidString])
+    }
 
     /// Indexes under the track's own rowid, so replacing an entry is a direct
     /// lookup rather than a scan of the whole search table.

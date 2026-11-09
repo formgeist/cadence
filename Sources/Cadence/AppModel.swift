@@ -64,6 +64,15 @@ final class AppModel {
             case .recentlyAdded: "Recently Added"
             }
         }
+
+        /// The Playlists grid's wording: a playlist is made and then edited, so
+        /// "added" would only ever mean when it was created.
+        var playlistLabel: String {
+            switch self {
+            case .alphabetical: "A-Z"
+            case .recentlyAdded: "Recently Updated"
+            }
+        }
     }
 
     /// How an artist page shows their albums. `list` stacks each record with
@@ -132,6 +141,8 @@ final class AppModel {
     /// top of one genre's grid layout — separate anchors for the same reason
     /// as the two above.
     var genreGridScrollAnchor: String?
+    /// The playlist at the top of the Playlists grid.
+    var playlistGridScrollAnchor: Playlist.ID?
     var genreAlbumGridScrollAnchor: Album.Key?
 
     func show(_ screen: Screen) {
@@ -290,6 +301,34 @@ final class AppModel {
             sortAlbums()
         }
     }
+    /// Persisted under its own key. `recentlyAdded` here means recently
+    /// *updated* — made, renamed, or changed — see `LibrarySort.playlistLabel`.
+    var playlistSort: LibrarySort = .alphabetical {
+        didSet {
+            guard oldValue != playlistSort else { return }
+            settings.set(playlistSort.rawValue, forKey: .playlistSort)
+        }
+    }
+
+    /// The Playlists grid's order. Separate from `playlists`, which is the
+    /// sidebar's order and should not shuffle because the grid was re-sorted.
+    var sortedPlaylists: [Playlist] {
+        switch playlistSort {
+        case .alphabetical:
+            return playlists.sorted {
+                $0.name.localizedStandardCompare($1.name) == .orderedAscending
+            }
+        case .recentlyAdded:
+            // Name breaks ties, which also orders playlists that predate the
+            // column (all `distantPast`) the way A-Z would.
+            return playlists.sorted {
+                let (a, b) = ($0.updatedAt ?? .distantPast, $1.updatedAt ?? .distantPast)
+                if a != b { return a > b }
+                return $0.name.localizedStandardCompare($1.name) == .orderedAscending
+            }
+        }
+    }
+
     /// Playlists hold track ids; resolving one per row against `allTracks`
     /// would be a linear scan of the whole library for every line on screen.
     private var tracksByID: [Track.ID: Track] = [:]
@@ -381,6 +420,9 @@ final class AppModel {
         }
         if let raw = settings.string(forKey: .albumSort), let restored = LibrarySort(rawValue: raw) {
             albumSort = restored
+        }
+        if let raw = settings.string(forKey: .playlistSort), let restored = LibrarySort(rawValue: raw) {
+            playlistSort = restored
         }
         if let raw = settings.string(forKey: .artistAlbumLayout),
            let restored = ArtistAlbumLayout(rawValue: raw) {

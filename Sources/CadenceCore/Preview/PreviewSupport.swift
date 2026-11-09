@@ -299,7 +299,7 @@ public actor InMemoryLibraryStore: LibraryStore {
 
     @discardableResult
     public func createPlaylist(named name: String) async throws -> Playlist {
-        let playlist = Playlist(name: name, trackIDs: [], duration: 0)
+        let playlist = Playlist(name: name, trackIDs: [], duration: 0, updatedAt: Date())
         storedPlaylists.append(playlist)
         return playlist
     }
@@ -328,11 +328,13 @@ public actor InMemoryLibraryStore: LibraryStore {
     public func renamePlaylist(_ id: Playlist.ID, to name: String) async throws {
         guard let index = storedPlaylists.firstIndex(where: { $0.id == id }) else { return }
         storedPlaylists[index].name = name
+        storedPlaylists[index].updatedAt = Date()
     }
 
     public func setPlaylistImage(_ id: Artwork.ID?, forPlaylist playlistID: Playlist.ID) async throws {
         guard let index = storedPlaylists.firstIndex(where: { $0.id == playlistID }) else { return }
         storedPlaylists[index].artworkID = id
+        storedPlaylists[index].updatedAt = Date()
     }
 
     public func deletePlaylist(_ id: Playlist.ID) async throws {
@@ -384,6 +386,7 @@ public actor InMemoryLibraryStore: LibraryStore {
         let durations = Dictionary(tracks.map { ($0.id, $0.duration) }) { first, _ in first }
         storedPlaylists[index].trackIDs = ids
         storedPlaylists[index].duration = ids.reduce(0) { $0 + (durations[$1] ?? 0) }
+        storedPlaylists[index].updatedAt = Date()
     }
 
     public func tracks(matching query: String) async throws -> [Track] {

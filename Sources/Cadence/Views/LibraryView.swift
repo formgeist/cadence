@@ -44,12 +44,11 @@ struct LibraryView: View {
                 }
             case .playlists:
                 if model.isInitialLoading {
-                    SkeletonPlaylistList()
+                    SkeletonAlbumGrid(label: "Loading playlists")
                 } else if model.playlists.isEmpty {
                     PlaylistsEmptyState()
                 } else {
-                    ScrollView { PlaylistList() }
-                        .scrollContentBackground(.hidden)
+                    PlaylistGrid()
                 }
             }
         }
@@ -68,10 +67,11 @@ struct LibraryView: View {
             Spacer()
 
             HStack(spacing: Tokens.Space.l) {
-                // Home has no sort and no zoom, and
-                // Playlists neither — so the options menu is for the two grids
-                // that actually have something to configure.
-                if (model.tab == .artists || model.tab == .albums) && !model.isInitialLoading {
+                // Home has no sort and no zoom — so the options menu is for the
+                // grids that actually have something to configure.
+                if [.artists, .albums, .playlists].contains(model.tab)
+                    && !model.isInitialLoading
+                    && !(model.tab == .playlists && model.playlists.isEmpty) {
                     LibraryActionsMenu()
                 }
                 if model.isInitialLoading {
@@ -157,8 +157,16 @@ private struct LibraryActionsMenu: View {
     @Environment(AppModel.self) private var model
 
     private var sort: AppModel.LibrarySort {
-        model.tab == .albums ? model.albumSort : model.artistSort
+        switch model.tab {
+        case .albums: model.albumSort
+        case .playlists: model.playlistSort
+        default: model.artistSort
+        }
     }
+
+    /// Cards in the grid are sized by the zoom, which only Albums and
+    /// Playlists have.
+    private var hasZoom: Bool { model.tab == .albums || model.tab == .playlists }
 
     var body: some View {
         @Bindable var model = model
@@ -171,18 +179,19 @@ private struct LibraryActionsMenu: View {
 
     private func menuItems(zoom: Binding<Double>) -> [MenuItem] {
         var items = AppModel.LibrarySort.allCases.map { option in
-            MenuItem.choice(option.label, isOn: sort == option) {
-                if model.tab == .albums {
-                    model.albumSort = option
-                } else {
-                    model.artistSort = option
+            MenuItem.choice(model.tab == .playlists ? option.playlistLabel : option.label,
+                            isOn: sort == option) {
+                switch model.tab {
+                case .albums: model.albumSort = option
+                case .playlists: model.playlistSort = option
+                default: model.artistSort = option
                 }
             }
         }
-        // The two lists keep separate sort preferences — sorting Albums by
-        // date added says nothing about how Artists should be ordered — and
-        // only Albums has a grid to zoom in the first place.
-        if model.tab == .albums {
+        // The lists keep separate sort preferences — sorting Albums by date
+        // added says nothing about how Artists should be ordered — and only
+        // the album-sized grids have artwork to zoom.
+        if hasZoom {
             items.append(.separator)
             items.append(.custom { ZoomMenuRow(zoom: zoom) })
         }
@@ -773,55 +782,80 @@ private struct PlaylistsEmptyState: View {
     }
 }
 
-private struct PlaylistList: View {
+private struct PlaylistGrid: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        LazyVStack(spacing: Tokens.Space.xxs) {
-            ForEach(model.playlists) { playlist in
-                PlaylistShelfRow(playlist: playlist)
-            }
+        @Bindable var model = model
+
+        CardGrid(items: model.sortedPlaylists,
+                 columnWidth: model.albumColumnWidth,
+                 scrollAnchor: $model.playlistGridScrollAnchor,
+                 typeAheadKey: \.name,
+                 open: { model.show(.playlist($0.id)) },
+                 header: { EmptyView() }) { playlist, _, isFocused, onSelect in
+            PlaylistCard(playlist: playlist, isKeyboardFocused: isFocused, onSelect: onSelect)
         }
-        .padding(.horizontal, Tokens.Space.xl)
-        .padding(.top, Tokens.Space.xl)
-        .padding(.bottom, 44)
     }
 }
 
-private struct PlaylistShelfRow: View {
+/// One playlist in the Playlists grid: its cover, name and size. Also a drop
+/// target — dragging tracks or an album onto it adds them.
+private struct PlaylistCard: View {
     @Environment(AppModel.self) private var model
     @Environment(PlaybackController.self) private var playback
     var playlist: Playlist
+    var isKeyboardFocused: Bool = false
+    /// See `ArtistCard.onSelect`.
+    var onSelect: () -> Void = {}
 
+    @State private var isHovering = false
     @State private var isTargeted = false
+
+    private var detail: String {
+        "\(playlist.summary) · \(DurationFormat.approximate(playlist.duration))"
+    }
 
     var body: some View {
         // Opening it is what clicking a playlist has to do; that it did
         // nothing here was half of issue #1.
-        Button { model.show(.playlist(playlist.id)) } label: {
-            HStack(spacing: Tokens.Space.l) {
-                CoverMosaic(artworkIDs: model.coverIDs(forPlaylist: playlist), cornerRadius: 5,
-                            displaySize: 64)
-                    .frame(width: 56, height: 56)
-                VStack(alignment: .leading, spacing: 4) {
+        Button {
+            onSelect()
+            model.show(.playlist(playlist.id))
+        } label: {
+            VStack(alignment: .leading, spacing: 11) {
+                CoverMosaic(artworkIDs: model.coverIDs(forPlaylist: playlist),
+                            cornerRadius: Tokens.Radius.control, displaySize: 320)
+                    .aspectRatio(1, contentMode: .fit)
+                    .overlay {
+                        if isTargeted {
+                            RoundedRectangle(cornerRadius: Tokens.Radius.control,
+                                             style: .continuous)
+                                .strokeBorder(Tokens.Palette.accent, lineWidth: 2)
+                        }
+                    }
+                    .keyboardFocusRing(isKeyboardFocused,
+                                      in: RoundedRectangle(cornerRadius: Tokens.Radius.control,
+                                                           style: .continuous))
+
+                VStack(alignment: .leading, spacing: 3) {
                     Text(playlist.name)
-                        .font(Tokens.Typography.sans(14, .bold))
-                        .foregroundStyle(Color(hex: 0xEAEAEF))
-                    Text(playlist.summary)
+                        .font(Tokens.Typography.cardTitle)
+                        .foregroundStyle(Color(hex: 0xEBEBF0))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Text(detail)
                         .font(Tokens.Typography.caption)
                         .foregroundStyle(Tokens.Palette.textTertiary)
+                        .lineLimit(1)
                 }
-                Spacer(minLength: Tokens.Space.l)
-                Text(DurationFormat.approximate(playlist.duration))
-                    .font(Tokens.Typography.mono(11))
-                    .foregroundStyle(Tokens.Palette.textFaint)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.horizontal, Tokens.Space.m)
-            .padding(.vertical, 10)
-            .hoverHighlight(isActive: isTargeted, radius: Tokens.Radius.card)
-            .contentShape(Rectangle())
+            .opacity(isHovering && !isTargeted ? 0.86 : 1)
         }
         .plainControl()
+        .focusable(false)
+        .onHover { isHovering = $0 }
         .dropDestination(for: TrackSelection.self) { selections, _ in
             let ids = selections.flatMap(\.trackIDs)
             guard !ids.isEmpty else { return false }
@@ -832,11 +866,9 @@ private struct PlaylistShelfRow: View {
             PlaylistMenu.actions(model: model, playback: playback, playlist: playlist)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(playlist.name), \(playlist.summary), "
-            + DurationFormat.approximate(playlist.duration))
+        .accessibilityLabel("\(playlist.name), \(detail)")
         .accessibilityAddTraits(.isButton)
     }
-
 }
 
 // MARK: - Recents

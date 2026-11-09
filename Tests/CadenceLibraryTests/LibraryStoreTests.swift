@@ -529,6 +529,46 @@ struct SearchTests {
             #expect(try await store.playlists().first?.artworkID == "playlist-hash")
         }
     }
+
+    @Test("A playlist is stamped when made and again by every change to it")
+    func playlistUpdatedAt() async throws {
+        try await withStore { store in
+            let tracks = [makeTrack("One"), makeTrack("Two")]
+            try await store.upsert(tracks)
+            let playlist = try await store.createPlaylist(named: "Mix")
+
+            func stamp() async throws -> Date {
+                try #require(try await store.playlists().first?.updatedAt)
+            }
+            var last = try await stamp()
+            #expect(abs(last.timeIntervalSinceNow) < 5)
+
+            // Each change moves the stamp on; a short pause keeps the clock
+            // from returning the same instant twice.
+            func changed(_ change: () async throws -> Void) async throws -> Bool {
+                try await Task.sleep(for: .milliseconds(20))
+                try await change()
+                let now = try await stamp()
+                defer { last = now }
+                return now > last
+            }
+            #expect(try await changed {
+                try await store.addTracks(tracks.map(\.id), to: playlist.id)
+            })
+            #expect(try await changed {
+                try await store.moveTracks(fromOffsets: [0], toOffset: 2, in: playlist.id)
+            })
+            #expect(try await changed {
+                try await store.removeTracks(atOffsets: [0], from: playlist.id)
+            })
+            #expect(try await changed {
+                try await store.renamePlaylist(playlist.id, to: "Mix 2")
+            })
+            #expect(try await changed {
+                try await store.setPlaylistImage("cover", forPlaylist: playlist.id)
+            })
+        }
+    }
 }
 
 private extension Track {
