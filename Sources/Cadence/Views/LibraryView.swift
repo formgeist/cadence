@@ -801,6 +801,10 @@ private struct PlaylistGrid: View {
 
 /// One playlist in the Playlists grid: its cover, name and size. Also a drop
 /// target — dragging tracks or an album onto it adds them.
+///
+/// Not a `Button`, for the reason `AlbumCard` is not: the hover Play pill is a
+/// button of its own, and nesting one inside another leaves the inner one
+/// unreliable. A tap gesture opens the playlist; the pill wins its own clicks.
 private struct PlaylistCard: View {
     @Environment(AppModel.self) private var model
     @Environment(PlaybackController.self) private var playback
@@ -810,52 +814,71 @@ private struct PlaylistCard: View {
     var onSelect: () -> Void = {}
 
     @State private var isHovering = false
+    @State private var isHoveringArt = false
     @State private var isTargeted = false
 
     private var detail: String {
         "\(playlist.summary) · \(DurationFormat.approximate(playlist.duration))"
     }
 
+    private func open() {
+        onSelect()
+        model.show(.playlist(playlist.id))
+    }
+
+    private func play() {
+        let tracks = model.tracks(in: playlist)
+        guard !tracks.isEmpty else { return }
+        playback.play(tracks, fromPlaylist: playlist.id)
+    }
+
     var body: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            CoverMosaic(artworkIDs: model.coverIDs(forPlaylist: playlist),
+                        cornerRadius: Tokens.Radius.control, displaySize: 320)
+                .aspectRatio(1, contentMode: .fit)
+                // Built only while hovered, like `AlbumCard`'s: an idle scrim
+                // on every card is measurable cost in a long grid. An empty
+                // playlist has nothing to play, so it gets no pill.
+                .overlay {
+                    if isHoveringArt && !playlist.trackIDs.isEmpty {
+                        playOverlay.transition(.opacity)
+                    }
+                }
+                .animation(.easeOut(duration: 0.12), value: isHoveringArt)
+                .onHover { isHoveringArt = $0 }
+                .overlay {
+                    if isTargeted {
+                        RoundedRectangle(cornerRadius: Tokens.Radius.control,
+                                         style: .continuous)
+                            .strokeBorder(Tokens.Palette.accent, lineWidth: 2)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .keyboardFocusRing(isKeyboardFocused,
+                                  in: RoundedRectangle(cornerRadius: Tokens.Radius.control,
+                                                       style: .continuous))
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(playlist.name)
+                    .font(Tokens.Typography.cardTitle)
+                    .foregroundStyle(Color(hex: 0xEBEBF0))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Text(detail)
+                    .font(Tokens.Typography.caption)
+                    .foregroundStyle(Tokens.Palette.textTertiary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .opacity(isHovering && !isTargeted ? 0.86 : 1)
+        .contentShape(Rectangle())
+        .onHover { isHovering = $0 }
+        .pointingHandCursor()
         // Opening it is what clicking a playlist has to do; that it did
         // nothing here was half of issue #1.
-        Button {
-            onSelect()
-            model.show(.playlist(playlist.id))
-        } label: {
-            VStack(alignment: .leading, spacing: 11) {
-                CoverMosaic(artworkIDs: model.coverIDs(forPlaylist: playlist),
-                            cornerRadius: Tokens.Radius.control, displaySize: 320)
-                    .aspectRatio(1, contentMode: .fit)
-                    .overlay {
-                        if isTargeted {
-                            RoundedRectangle(cornerRadius: Tokens.Radius.control,
-                                             style: .continuous)
-                                .strokeBorder(Tokens.Palette.accent, lineWidth: 2)
-                        }
-                    }
-                    .keyboardFocusRing(isKeyboardFocused,
-                                      in: RoundedRectangle(cornerRadius: Tokens.Radius.control,
-                                                           style: .continuous))
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(playlist.name)
-                        .font(Tokens.Typography.cardTitle)
-                        .foregroundStyle(Color(hex: 0xEBEBF0))
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                    Text(detail)
-                        .font(Tokens.Typography.caption)
-                        .foregroundStyle(Tokens.Palette.textTertiary)
-                        .lineLimit(1)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .opacity(isHovering && !isTargeted ? 0.86 : 1)
-        }
-        .plainControl()
-        .focusable(false)
-        .onHover { isHovering = $0 }
+        .onTapGesture(perform: open)
         .dropDestination(for: TrackSelection.self) { selections, _ in
             let ids = selections.flatMap(\.trackIDs)
             guard !ids.isEmpty else { return false }
@@ -868,6 +891,26 @@ private struct PlaylistCard: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(playlist.name), \(detail)")
         .accessibilityAddTraits(.isButton)
+        // With no button underneath, this is what VoiceOver's press runs.
+        .accessibilityAction(.default, open)
+        // The hover pill is hidden from VoiceOver with the rest of the card's
+        // children, so the same action is offered here.
+        .accessibilityAction(named: "Play", play)
+    }
+
+    /// Appears over the cover on hover: a scrim behind a "Play" pill that
+    /// starts the playlist from the top without opening it — the same
+    /// treatment as `AlbumCard`.
+    private var playOverlay: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: Tokens.Radius.control, style: .continuous)
+                .fill(.black.opacity(0.55))
+                .allowsHitTesting(false)
+
+            CapsuleButton(title: "Play", systemImage: "play.fill",
+                          accessibilityLabel: "Play \(playlist.name)", action: play)
+                .scaleEffect(0.82)
+        }
     }
 }
 
