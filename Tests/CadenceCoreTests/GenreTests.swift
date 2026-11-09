@@ -68,3 +68,20 @@ struct GenreTests {
         #expect(Set(genre.artworkIDs).count == 4)
     }
 }
+
+@Suite("Distinct covers")
+struct DistinctCoverTests {
+
+    @Test("Repeats collapse, order is kept, and it stops at the limit")
+    func firstDistinct() {
+        let ids = ["a", "a", "b", "a", "c", "d", "e"]
+        #expect(Artwork.firstDistinct(ids, limit: 4) == ["a", "b", "c", "d"])
+        #expect(Artwork.firstDistinct(ids, limit: 2) == ["a", "b"])
+    }
+
+    @Test("Fewer covers than the limit returns what there is")
+    func fewerThanLimit() {
+        #expect(Artwork.firstDistinct(["a", "a"], limit: 4) == ["a"])
+        #expect(Artwork.firstDistinct([String](), limit: 4).isEmpty)
+    }
+}

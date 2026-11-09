@@ -73,16 +73,17 @@ struct PlaylistDetailView: View {
     /// is its own `ScrollView`, sibling to this one rather than wrapping it,
     /// so nothing here competes with a drag over the tracks below.
     private func header(tracks: [Track]) -> some View {
-        // A playlist has no cover of its own; the first track that has one
+        // A playlist has no cover of its own: four different album covers
+        // tile when it has them, otherwise the first track that has one
         // stands in, rather than the first track's — which is often the one
         // with none.
-        let coverID = tracks.compactMap(\.artworkID).first
+        let coverIDs = Artwork.firstDistinct(tracks.lazy.compactMap(\.artworkID), limit: 4)
 
         return HStack(alignment: .bottom, spacing: 32) {
-            ArtworkView(
-                artworkID: coverID,
+            CoverMosaic(
+                artworkIDs: coverIDs,
                 cornerRadius: Tokens.Radius.card,
-                caption: coverID == nil ? "EMPTY PLAYLIST" : nil,
+                caption: coverIDs.isEmpty ? "EMPTY PLAYLIST" : nil,
                 captionSize: 10,
                 stripe: 7,
                 displaySize: 320

@@ -719,6 +719,14 @@ final class AppModel {
     /// persisted back into real `Track`s. See #42.
     func track(id: Track.ID) -> Track? { tracksByID[id] }
 
+    /// Up to four different covers from a playlist's tracks, for its tile —
+    /// see `CoverMosaic`. Lazy, so a long playlist stops at the fourth cover
+    /// instead of resolving every id on every body pass. See #86.
+    func coverIDs(forPlaylist playlist: Playlist) -> [Artwork.ID] {
+        Artwork.firstDistinct(
+            playlist.trackIDs.lazy.compactMap { self.tracksByID[$0]?.artworkID }, limit: 4)
+    }
+
     /// `New Playlist`, then `New Playlist 2` — what the sheet opens with.
     /// Duplicate names are allowed; suggesting one is just rude.
     var suggestedPlaylistName: String {

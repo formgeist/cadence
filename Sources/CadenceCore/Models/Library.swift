@@ -151,6 +151,19 @@ public struct Artwork: Identifiable, Hashable, Sendable {
     }
 
     public var dimensionsDescription: String { "\(pixelWidth) × \(pixelHeight)" }
+
+    /// The first `limit` different covers in `ids`, in order. Lazy, so a long
+    /// playlist stops once it has enough rather than resolving every track.
+    /// Different covers stand in for different albums: a record's tracks share
+    /// one, so this is what decides whether a collection can tile four.
+    public static func firstDistinct(_ ids: some Sequence<ID>, limit: Int) -> [ID] {
+        var found: [ID] = []
+        for id in ids where !found.contains(id) {
+            found.append(id)
+            if found.count == limit { break }
+        }
+        return found
+    }
 }
 
 // MARK: - Track

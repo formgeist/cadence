@@ -695,33 +695,15 @@ private struct GenreGrid: View {
     }
 }
 
-/// A genre has no cover of its own, so it borrows its albums': four tiled when
-/// the library has that many different ones, otherwise the first.
+/// A genre has no cover of its own, so it borrows its albums' — see `CoverMosaic`.
 struct GenreArtwork: View {
     var genre: Genre
     var cornerRadius: CGFloat = Tokens.Radius.control
     var displaySize: Int = 200
 
     var body: some View {
-        if genre.artworkIDs.count >= 4 {
-            // Each tile is a quarter of the whole, so it asks the loader for
-            // half the size.
-            Grid(horizontalSpacing: 0, verticalSpacing: 0) {
-                ForEach(0..<2, id: \.self) { row in
-                    GridRow {
-                        ForEach(0..<2, id: \.self) { column in
-                            ArtworkView(artworkID: genre.artworkIDs[row * 2 + column],
-                                        cornerRadius: 0, displaySize: displaySize / 2)
-                                .aspectRatio(1, contentMode: .fit)
-                        }
-                    }
-                }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        } else {
-            ArtworkView(artworkID: genre.artworkIDs.first, cornerRadius: cornerRadius,
-                        displaySize: displaySize)
-        }
+        CoverMosaic(artworkIDs: genre.artworkIDs, cornerRadius: cornerRadius,
+                    displaySize: displaySize)
     }
 }
 
@@ -818,7 +800,8 @@ private struct PlaylistShelfRow: View {
         // nothing here was half of issue #1.
         Button { model.show(.playlist(playlist.id)) } label: {
             HStack(spacing: Tokens.Space.l) {
-                ArtworkView(artworkID: artworkID, cornerRadius: 5, displaySize: 64)
+                CoverMosaic(artworkIDs: model.coverIDs(forPlaylist: playlist), cornerRadius: 5,
+                            displaySize: 64)
                     .frame(width: 56, height: 56)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(playlist.name)
@@ -854,12 +837,6 @@ private struct PlaylistShelfRow: View {
         .accessibilityAddTraits(.isButton)
     }
 
-    /// Lazily, so a 500-track playlist stops at the first cover rather than
-    /// resolving every id and allocating the whole array to take `.first` —
-    /// on every body pass, for every row. See #86.
-    private var artworkID: Artwork.ID? {
-        playlist.trackIDs.lazy.compactMap { model.track(id: $0)?.artworkID }.first
-    }
 }
 
 // MARK: - Recents
@@ -964,7 +941,7 @@ struct RecentCard: View {
                         caption: album.artworkID == nil ? "NO COVER ART" : "COVER ART",
                         displaySize: 320)
         case .playlist(let playlist):
-            ArtworkView(artworkID: playlistArtworkID(playlist),
+            CoverMosaic(artworkIDs: model.coverIDs(forPlaylist: playlist),
                         cornerRadius: Tokens.Radius.control,
                         displaySize: 320)
                 .overlay(alignment: .bottomLeading) {
@@ -1020,9 +997,4 @@ struct RecentCard: View {
         }
     }
 
-    /// The playlist's first available cover — lazy, so a long playlist stops
-    /// at the first hit rather than resolving every id. See #86.
-    private func playlistArtworkID(_ playlist: Playlist) -> Artwork.ID? {
-        playlist.trackIDs.lazy.compactMap { model.track(id: $0)?.artworkID }.first
-    }
 }
