@@ -194,6 +194,15 @@ public enum Migrations {
             }
         }
 
+        // A cover the user picked for a playlist: an artwork id, null for the
+        // default tiled covers. Read by `referencedArtworkIDs`, so the pruner
+        // keeps it.
+        migrator.registerMigration("v8-playlist-artwork") { db in
+            try db.alter(table: "playlist") { t in
+                t.add(column: "artworkID", .text)
+            }
+        }
+
         return migrator
     }
 }

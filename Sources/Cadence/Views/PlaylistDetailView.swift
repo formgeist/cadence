@@ -18,6 +18,10 @@ struct PlaylistDetailView: View {
 
     var playlist: Playlist
 
+    /// Hover state for the header cover's edit affordance — see
+    /// `ArtistDetailView`.
+    @State private var isHoveringArt = false
+
     /// The row a single click put under the cursor, as on the album screen:
     /// playback needs a second click, so something has to show what the first
     /// one did.
@@ -72,12 +76,36 @@ struct PlaylistDetailView: View {
     /// scroll view as their tracks. Here the two stay separate: `trackList`
     /// is its own `ScrollView`, sibling to this one rather than wrapping it,
     /// so nothing here competes with a drag over the tracks below.
+    /// Appears over the header cover on hover: a scrim behind an "Edit" pill
+    /// that opens the cover editor. Hidden entirely when nothing could store
+    /// the image, so there is never a control that leads nowhere.
+    @ViewBuilder
+    private var editCoverOverlay: some View {
+        if model.canEditPlaylistImage {
+            ZStack {
+                RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous)
+                    .fill(.black.opacity(isHoveringArt ? 0.55 : 0))
+                    .allowsHitTesting(false)
+
+                if isHoveringArt {
+                    CapsuleButton(title: "Edit", systemImage: "pencil.circle.fill",
+                                  accessibilityLabel: "Edit playlist cover") {
+                        model.editingPlaylist = playlist
+                    }
+                    .scaleEffect(0.82)
+                    .transition(.opacity)
+                }
+            }
+            .animation(.easeOut(duration: 0.12), value: isHoveringArt)
+        }
+    }
+
     private func header(tracks: [Track]) -> some View {
-        // A playlist has no cover of its own: four different album covers
-        // tile when it has them, otherwise the first track that has one
-        // stands in, rather than the first track's — which is often the one
-        // with none.
-        let coverIDs = Artwork.firstDistinct(tracks.lazy.compactMap(\.artworkID), limit: 4)
+        // The user's own cover if they set one. Otherwise four different album
+        // covers tile when the playlist has them, or the first track that has
+        // one stands in, rather than the first track's — which is often the
+        // one with none.
+        let coverIDs = model.coverIDs(forPlaylist: playlist)
 
         return HStack(alignment: .bottom, spacing: 32) {
             CoverMosaic(
@@ -89,7 +117,9 @@ struct PlaylistDetailView: View {
                 displaySize: 320
             )
             .frame(width: Tokens.Layout.artistHeaderArt, height: Tokens.Layout.artistHeaderArt)
+            .overlay { editCoverOverlay }
             .shadow(color: .black.opacity(0.55), radius: 25, y: 12)
+            .onHover { isHoveringArt = $0 }
 
             VStack(alignment: .leading, spacing: 12) {
                 Text(playlist.name)

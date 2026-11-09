@@ -224,6 +224,10 @@ struct CadenceGlyph: Sendable {
         .line("M4.5 11.6V5.5a1 1 0 0 1 1-1h6.1a1 1 0 0 1 .7.3l7.4 7.4a1.4 1.4 0 0 1 0 2l-5.6 5.6a1.4 1.4 0 0 1-2 0L4.8 12.3a1 1 0 0 1-.3-.7z"),
         .ring(8.6, 8.6, 1.3),
     ])
+    private static let photo = CadenceGlyph([
+        .rect(4, 5, 16, 14, radius: 2.5, filled: false), .ring(9, 10, 1.4),
+        .line("M4.5 16.5l4.2-3.7a1.4 1.4 0 0 1 1.9.1l2.6 2.6 1.5-1.4a1.4 1.4 0 0 1 1.9 0l2.9 2.5"),
+    ])
     private static let plus = CadenceGlyph([.line("M12 5v14M5 12h14")])
     private static let remove = CadenceGlyph([.ring(12, 12, 8.5), .line("M8.2 12h7.6")])
     private static let rename = CadenceGlyph([.line(
@@ -287,6 +291,7 @@ struct CadenceGlyph: Sendable {
         "circle.circle": albums,
         "music.note.list": playlists,
         "tag": genreTag,
+        "photo": photo,
         "text.badge.plus": addToPlaylist,
         "magnifyingglass": search,
         "gearshape": preferences,

@@ -87,6 +87,10 @@ struct RootView: View {
         .sheet(item: $model.infoTrack) { track in
             TrackInfoSheet(track: track)
         }
+        .sheet(item: $model.editingPlaylist) { playlist in
+            PlaylistImageSheet(playlist: playlist)
+                .environment(model)
+        }
         .sheet(item: $model.editingArtist) { artist in
             ArtistImageSheet(artist: artist)
                 .environment(model)

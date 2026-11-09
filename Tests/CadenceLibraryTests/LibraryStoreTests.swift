@@ -499,6 +499,36 @@ struct SearchTests {
             #expect(referenced == ["cover-hash", "artist-hash"])
         }
     }
+
+    @Test("A playlist cover round-trips, can be cleared, and dies with the playlist")
+    func playlistCover() async throws {
+        try await withStore { store in
+            let playlist = try await store.createPlaylist(named: "Friday")
+            #expect(try await store.playlists().first?.artworkID == nil)
+
+            try await store.setPlaylistImage("cover-hash", forPlaylist: playlist.id)
+            #expect(try await store.playlists().first?.artworkID == "cover-hash")
+
+            try await store.setPlaylistImage("cover-hash-2", forPlaylist: playlist.id)
+            #expect(try await store.playlists().first?.artworkID == "cover-hash-2")
+
+            try await store.setPlaylistImage(nil, forPlaylist: playlist.id)
+            #expect(try await store.playlists().first?.artworkID == nil)
+        }
+    }
+
+    @Test("A playlist cover is not swept as an orphan, and renaming keeps it")
+    func playlistCoverSurvivesPrune() async throws {
+        try await withStore { store in
+            try await store.upsert([makeTrack("Slow Hours").withArtwork("cover-hash")])
+            let playlist = try await store.createPlaylist(named: "Friday")
+            try await store.setPlaylistImage("playlist-hash", forPlaylist: playlist.id)
+            try await store.renamePlaylist(playlist.id, to: "Saturday")
+
+            #expect(try await store.referencedArtworkIDs() == ["cover-hash", "playlist-hash"])
+            #expect(try await store.playlists().first?.artworkID == "playlist-hash")
+        }
+    }
 }
 
 private extension Track {

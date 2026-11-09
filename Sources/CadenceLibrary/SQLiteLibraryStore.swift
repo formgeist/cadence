@@ -94,6 +94,7 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
         try await pool.read { db in
             let rows = try Row.fetchAll(db, sql: """
                 SELECT p.id AS id, p.name AS name, p.folderID AS folderID,
+                       p.artworkID AS artworkID,
                        IFNULL(SUM(t.duration), 0) AS duration
                 FROM playlist p
                 LEFT JOIN playlistItem i ON i.playlistID = p.id
@@ -121,7 +122,8 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
                     name: row["name"],
                     trackIDs: trackIDsByPlaylist[id] ?? [],
                     duration: row["duration"],
-                    folderID: (row["folderID"] as String?).flatMap(UUID.init))
+                    folderID: (row["folderID"] as String?).flatMap(UUID.init),
+                    artworkID: row["artworkID"])
             }
         }
     }
@@ -206,6 +208,13 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
         try await pool.write { db in
             try db.execute(sql: "UPDATE playlist SET name = ? WHERE id = ?",
                            arguments: [name, id.uuidString])
+        }
+    }
+
+    public func setPlaylistImage(_ id: Artwork.ID?, forPlaylist playlistID: Playlist.ID) async throws {
+        try await pool.write { db in
+            try db.execute(sql: "UPDATE playlist SET artworkID = ? WHERE id = ?",
+                           arguments: [id, playlistID.uuidString])
         }
     }
 
@@ -427,6 +436,8 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
                 db, sql: "SELECT DISTINCT artworkID FROM track WHERE artworkID IS NOT NULL"))
             ids.formUnion(try String.fetchAll(
                 db, sql: "SELECT DISTINCT artworkID FROM artistImage"))
+            ids.formUnion(try String.fetchAll(
+                db, sql: "SELECT DISTINCT artworkID FROM playlist WHERE artworkID IS NOT NULL"))
             return ids
         }
     }
@@ -461,8 +472,8 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
             try db.execute(sql: "DELETE FROM playlist")
             for (index, playlist) in playlists.enumerated() {
                 try db.execute(
-                    sql: "INSERT INTO playlist (id, name, position) VALUES (?, ?, ?)",
-                    arguments: [playlist.id.uuidString, playlist.name, index])
+                    sql: "INSERT INTO playlist (id, name, position, artworkID) VALUES (?, ?, ?, ?)",
+                    arguments: [playlist.id.uuidString, playlist.name, index, playlist.artworkID])
                 for (position, trackID) in playlist.trackIDs.enumerated() {
                     // Skip ids with no track: a playlist referencing a removed
                     // file should lose the entry, not fail the whole write.

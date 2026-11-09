@@ -148,6 +148,11 @@ public protocol LibraryStore: Sendable {
                     in playlistID: Playlist.ID) async throws
     func renamePlaylist(_ id: Playlist.ID, to name: String) async throws
     func deletePlaylist(_ id: Playlist.ID) async throws
+    /// Sets (or, with `nil`, clears) the user's own cover for a playlist. As
+    /// with artist images, the bytes live in the `ArtworkStore`; this records
+    /// which id the playlist points at. A no-op by default, for stores that
+    /// carry no covers.
+    func setPlaylistImage(_ id: Artwork.ID?, forPlaylist playlistID: Playlist.ID) async throws
 
     /// Sidebar folders in the order they were made.
     func playlistFolders() async throws -> [PlaylistFolder]
@@ -182,6 +187,7 @@ public protocol LibraryStore: Sendable {
 }
 
 extension LibraryStore {
+    public func setPlaylistImage(_ id: Artwork.ID?, forPlaylist playlistID: Playlist.ID) async throws {}
     public func customArtistImages() async throws -> [String: Artwork.ID] { [:] }
     public func setCustomArtistImage(_ id: Artwork.ID?, forArtist name: String) async throws {}
 }

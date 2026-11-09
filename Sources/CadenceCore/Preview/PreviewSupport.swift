@@ -330,6 +330,11 @@ public actor InMemoryLibraryStore: LibraryStore {
         storedPlaylists[index].name = name
     }
 
+    public func setPlaylistImage(_ id: Artwork.ID?, forPlaylist playlistID: Playlist.ID) async throws {
+        guard let index = storedPlaylists.firstIndex(where: { $0.id == playlistID }) else { return }
+        storedPlaylists[index].artworkID = id
+    }
+
     public func deletePlaylist(_ id: Playlist.ID) async throws {
         storedPlaylists.removeAll { $0.id == id }
     }

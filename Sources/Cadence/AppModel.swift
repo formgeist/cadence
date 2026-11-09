@@ -544,18 +544,7 @@ final class AppModel {
     /// image, if any, is left for the next prune to sweep — it is no longer
     /// referenced once the row is rewritten.
     func setArtistImage(fromFile fileURL: URL, forArtist name: String) async {
-        guard let artwork else { return }
-        let data: Data
-        do {
-            data = try Data(contentsOf: fileURL)
-        } catch {
-            actionError = "Could not read that file: \(error.localizedDescription)"
-            return
-        }
-        guard Self.isReadableImage(data) else {
-            actionError = "“\(fileURL.lastPathComponent)” isn’t an image Cadence can read."
-            return
-        }
+        guard let artwork, let data = readImage(at: fileURL) else { return }
         do {
             let id = try await artwork.store(data)
             try await store.setCustomArtistImage(id, forArtist: name)
@@ -585,6 +574,63 @@ final class AppModel {
             actionError = "Could not reset the image for “\(name)”: "
                 + error.localizedDescription
         }
+    }
+
+    /// The bytes of an image file the user picked, or nil — with the reason in
+    /// `actionError` — when it cannot be read or is not an image.
+    private func readImage(at fileURL: URL) -> Data? {
+        let data: Data
+        do {
+            data = try Data(contentsOf: fileURL)
+        } catch {
+            actionError = "Could not read that file: \(error.localizedDescription)"
+            return nil
+        }
+        guard Self.isReadableImage(data) else {
+            actionError = "“\(fileURL.lastPathComponent)” isn’t an image Cadence can read."
+            return nil
+        }
+        return data
+    }
+
+    // MARK: Playlist covers
+
+    /// Whether playlist covers can be set at all — the same artwork store the
+    /// artist images need.
+    var canEditPlaylistImage: Bool { artwork != nil }
+
+    /// The playlist whose cover editor is open, if any — drives the sheet in
+    /// `RootView`.
+    var editingPlaylist: Playlist?
+
+    func setPlaylistImage(fromFile fileURL: URL, for playlist: Playlist) async {
+        guard let artwork, let data = readImage(at: fileURL) else { return }
+        do {
+            let id = try await artwork.store(data)
+            let saved = await edit(playlist, failing: "set the cover for") {
+                try await store.setPlaylistImage(id, forPlaylist: playlist.id)
+            }
+            guard saved else { return }
+            await pruneArtwork?()
+            // See `setArtistImage`: clear any miss the loader recorded for the
+            // id before its bytes landed.
+            refreshArtwork?(id)
+            notice = "Updated the cover for “\(playlist.name)”"
+        } catch {
+            actionError = "Could not set the cover for “\(playlist.name)”: "
+                + error.localizedDescription
+        }
+    }
+
+    /// Back to the tiled album covers; prunes the now-orphaned upload.
+    func removePlaylistImage(for playlist: Playlist) async {
+        guard playlist.artworkID != nil else { return }
+        let saved = await edit(playlist, failing: "reset the cover for") {
+            try await store.setPlaylistImage(nil, forPlaylist: playlist.id)
+        }
+        guard saved else { return }
+        await pruneArtwork?()
+        notice = "Reset the cover for “\(playlist.name)”"
     }
 
     /// A cheap gate before handing bytes to the artwork store: ImageIO can name
@@ -719,11 +765,14 @@ final class AppModel {
     /// persisted back into real `Track`s. See #42.
     func track(id: Track.ID) -> Track? { tracksByID[id] }
 
-    /// Up to four different covers from a playlist's tracks, for its tile —
+    /// What a playlist's tile shows: its own cover if the user chose one, else up
+    /// to four different covers from its tracks —
     /// see `CoverMosaic`. Lazy, so a long playlist stops at the fourth cover
     /// instead of resolving every id on every body pass. See #86.
     func coverIDs(forPlaylist playlist: Playlist) -> [Artwork.ID] {
-        Artwork.firstDistinct(
+        // The user's own cover replaces the tiles outright.
+        if let chosen = playlist.artworkID { return [chosen] }
+        return Artwork.firstDistinct(
             playlist.trackIDs.lazy.compactMap { self.tracksByID[$0]?.artworkID }, limit: 4)
     }
 

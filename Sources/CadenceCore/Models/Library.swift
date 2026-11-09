@@ -681,14 +681,18 @@ public struct Playlist: Identifiable, Hashable, Sendable {
     /// tidying the sidebar, not tags, and a playlist shown in two places
     /// would make dragging it "out" of one ambiguous.
     public var folderID: PlaylistFolder.ID?
+    /// A cover the user chose, replacing the tiled album covers a playlist
+    /// otherwise shows. The bytes live in the artwork store; this is the id.
+    public var artworkID: Artwork.ID?
 
     public init(id: UUID = UUID(), name: String, trackIDs: [Track.ID], duration: TimeInterval,
-                folderID: PlaylistFolder.ID? = nil) {
+                folderID: PlaylistFolder.ID? = nil, artworkID: Artwork.ID? = nil) {
         self.id = id
         self.name = name
         self.trackIDs = trackIDs
         self.duration = duration
         self.folderID = folderID
+        self.artworkID = artworkID
     }
 
     public var summary: String {
