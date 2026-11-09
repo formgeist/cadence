@@ -211,6 +211,22 @@ enum Snapshot {
             container.model.show(.artist("Vera Lindqvist"))
         },
 
+        Shot(name: "13a-library-genres", size: Tokens.Layout.defaultWindow) { container in
+            container.model.tab = .genres
+        },
+
+        // One genre's shelf, in the grid layout it opens with.
+        Shot(name: "13b-genre", size: Tokens.Layout.defaultWindow) { container in
+            container.model.show(.genre("ambient"))
+        },
+
+        // The same shelf as the artist page shows it: each record with its
+        // tracklist.
+        Shot(name: "13c-genre-list", size: Tokens.Layout.defaultWindow) { container in
+            container.model.genreAlbumLayout = .list
+            container.model.show(.genre("ambient"))
+        },
+
         // Nothing imported yet. The first screen anyone sees.
         Shot(name: "14-empty-library", size: Tokens.Layout.defaultWindow,
              store: { PreviewData.emptyStore() }) { container in

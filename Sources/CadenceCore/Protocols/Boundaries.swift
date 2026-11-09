@@ -197,6 +197,9 @@ public enum SettingsKey: String, Sendable {
     case artistSort, albumSort
     /// How an artist page lays out their albums: `list` or `grid`.
     case artistAlbumLayout
+    /// The same choice for a genre page, kept apart: a genre holds far more
+    /// albums than an artist, so the layout that suits one rarely suits both.
+    case genreAlbumLayout
     /// JSON-encoded `[String]` — recent search terms and recently played
     /// track ids, most-recent first. See #72.
     case recentSearches, recentlyPlayed

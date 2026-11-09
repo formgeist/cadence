@@ -91,6 +91,7 @@ struct SidebarView: View {
         switch model.screen {
         case .library: model.tab == tab
         case .artist: tab == .artists
+        case .genre: tab == .genres
         case .album, .playlist, .settings: false
         }
     }

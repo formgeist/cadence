@@ -219,6 +219,11 @@ struct CadenceGlyph: Sendable {
         .rect(3.5, 13.8, 4, 6.2, radius: 1.7, filled: false),
         .rect(16.5, 13.8, 4, 6.2, radius: 1.7, filled: false),
     ])
+    /// A luggage tag: the label a genre is filed under.
+    private static let genreTag = CadenceGlyph([
+        .line("M4.5 11.6V5.5a1 1 0 0 1 1-1h6.1a1 1 0 0 1 .7.3l7.4 7.4a1.4 1.4 0 0 1 0 2l-5.6 5.6a1.4 1.4 0 0 1-2 0L4.8 12.3a1 1 0 0 1-.3-.7z"),
+        .ring(8.6, 8.6, 1.3),
+    ])
     private static let plus = CadenceGlyph([.line("M12 5v14M5 12h14")])
     private static let remove = CadenceGlyph([.ring(12, 12, 8.5), .line("M8.2 12h7.6")])
     private static let rename = CadenceGlyph([.line(
@@ -281,6 +286,7 @@ struct CadenceGlyph: Sendable {
         "person": artists,
         "circle.circle": albums,
         "music.note.list": playlists,
+        "tag": genreTag,
         "text.badge.plus": addToPlaylist,
         "magnifyingglass": search,
         "gearshape": preferences,

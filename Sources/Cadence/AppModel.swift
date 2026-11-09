@@ -18,6 +18,9 @@ final class AppModel {
         /// Everything one artist has, by name — the same identity `Artist`
         /// uses, since an artist is not a row in a table here.
         case artist(String)
+        /// Every album in one genre, by `Genre.id` — the folded tag, so
+        /// `Rock` and `rock` are one screen.
+        case genre(String)
         /// By id, never by name: two playlists may share one.
         case playlist(Playlist.ID)
         /// Preferences, as a full page inside the window rather than the
@@ -30,6 +33,7 @@ final class AppModel {
         case home = "Home"
         case artists = "Artists"
         case albums = "Albums"
+        case genres = "Genres"
         case playlists = "Playlists"
 
         var id: String { rawValue }
@@ -39,6 +43,7 @@ final class AppModel {
             case .home: "house"
             case .artists: "person"
             case .albums: "circle.circle"
+            case .genres: "tag"
             case .playlists: "music.note.list"
             }
         }
@@ -122,6 +127,12 @@ final class AppModel {
     /// other.
     var libraryAlbumGridScrollAnchor: Album.Key?
     var artistAlbumGridScrollAnchor: Album.Key?
+
+    /// The genre scrolled to the top of the Genres grid, and the album at the
+    /// top of one genre's grid layout — separate anchors for the same reason
+    /// as the two above.
+    var genreGridScrollAnchor: String?
+    var genreAlbumGridScrollAnchor: Album.Key?
 
     func show(_ screen: Screen) {
         guard screen != self.screen else { return }
@@ -259,6 +270,14 @@ final class AppModel {
             settings.set(artistAlbumLayout.rawValue, forKey: .artistAlbumLayout)
         }
     }
+    /// Grid by default: a genre can hold hundreds of records, and a stack of
+    /// full tracklists is the wrong first look at that many.
+    var genreAlbumLayout: ArtistAlbumLayout = .grid {
+        didSet {
+            guard oldValue != genreAlbumLayout else { return }
+            settings.set(genreAlbumLayout.rawValue, forKey: .genreAlbumLayout)
+        }
+    }
     var albumSort: LibrarySort = .alphabetical {
         didSet {
             guard oldValue != albumSort else { return }
@@ -279,6 +298,12 @@ final class AppModel {
     /// filtering and sorting the full album list on every body pass; see #86.
     /// Independent of `albumSort`, which only reorders the flat `albums` grid.
     private var albumsByArtist: [String: [Album]] = [:]
+    /// Genres A–Z, and each one's albums by artist then year. Derived from the
+    /// albums in `load()`, like `albumsByArtist`, so the genre screens never
+    /// regroup the library while drawing.
+    private(set) var genres: [Genre] = []
+    private var genresByID: [String: Genre] = [:]
+    private var albumsByGenre: [String: [Album]] = [:]
     private(set) var isLoading = true
     private(set) var loadError: String?
     /// Set when the real database could not be opened and the preview library
@@ -356,6 +381,10 @@ final class AppModel {
            let restored = ArtistAlbumLayout(rawValue: raw) {
             artistAlbumLayout = restored
         }
+        if let raw = settings.string(forKey: .genreAlbumLayout),
+           let restored = ArtistAlbumLayout(rawValue: raw) {
+            genreAlbumLayout = restored
+        }
         recentSearches = Self.decode(settings.string(forKey: .recentSearches))
         recentlyPlayedIDs = Self.decode(settings.string(forKey: .recentlyPlayed)).compactMap(UUID.init)
         recentPlayRefs = Self.decodeRecentPlays(settings.string(forKey: .recentPlays))
@@ -405,6 +434,19 @@ final class AppModel {
                             < ($1.year ?? 0, $1.title.localizedLowercase)
                     }
                 }
+            let grouping = Genre.grouped(from: albums)
+            genres = grouping.genres
+            genresByID = Dictionary(genres.map { ($0.id, $0) }) { first, _ in first }
+            albumsByGenre = grouping.albumsByGenre.mapValues { group in
+                group.sorted {
+                    let (a, b) = (Artist.stripArticle($0.albumArtist),
+                                  Artist.stripArticle($1.albumArtist))
+                    let order = a.localizedStandardCompare(b)
+                    if order != .orderedSame { return order == .orderedAscending }
+                    return ($0.year ?? 0, $0.title.localizedLowercase)
+                        < ($1.year ?? 0, $1.title.localizedLowercase)
+                }
+            }
             // A track removed from the library should not sit in this list
             // forever, wasting one of its five slots on something
             // `recentlyPlayed` will never resolve again.
@@ -560,6 +602,16 @@ final class AppModel {
     /// trip, nor re-filter and re-sort it on every body pass. See #86.
     func albums(byArtist name: String) -> [Album] {
         albumsByArtist[name] ?? []
+    }
+
+    func genre(id: String) -> Genre? {
+        genresByID[id]
+    }
+
+    /// Every album in one genre, by artist then year. Empty for a genre the
+    /// library does not have.
+    func albums(inGenre id: String) -> [Album] {
+        albumsByGenre[id] ?? []
     }
 
     var currentAlbum: Album? {
@@ -1029,6 +1081,7 @@ final class AppModel {
         case .home: ""
         case .artists: "\(artists.count) ARTISTS"
         case .albums: "\(albums.count) ALBUMS"
+        case .genres: "\(genres.count) GENRES"
         case .playlists: "\(playlists.count) PLAYLISTS"
         }
     }

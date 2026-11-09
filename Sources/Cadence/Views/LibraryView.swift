@@ -34,6 +34,14 @@ struct LibraryView: View {
                 } else {
                     ArtistGrid()
                 }
+            case .genres:
+                if model.isInitialLoading {
+                    SkeletonAlbumGrid()
+                } else if model.genres.isEmpty {
+                    GenresEmptyState()
+                } else {
+                    GenreGrid()
+                }
             case .playlists:
                 if model.isInitialLoading {
                     SkeletonPlaylistList()
@@ -651,6 +659,113 @@ struct AlbumCard: View, Equatable {
         if album.hasMultipleDiscs { parts.append("\(album.discCount) discs") }
         if album.isCompilation { parts.append("Compilation") }
         return parts.joined(separator: ", ")
+    }
+}
+
+// MARK: - Genres
+
+/// Files with no genre tag make no genres, and a grid of nothing says less than
+/// naming the cause.
+private struct GenresEmptyState: View {
+    var body: some View {
+        EmptyState(
+            systemImage: "tag",
+            title: "No genres yet",
+            message: "Genres come from the genre tag in your files.\nNone of your music carries one."
+        ) { EmptyView() }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Tokens.Palette.surface)
+    }
+}
+
+private struct GenreGrid: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        @Bindable var model = model
+
+        CardGrid(items: model.genres,
+                 columnWidth: Tokens.Layout.artistColumnWidth,
+                 scrollAnchor: $model.genreGridScrollAnchor,
+                 typeAheadKey: \.name,
+                 open: { model.show(.genre($0.id)) },
+                 header: { EmptyView() }) { genre, _, isFocused, onSelect in
+            GenreCard(genre: genre, isKeyboardFocused: isFocused, onSelect: onSelect)
+        }
+    }
+}
+
+/// A genre has no cover of its own, so it borrows its albums': four tiled when
+/// the library has that many different ones, otherwise the first.
+struct GenreArtwork: View {
+    var genre: Genre
+    var cornerRadius: CGFloat = Tokens.Radius.control
+    var displaySize: Int = 200
+
+    var body: some View {
+        if genre.artworkIDs.count >= 4 {
+            // Each tile is a quarter of the whole, so it asks the loader for
+            // half the size.
+            Grid(horizontalSpacing: 0, verticalSpacing: 0) {
+                ForEach(0..<2, id: \.self) { row in
+                    GridRow {
+                        ForEach(0..<2, id: \.self) { column in
+                            ArtworkView(artworkID: genre.artworkIDs[row * 2 + column],
+                                        cornerRadius: 0, displaySize: displaySize / 2)
+                                .aspectRatio(1, contentMode: .fit)
+                        }
+                    }
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        } else {
+            ArtworkView(artworkID: genre.artworkIDs.first, cornerRadius: cornerRadius,
+                        displaySize: displaySize)
+        }
+    }
+}
+
+private struct GenreCard: View {
+    @Environment(AppModel.self) private var model
+    var genre: Genre
+    var isKeyboardFocused: Bool = false
+    /// See `ArtistCard.onSelect`.
+    var onSelect: () -> Void = {}
+    @State private var isHovering = false
+
+    var body: some View {
+        Button {
+            onSelect()
+            model.show(.genre(genre.id))
+        } label: {
+            VStack(alignment: .leading, spacing: 11) {
+                GenreArtwork(genre: genre)
+                    .aspectRatio(1, contentMode: .fit)
+                    .keyboardFocusRing(isKeyboardFocused,
+                                      in: RoundedRectangle(cornerRadius: Tokens.Radius.control,
+                                                           style: .continuous))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(genre.name)
+                        .font(Tokens.Typography.cardTitle)
+                        .foregroundStyle(Color(hex: 0xEBEBF0))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Text(genre.summary)
+                        .font(Tokens.Typography.caption)
+                        .foregroundStyle(Tokens.Palette.textTertiary)
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .opacity(isHovering ? 0.86 : 1)
+        }
+        .plainControl()
+        .focusable(false)
+        .onHover { isHovering = $0 }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(genre.name), \(genre.summary)")
+        .accessibilityAddTraits(.isButton)
     }
 }
 

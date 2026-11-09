@@ -182,6 +182,12 @@ struct RootView: View {
             } else {
                 missing("That artist is no longer in your library")
             }
+        case .genre(let id):
+            if let genre = model.genre(id: id) {
+                GenreDetailView(genre: genre)
+            } else {
+                missing("That genre is no longer in your library")
+            }
         case .playlist(let id):
             if let playlist = model.playlist(id: id) {
                 PlaylistDetailView(playlist: playlist)

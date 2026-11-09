@@ -101,7 +101,7 @@ struct ArtistDetailView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             // Next to the albums it rearranges, not buried in Preferences.
-            layoutPicker
+            AlbumLayoutPicker(layout: $model.artistAlbumLayout)
         }
         .padding(.horizontal, Tokens.Space.contentInset)
         .padding(.top, 34)
@@ -114,40 +114,6 @@ struct ArtistDetailView: View {
         }
         .overlay(alignment: .bottom) {
             Rectangle().fill(Color(hex: 0x1C1C21)).frame(height: 1)
-        }
-    }
-
-    private var layoutPicker: some View {
-        HStack(spacing: 2) {
-            ForEach(AppModel.ArtistAlbumLayout.allCases) { layout in
-                let isSelected = model.artistAlbumLayout == layout
-                Button { model.artistAlbumLayout = layout } label: {
-                    CadenceIcon(layout.systemImage, size: 13)
-                        .foregroundStyle(isSelected
-                                         ? Tokens.Palette.textPrimary
-                                         : Tokens.Palette.textSecondary)
-                        .frame(width: 34, height: 28)
-                        .background {
-                            RoundedRectangle(cornerRadius: Tokens.Radius.control,
-                                             style: .continuous)
-                                .fill(isSelected ? Tokens.Palette.navActive : .clear)
-                        }
-                        .contentShape(Rectangle())
-                }
-                .plainControl()
-                .help(layout.help)
-                .accessibilityLabel(layout.help)
-                .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
-            }
-        }
-        .padding(2)
-        .background {
-            RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous)
-                .fill(Tokens.Palette.fieldBackground)
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous)
-                .strokeBorder(Tokens.Palette.fieldBorder, lineWidth: 1)
         }
     }
 
@@ -187,11 +153,14 @@ struct ArtistDetailView: View {
 /// One record on the artist page: a small cover and title block, then the full
 /// tracklist the album page would show. The cover is a fraction of the album
 /// page's so several records fit on screen at once.
-private struct AlbumSection: View {
+struct AlbumSection: View {
     @Environment(AppModel.self) private var model
     @Environment(PlaybackController.self) private var playback
 
     var album: Album
+    /// Leads the metadata line with the album artist. An artist's own page
+    /// already says whose records these are; a genre's does not.
+    var showsArtist = false
 
     private var tracks: [Track] { album.discs.flatMap(\.tracks) }
 
@@ -269,10 +238,52 @@ private struct AlbumSection: View {
 
     private var metadata: String {
         var parts: [String] = []
+        if showsArtist { parts.append(album.albumArtist) }
         if let year = album.year { parts.append(String(year)) }
         parts.append(album.trackCount == 1 ? "1 track" : "\(album.trackCount) tracks")
         if album.hasMultipleDiscs { parts.append("\(album.discCount) discs") }
         parts.append(DurationFormat.approximate(album.duration))
         return parts.joined(separator: "  ·  ")
+    }
+}
+
+
+/// The list/grid switch beside an album page's header — shared by the artist
+/// and genre screens, each of which keeps its own choice.
+struct AlbumLayoutPicker: View {
+    @Binding var layout: AppModel.ArtistAlbumLayout
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(AppModel.ArtistAlbumLayout.allCases) { option in
+                let isSelected = layout == option
+                Button { layout = option } label: {
+                    CadenceIcon(option.systemImage, size: 13)
+                        .foregroundStyle(isSelected
+                                         ? Tokens.Palette.textPrimary
+                                         : Tokens.Palette.textSecondary)
+                        .frame(width: 34, height: 28)
+                        .background {
+                            RoundedRectangle(cornerRadius: Tokens.Radius.control,
+                                             style: .continuous)
+                                .fill(isSelected ? Tokens.Palette.navActive : .clear)
+                        }
+                        .contentShape(Rectangle())
+                }
+                .plainControl()
+                .help(option.help)
+                .accessibilityLabel(option.help)
+                .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+            }
+        }
+        .padding(2)
+        .background {
+            RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous)
+                .fill(Tokens.Palette.fieldBackground)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous)
+                .strokeBorder(Tokens.Palette.fieldBorder, lineWidth: 1)
+        }
     }
 }
