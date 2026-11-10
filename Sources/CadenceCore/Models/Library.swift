@@ -184,6 +184,10 @@ public struct Track: Identifiable, Hashable, Sendable {
     public var credits: [Credit]
     public var genre: String?
     public var year: Int?
+    /// The record label — `LABEL`, `ORGANIZATION` or `PUBLISHER` in Vorbis
+    /// and APE tags, `TPUB` in ID3. The first one named, when a file names
+    /// several, so "is ECM" can match a record co-released elsewhere too.
+    public var label: String?
 
     public var trackNumber: Int?
     public var trackCount: Int?
@@ -212,6 +216,7 @@ public struct Track: Identifiable, Hashable, Sendable {
         credits: [Credit] = [],
         genre: String? = nil,
         year: Int? = nil,
+        label: String? = nil,
         trackNumber: Int? = nil,
         trackCount: Int? = nil,
         discNumber: Int? = nil,
@@ -234,6 +239,7 @@ public struct Track: Identifiable, Hashable, Sendable {
         self.credits = credits
         self.genre = genre
         self.year = year
+        self.label = label
         self.trackNumber = trackNumber
         self.trackCount = trackCount
         self.discNumber = discNumber

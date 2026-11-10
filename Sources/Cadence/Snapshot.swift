@@ -30,6 +30,9 @@ private struct SlowStore: LibraryStore {
         try await wrapped.albums(byArtist: name)
     }
     func playlists() async throws -> [Playlist] { try await wrapped.playlists() }
+    func catalogs() async throws -> [Catalog] { try await wrapped.catalogs() }
+    func saveCatalog(_ catalog: Catalog) async throws { try await wrapped.saveCatalog(catalog) }
+    func deleteCatalog(_ id: Catalog.ID) async throws { try await wrapped.deleteCatalog(id) }
     @discardableResult
     func createPlaylist(named name: String) async throws -> Playlist {
         try await wrapped.createPlaylist(named: name)
@@ -167,6 +170,11 @@ enum Snapshot {
                  return AnyView(album.map { AlbumCreditsSheet(album: $0) })
              }) { _ in },
 
+        Shot(name: "05c-track-info", size: CGSize(width: 460, height: 720),
+             makeRoot: { container in
+                 AnyView(container.model.allTracks.first.map { TrackInfoSheet(track: $0) })
+             }) { _ in },
+
         // Various Artists: every row needs its own artist line.
         Shot(name: "06-album-compilation", size: Tokens.Layout.defaultWindow) { container in
             open(container, album: "Nordic Ambient, Vol. 4")
@@ -226,6 +234,32 @@ enum Snapshot {
             container.model.genreAlbumLayout = .list
             container.model.show(.genre("ambient"))
         },
+
+        Shot(name: "13d-library-catalogs", size: Tokens.Layout.defaultWindow,
+             store: { PreviewData.storeWithCatalogs() }) { container in
+            container.model.tab = .catalogs
+        },
+        Shot(name: "13e-catalogs-empty", size: Tokens.Layout.defaultWindow) { container in
+            container.model.tab = .catalogs
+        },
+        Shot(name: "13f-catalog", size: Tokens.Layout.defaultWindow,
+             store: { PreviewData.storeWithCatalogs() }) { container in
+            guard let catalog = container.model.catalogs.first(where: { $0.name == "Before 1990" })
+            else { return }
+            container.model.show(.catalog(catalog.id))
+        },
+        Shot(name: "13g-catalog-no-matches", size: Tokens.Layout.defaultWindow,
+             store: { PreviewData.storeWithCatalogs() }) { container in
+            guard let catalog = container.model.catalogs.first(where: { $0.name == "ECM" })
+            else { return }
+            container.model.show(.catalog(catalog.id))
+        },
+        Shot(name: "13h-catalog-editor", size: CGSize(width: 720, height: 600),
+             store: { PreviewData.storeWithCatalogs() },
+             makeRoot: { container in
+                 let catalog = container.model.catalogs.first { $0.name == "Before 1990" }
+                 return AnyView(catalog.map { CatalogEditorSheet(editing: .edit($0)) })
+             }) { _ in },
 
         // Nothing imported yet. The first screen anyone sees.
         Shot(name: "14-empty-library", size: Tokens.Layout.defaultWindow,

@@ -23,6 +23,8 @@ final class AppModel {
         case genre(String)
         /// By id, never by name: two playlists may share one.
         case playlist(Playlist.ID)
+        /// One catalog's albums, by id for the same reason.
+        case catalog(Catalog.ID)
         /// Preferences, as a full page inside the window rather than the
         /// separate `Settings` window it started as. Reached from the title
         /// bar's gear or ⌘, and left with Back.
@@ -35,6 +37,7 @@ final class AppModel {
         case albums = "Albums"
         case genres = "Genres"
         case playlists = "Playlists"
+        case catalogs = "Catalogs"
 
         var id: String { rawValue }
 
@@ -45,6 +48,7 @@ final class AppModel {
             case .albums: "circle.circle"
             case .genres: "tag"
             case .playlists: "music.note.list"
+            case .catalogs: "books.vertical"
             }
         }
     }
@@ -118,6 +122,10 @@ final class AppModel {
             if case .artist(let new) = screen, case .artist(let old) = oldValue, new != old {
                 artistAlbumGridScrollAnchor = nil
             }
+            // Same for catalogs, whose pages share one anchor.
+            if case .catalog(let new) = screen, case .catalog(let old) = oldValue, new != old {
+                catalogAlbumGridScrollAnchor = nil
+            }
         }
     }
     var tab: Tab = .artists {
@@ -154,6 +162,10 @@ final class AppModel {
     /// The playlist at the top of the Playlists grid.
     var playlistGridScrollAnchor: Playlist.ID?
     var genreAlbumGridScrollAnchor: Album.Key?
+    /// The catalog at the top of the Catalogs grid, and the album at the top
+    /// of one catalog's grid layout.
+    var catalogGridScrollAnchor: Catalog.ID?
+    var catalogAlbumGridScrollAnchor: Album.Key?
 
     func show(_ screen: Screen) {
         // The immersive view covers the whole window, so navigating anywhere —
@@ -217,6 +229,7 @@ final class AppModel {
         }
         return (searchResults.topHit != nil ? 1 : 0) + searchResults.artists.count
             + searchResults.albums.count + searchResults.playlists.count
+            + searchResults.catalogs.count
             + searchResults.tracks.count
     }
 
@@ -305,6 +318,13 @@ final class AppModel {
             settings.set(genreAlbumLayout.rawValue, forKey: .genreAlbumLayout)
         }
     }
+    /// Grid by default, like a genre: a catalog can hold a lot of records.
+    var catalogAlbumLayout: ArtistAlbumLayout = .grid {
+        didSet {
+            guard oldValue != catalogAlbumLayout else { return }
+            settings.set(catalogAlbumLayout.rawValue, forKey: .catalogAlbumLayout)
+        }
+    }
     var albumSort: LibrarySort = .alphabetical {
         didSet {
             guard oldValue != albumSort else { return }
@@ -359,6 +379,13 @@ final class AppModel {
     private(set) var genres: [Genre] = []
     private var genresByID: [String: Genre] = [:]
     private var albumsByGenre: [String: [Album]] = [:]
+    /// Catalogs A–Z, and the albums each one's rules pick out, in its own
+    /// sort. Worked out in `load()` and again whenever a catalog is saved.
+    private(set) var catalogs: [Catalog] = []
+    private var albumsByCatalog: [Catalog.ID: [Album]] = [:]
+    /// What the catalog editor offers as you type or pick a value, per field.
+    /// Built from the library at load.
+    private var catalogSuggestions: [CatalogRule.Field: [String]] = [:]
     private(set) var isLoading = true
     /// Bumped by every load that succeeds, so caches built from the library —
     /// the similarity index — can tell they are out of date without
@@ -447,6 +474,10 @@ final class AppModel {
            let restored = ArtistAlbumLayout(rawValue: raw) {
             genreAlbumLayout = restored
         }
+        if let raw = settings.string(forKey: .catalogAlbumLayout),
+           let restored = ArtistAlbumLayout(rawValue: raw) {
+            catalogAlbumLayout = restored
+        }
         recentSearches = Self.decode(settings.string(forKey: .recentSearches))
         recentlyPlayedIDs = Self.decode(settings.string(forKey: .recentlyPlayed)).compactMap(UUID.init)
         recentPlayRefs = Self.decodeRecentPlays(settings.string(forKey: .recentPlays))
@@ -472,6 +503,7 @@ final class AppModel {
             async let foldersFetch = store.playlistFolders()
             async let librarySizeFetch = store.librarySize()
             async let customArtistImagesFetch = store.customArtistImages()
+            async let catalogsFetch = store.catalogs()
 
             allTracks = try await tracksFetch
             albums = Album.grouped(from: allTracks)
@@ -509,6 +541,9 @@ final class AppModel {
                         < ($1.year ?? 0, $1.title.localizedLowercase)
                 }
             }
+            catalogSuggestions = Self.catalogSuggestions(albums: albums, artists: artists,
+                                                         genres: genres)
+            setCatalogs(try await catalogsFetch)
             // A track removed from the library should not sit in this list
             // forever, wasting one of its five slots on something
             // `recentlyPlayed` will never resolve again.
@@ -723,6 +758,179 @@ final class AppModel {
         albumsByGenre[id] ?? []
     }
 
+    // MARK: Catalogs
+
+    /// What the catalog editor is open for: a new catalog, or changing the
+    /// rules (and name) of one that exists.
+    enum CatalogEditing: Identifiable, Hashable {
+        case create
+        case edit(Catalog)
+
+        var id: String {
+            switch self {
+            case .create: "create"
+            case .edit(let catalog): catalog.id.uuidString
+            }
+        }
+    }
+
+    /// Non-nil while the catalog editor sheet is up.
+    var editingCatalog: CatalogEditing?
+    /// The catalog the confirmation dialog is asking about.
+    var catalogPendingDeletion: Catalog?
+
+    func catalog(id: Catalog.ID) -> Catalog? {
+        catalogs.first { $0.id == id }
+    }
+
+    /// The albums one catalog's rules pick out, in its own sort.
+    func albums(inCatalog id: Catalog.ID) -> [Album] {
+        albumsByCatalog[id] ?? []
+    }
+
+    func coverIDs(forCatalog catalog: Catalog) -> [Artwork.ID] {
+        Catalog.covers(of: albums(inCatalog: catalog.id))
+    }
+
+    /// The albums a definition would hold, for the editor's live count. Run
+    /// against the whole library on each change — a filter over albums
+    /// already in memory, cheap next to a keystroke.
+    func previewAlbums(for definition: Catalog.Definition) -> [Album] {
+        let now = Date()
+        return albums.filter { definition.matches($0, now: now) }
+    }
+
+    /// Values the editor suggests for a field: labels, artists and genres as
+    /// the library spells them, the decades and codecs it has.
+    func catalogValues(for field: CatalogRule.Field) -> [String] {
+        catalogSuggestions[field] ?? []
+    }
+
+    /// `New Catalog`, then `New Catalog 2`.
+    var suggestedCatalogName: String {
+        let base = "New Catalog"
+        let taken = Set(catalogs.map(\.name))
+        guard taken.contains(base) else { return base }
+        var number = 2
+        while taken.contains("\(base) \(number)") { number += 1 }
+        return "\(base) \(number)"
+    }
+
+    /// Creates a catalog, or updates the one being edited, then opens it.
+    /// Incomplete rules are dropped on the way in, so what is stored is what
+    /// the summary line says.
+    func saveCatalog(name: String, definition: Catalog.Definition,
+                     editing: CatalogEditing) async {
+        var definition = definition
+        definition.rules = definition.completeRules
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let saved: Catalog
+        switch editing {
+        case .create:
+            saved = Catalog(name: trimmed.isEmpty ? suggestedCatalogName : trimmed,
+                            definition: definition)
+        case .edit(let existing):
+            var updated = catalog(id: existing.id) ?? existing
+            updated.name = trimmed.isEmpty ? updated.name : trimmed
+            updated.definition = definition
+            updated.updatedAt = Date()
+            saved = updated
+        }
+        guard await writeCatalog(saved, failing: "save") else { return }
+        if case .create = editing {
+            show(.catalog(saved.id))
+        }
+    }
+
+    func renameCatalog(_ catalog: Catalog, to name: String) async {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, var updated = self.catalog(id: catalog.id),
+              updated.name != trimmed else { return }
+        updated.name = trimmed
+        updated.updatedAt = Date()
+        await writeCatalog(updated, failing: "rename")
+    }
+
+    /// The sort lives in the catalog's own definition, so it is saved with
+    /// it rather than kept as an app-wide preference.
+    func setSort(_ sort: CatalogSort, forCatalog catalog: Catalog) async {
+        guard var updated = self.catalog(id: catalog.id),
+              updated.definition.sort != sort else { return }
+        updated.definition.sort = sort
+        updated.updatedAt = Date()
+        await writeCatalog(updated, failing: "sort")
+    }
+
+    func deleteCatalog(_ catalog: Catalog) async {
+        do {
+            try await store.deleteCatalog(catalog.id)
+            setCatalogs(try await store.catalogs())
+        } catch {
+            actionError = "Could not delete “\(catalog.name)”: " + error.localizedDescription
+            return
+        }
+        if screen == .catalog(catalog.id) {
+            show(.library)
+            tab = .catalogs
+        }
+    }
+
+    @discardableResult
+    private func writeCatalog(_ catalog: Catalog, failing verb: String) async -> Bool {
+        do {
+            try await store.saveCatalog(catalog)
+            setCatalogs(try await store.catalogs())
+            return true
+        } catch {
+            actionError = "Could not \(verb) “\(catalog.name)”: " + error.localizedDescription
+            return false
+        }
+    }
+
+    /// Stores the catalogs A–Z and works out each one's albums.
+    private func setCatalogs(_ fetched: [Catalog]) {
+        let now = Date()
+        catalogs = fetched.sorted {
+            $0.name.localizedStandardCompare($1.name) == .orderedAscending
+        }
+        albumsByCatalog = Dictionary(catalogs.map { catalog in
+            (catalog.id, catalog.definition.albums(from: albums, now: now))
+        }) { first, _ in first }
+    }
+
+    /// Distinct values per field, A–Z. Labels fold like genres do — `ECM`
+    /// and `ecm` are one entry, under whichever spelling the library uses
+    /// most.
+    private static func catalogSuggestions(albums: [Album], artists: [Artist],
+                                           genres: [Genre]) -> [CatalogRule.Field: [String]] {
+        var labelSpellings: [String: [String: Int]] = [:]
+        var decades = Set<Int>()
+        var codecs = Set<String>()
+        for album in albums {
+            if let year = album.year { decades.insert(year / 10 * 10) }
+            for track in album.tracks {
+                codecs.insert(track.format.codec.name)
+                guard let label = track.label?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      let key = Genre.key(for: label) else { continue }
+                labelSpellings[key, default: [:]][label, default: 0] += 1
+            }
+        }
+        let labels = labelSpellings.values.compactMap { spellings in
+            spellings.max { ($0.value, $1.key) < ($1.value, $0.key) }?.key
+        }
+        let byName: (String, String) -> Bool = {
+            $0.localizedStandardCompare($1) == .orderedAscending
+        }
+        return [
+            .label: labels.sorted(by: byName),
+            .artist: artists.map(\.name).sorted(by: byName),
+            .genre: genres.map(\.name),
+            .decade: decades.sorted().map(String.init),
+            .format: [CatalogRule.FormatChoice.lossless, CatalogRule.FormatChoice.lossy,
+                      CatalogRule.FormatChoice.hiRes] + codecs.sorted(by: byName),
+        ]
+    }
+
     var currentAlbum: Album? {
         guard case .album(let key) = screen else { return nil }
         return album(for: key)
@@ -743,6 +951,8 @@ final class AppModel {
         /// this be called? — is the same one.
         case createFolder
         case renameFolder(PlaylistFolder)
+        /// Catalogs too: renaming one is the same one-field question.
+        case renameCatalog(Catalog)
 
         var id: String {
             switch self {
@@ -750,6 +960,7 @@ final class AppModel {
             case .rename(let playlist): playlist.id.uuidString
             case .createFolder: "create-folder"
             case .renameFolder(let folder): "folder-\(folder.id.uuidString)"
+            case .renameCatalog(let catalog): "catalog-\(catalog.id.uuidString)"
             }
         }
     }
@@ -1203,6 +1414,7 @@ final class AppModel {
         case .albums: "\(albums.count) ALBUMS"
         case .genres: "\(genres.count) GENRES"
         case .playlists: "\(playlists.count) PLAYLISTS"
+        case .catalogs: catalogs.count == 1 ? "1 CATALOG" : "\(catalogs.count) CATALOGS"
         }
     }
 
@@ -1219,13 +1431,14 @@ final class AppModel {
         var artists: [Artist]
         var albums: [Album]
         var playlists: [Playlist] = []
+        var catalogs: [Catalog] = []
         var tracks: [Track]
 
         static let empty = SearchResults(topHit: nil, artists: [], albums: [], tracks: [])
 
         var isEmpty: Bool {
             topHit == nil && artists.isEmpty && albums.isEmpty && playlists.isEmpty
-                && tracks.isEmpty
+                && catalogs.isEmpty && tracks.isEmpty
         }
     }
 
@@ -1411,17 +1624,31 @@ final class AppModel {
     /// with a hit anywhere in that set has already surfaced a track here.
     /// Playlists match on name alone, in memory — they are few, and the store's
     /// FTS index covers tracks only. Names starting with the query rank first.
+    /// Catalogs the same way, by name.
     private func matchingPlaylists(_ needle: String) -> [Playlist] {
-        let folded = needle.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
-        let matches = playlists.filter {
-            $0.name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
-                .contains(folded)
+        Self.matchingByName(playlists, needle, name: \.name)
+    }
+
+    private func matchingCatalogs(_ needle: String) -> [Catalog] {
+        Self.matchingByName(catalogs, needle, name: \.name)
+    }
+
+    private static func matchingByName<Item>(_ items: [Item], _ needle: String,
+                                             name: KeyPath<Item, String>) -> [Item] {
+        let fold = { (text: String) in
+            text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
         }
-        let prefixed = matches.filter {
-            $0.name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
-                .hasPrefix(folded)
+        let folded = fold(needle)
+        var prefixed: [Item] = []
+        var rest: [Item] = []
+        for item in items {
+            let candidate = fold(item[keyPath: name])
+            if candidate.hasPrefix(folded) {
+                prefixed.append(item)
+            } else if candidate.contains(folded) {
+                rest.append(item)
+            }
         }
-        let rest = matches.filter { match in !prefixed.contains { $0.id == match.id } }
         return Array((prefixed + rest).prefix(3))
     }
 
@@ -1457,6 +1684,7 @@ final class AppModel {
             artists: Array(matchedArtists.prefix(3)),
             albums: Array(matchedAlbums.filter { $0.key != topHit?.key }.prefix(3)),
             playlists: matchingPlaylists(needle),
+            catalogs: matchingCatalogs(needle),
             tracks: Array(matchedTracks.prefix(3))
         )
     }

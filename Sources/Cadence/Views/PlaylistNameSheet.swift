@@ -19,7 +19,7 @@ struct PlaylistNameSheet: View {
 
     private var isRenaming: Bool {
         switch naming {
-        case .rename, .renameFolder: true
+        case .rename, .renameFolder, .renameCatalog: true
         case .create, .createFolder: false
         }
     }
@@ -29,10 +29,11 @@ struct PlaylistNameSheet: View {
         switch naming {
         case .create, .rename: "playlist"
         case .createFolder, .renameFolder: "folder"
+        case .renameCatalog: "catalog"
         }
     }
 
-    private var fieldLabel: String { noun == "folder" ? "Folder name" : "Playlist name" }
+    private var fieldLabel: String { noun.prefix(1).uppercased() + noun.dropFirst() + " name" }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.Space.xl) {
@@ -82,6 +83,7 @@ struct PlaylistNameSheet: View {
             case .rename(let playlist): name = playlist.name
             case .createFolder: name = model.suggestedFolderName
             case .renameFolder(let folder): name = folder.name
+            case .renameCatalog(let catalog): name = catalog.name
             }
             isFocused = true
         }
@@ -106,6 +108,8 @@ struct PlaylistNameSheet: View {
             return "Drag playlists onto it to file them inside."
         case .renameFolder:
             return "The playlists inside stay where they are."
+        case .renameCatalog:
+            return "Its rules and albums stay as they are."
         }
     }
 
@@ -123,6 +127,8 @@ struct PlaylistNameSheet: View {
                 await model.createFolder(named: chosen)
             case .renameFolder(let folder):
                 await model.renameFolder(folder, to: chosen)
+            case .renameCatalog(let catalog):
+                await model.renameCatalog(catalog, to: chosen)
             }
         }
     }

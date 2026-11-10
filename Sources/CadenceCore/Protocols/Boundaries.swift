@@ -184,9 +184,20 @@ public protocol LibraryStore: Sendable {
     /// themselves live in the `ArtworkStore`; this only records which id an
     /// artist points at.
     func setCustomArtistImage(_ id: Artwork.ID?, forArtist name: String) async throws
+
+    /// Every catalog, in the order they were made. Only the rules come back:
+    /// which albums each holds is worked out against the library by the
+    /// caller. Empty by default, for stores that keep no catalogs.
+    func catalogs() async throws -> [Catalog]
+    /// Creates the catalog, or replaces the one with the same id.
+    func saveCatalog(_ catalog: Catalog) async throws
+    func deleteCatalog(_ id: Catalog.ID) async throws
 }
 
 extension LibraryStore {
+    public func catalogs() async throws -> [Catalog] { [] }
+    public func saveCatalog(_ catalog: Catalog) async throws {}
+    public func deleteCatalog(_ id: Catalog.ID) async throws {}
     public func setPlaylistImage(_ id: Artwork.ID?, forPlaylist playlistID: Playlist.ID) async throws {}
     public func customArtistImages() async throws -> [String: Artwork.ID] { [:] }
     public func setCustomArtistImage(_ id: Artwork.ID?, forArtist name: String) async throws {}
@@ -235,6 +246,8 @@ public enum SettingsKey: String, Sendable {
     /// Ask Last.fm for similar artists when an artist or album page opens.
     /// Off unless the listener turns it on: it sends artist names out.
     case similarArtistsFromLastFM
+    /// How a catalog page lays out its albums: `list` or `grid`.
+    case catalogAlbumLayout
 }
 
 /// Small pieces of state that should survive a relaunch — volume, mute,

@@ -224,6 +224,13 @@ struct CadenceGlyph: Sendable {
         .line("M4.5 11.6V5.5a1 1 0 0 1 1-1h6.1a1 1 0 0 1 .7.3l7.4 7.4a1.4 1.4 0 0 1 0 2l-5.6 5.6a1.4 1.4 0 0 1-2 0L4.8 12.3a1 1 0 0 1-.3-.7z"),
         .ring(8.6, 8.6, 1.3),
     ])
+    /// Records standing in a crate, one leaning: a catalog.
+    private static let catalog = CadenceGlyph([
+        .rect(4, 5, 4, 14.5, radius: 1.2, filled: false),
+        .rect(10, 5, 4, 14.5, radius: 1.2, filled: false),
+        .line("M15.6 6.6l3.2-.9 2.9 12.6-3.2.9z"),
+    ])
+    private static let chevronDown = CadenceGlyph([.line("M7 10l5 5 5-5")])
     private static let photo = CadenceGlyph([
         .rect(4, 5, 16, 14, radius: 2.5, filled: false), .ring(9, 10, 1.4),
         .line("M4.5 16.5l4.2-3.7a1.4 1.4 0 0 1 1.9.1l2.6 2.6 1.5-1.4a1.4 1.4 0 0 1 1.9 0l2.9 2.5"),
@@ -291,6 +298,8 @@ struct CadenceGlyph: Sendable {
         "circle.circle": albums,
         "music.note.list": playlists,
         "tag": genreTag,
+        "books.vertical": catalog,
+        "chevron.down": chevronDown,
         "photo": photo,
         "text.badge.plus": addToPlaylist,
         "magnifyingglass": search,

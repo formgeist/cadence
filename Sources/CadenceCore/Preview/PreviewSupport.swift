@@ -257,11 +257,28 @@ public actor InMemoryLibraryStore: LibraryStore {
     private let tracks: [Track]
     private var storedPlaylists: [Playlist]
     private var storedFolders: [PlaylistFolder]
+    private var storedCatalogs: [Catalog]
 
-    public init(tracks: [Track], playlists: [Playlist] = [], folders: [PlaylistFolder] = []) {
+    public init(tracks: [Track], playlists: [Playlist] = [], folders: [PlaylistFolder] = [],
+                catalogs: [Catalog] = []) {
         self.tracks = tracks
         self.storedPlaylists = playlists
         self.storedFolders = folders
+        self.storedCatalogs = catalogs
+    }
+
+    public func catalogs() async throws -> [Catalog] { storedCatalogs }
+
+    public func saveCatalog(_ catalog: Catalog) async throws {
+        if let index = storedCatalogs.firstIndex(where: { $0.id == catalog.id }) {
+            storedCatalogs[index] = catalog
+        } else {
+            storedCatalogs.append(catalog)
+        }
+    }
+
+    public func deleteCatalog(_ id: Catalog.ID) async throws {
+        storedCatalogs.removeAll { $0.id == id }
     }
 
     public func allTracks() async throws -> [Track] { tracks }
@@ -716,6 +733,27 @@ public enum PreviewData {
     public static func store(playlists: [Playlist] = PreviewData.playlists)
         -> InMemoryLibraryStore {
         InMemoryLibraryStore(tracks: tracks, playlists: playlists)
+    }
+
+    /// A few catalogs over the preview library, one of which matches nothing.
+    public static let catalogs: [Catalog] = [
+        Catalog(name: "Hi-Res Shelf", definition: .init(rules: [
+            CatalogRule(field: .format, text: CatalogRule.FormatChoice.hiRes),
+        ], sort: .yearNewest)),
+        Catalog(name: "The Twenties", definition: .init(rules: [
+            CatalogRule(field: .decade, number: 2020),
+        ])),
+        Catalog(name: "Before 1990", definition: .init(match: .any, rules: [
+            CatalogRule(field: .year, op: .before, number: 1990),
+            CatalogRule(field: .genre, op: .contains, text: "classical"),
+        ], sort: .yearOldest)),
+        Catalog(name: "ECM", definition: .init(rules: [
+            CatalogRule(field: .label, text: "ECM"),
+        ])),
+    ]
+
+    public static func storeWithCatalogs() -> InMemoryLibraryStore {
+        InMemoryLibraryStore(tracks: tracks, playlists: playlists, catalogs: catalogs)
     }
 
     /// A library with nothing in it — what a fresh install shows.

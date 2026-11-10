@@ -582,6 +582,52 @@ extension SQLiteLibraryStore: PlayLogStore {
     }
 }
 
+// MARK: - Catalogs
+
+extension SQLiteLibraryStore {
+    public func catalogs() async throws -> [Catalog] {
+        try await pool.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT id, name, definition, createdAt, updatedAt FROM catalog
+                ORDER BY createdAt, rowid
+                """).compactMap { row -> Catalog? in
+                // A row this build cannot read (written by a newer one with a
+                // kind of rule this one has never heard of) is skipped rather
+                // than failing the whole library load.
+                let json: String = row["definition"]
+                guard let id = UUID(uuidString: row["id"]),
+                      let definition = try? JSONDecoder().decode(
+                        Catalog.Definition.self, from: Data(json.utf8))
+                else { return nil }
+                return Catalog(id: id, name: row["name"], definition: definition,
+                               createdAt: Date(timeIntervalSince1970: row["createdAt"]),
+                               updatedAt: Date(timeIntervalSince1970: row["updatedAt"]))
+            }
+        }
+    }
+
+    public func saveCatalog(_ catalog: Catalog) async throws {
+        let json = String(decoding: try JSONEncoder().encode(catalog.definition), as: UTF8.self)
+        try await pool.write { db in
+            try db.execute(sql: """
+                INSERT INTO catalog (id, name, definition, createdAt, updatedAt)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET name = excluded.name,
+                                              definition = excluded.definition,
+                                              updatedAt = excluded.updatedAt
+                """, arguments: [catalog.id.uuidString, catalog.name, json,
+                                 catalog.createdAt.timeIntervalSince1970,
+                                 catalog.updatedAt.timeIntervalSince1970])
+        }
+    }
+
+    public func deleteCatalog(_ id: Catalog.ID) async throws {
+        try await pool.write { db in
+            try db.execute(sql: "DELETE FROM catalog WHERE id = ?", arguments: [id.uuidString])
+        }
+    }
+}
+
 extension SQLiteLibraryStore: SimilarArtistCache {
     public func cachedSimilarArtists(forKey key: String) async throws
         -> (artists: [ExternalSimilarArtist], fetchedAt: Date)? {

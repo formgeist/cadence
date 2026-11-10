@@ -92,6 +92,7 @@ struct SidebarView: View {
         case .library: model.tab == tab
         case .artist: tab == .artists
         case .genre: tab == .genres
+        case .catalog: tab == .catalogs
         case .album, .playlist, .settings: false
         }
     }

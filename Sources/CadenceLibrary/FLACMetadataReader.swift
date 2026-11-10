@@ -65,6 +65,9 @@ public struct FLACMetadataReader: MetadataReader, Sendable {
             genre: comments.value(for: "GENRE"),
             year: Self.year(from: comments.value(for: "DATE")
                 ?? comments.value(for: "YEAR")),
+            label: comments.value(for: "LABEL")
+                ?? comments.value(for: "ORGANIZATION")
+                ?? comments.value(for: "PUBLISHER"),
             trackNumber: trackNumber,
             trackCount: trackTotal
                 ?? Self.integer(comments.value(for: "TRACKTOTAL"))

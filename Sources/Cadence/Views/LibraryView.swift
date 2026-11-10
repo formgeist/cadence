@@ -50,6 +50,14 @@ struct LibraryView: View {
                 } else {
                     PlaylistGrid()
                 }
+            case .catalogs:
+                if model.isInitialLoading {
+                    SkeletonAlbumGrid(label: "Loading catalogs")
+                } else if model.catalogs.isEmpty {
+                    CatalogsEmptyState()
+                } else {
+                    CatalogGrid()
+                }
             }
         }
         .background(Tokens.Palette.surface)
@@ -82,6 +90,12 @@ struct LibraryView: View {
                     Text(model.screenCount)
                         .font(Tokens.Typography.mono(11))
                         .foregroundStyle(Color(hex: 0x63636D))
+                }
+                // The primary action sits at the trailing edge, after the count.
+                if model.tab == .catalogs && !model.isInitialLoading && !model.catalogs.isEmpty {
+                    CapsuleButton(title: "New Catalog", systemImage: "plus") {
+                        model.editingCatalog = .create
+                    }
                 }
             }
             .padding(.bottom, 6)

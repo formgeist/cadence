@@ -56,6 +56,51 @@ struct SQLiteLibraryStoreTests {
         }
     }
 
+    @Test("The label survives the round trip")
+    func labelRoundTrip() async throws {
+        try await withStore { store in
+            var track = makeTrack("Slow Hours")
+            track.label = "ECM"
+            try await store.upsert([track, makeTrack("Other", path: "/music/other.flac")])
+            let fetched = try await store.allTracks()
+            #expect(fetched.first { $0.title == "Slow Hours" }?.label == "ECM")
+            #expect(fetched.first { $0.title == "Other" }?.label == nil)
+        }
+    }
+
+    @Test("Catalogs save, update in place, and delete")
+    func catalogLifecycle() async throws {
+        try await withStore { store in
+            let catalog = Catalog(
+                name: "ECM 70s",
+                definition: .init(match: .all, rules: [
+                    CatalogRule(field: .label, text: "ECM"),
+                    CatalogRule(field: .decade, number: 1970),
+                ], sort: .yearOldest))
+            try await store.saveCatalog(catalog)
+            #expect(try await store.catalogs() == [catalog].map { stored in
+                // Dates go through a Double column; compare what survives.
+                var copy = stored
+                copy.createdAt = Date(timeIntervalSince1970: stored.createdAt.timeIntervalSince1970)
+                copy.updatedAt = Date(timeIntervalSince1970: stored.updatedAt.timeIntervalSince1970)
+                return copy
+            })
+
+            var renamed = catalog
+            renamed.name = "ECM Seventies"
+            renamed.definition.match = .any
+            try await store.saveCatalog(renamed)
+            let fetched = try await store.catalogs()
+            #expect(fetched.count == 1)
+            #expect(fetched.first?.name == "ECM Seventies")
+            #expect(fetched.first?.definition.match == .any)
+            #expect(fetched.first?.definition.rules.map(\.field) == [.label, .decade])
+
+            try await store.deleteCatalog(catalog.id)
+            #expect(try await store.catalogs().isEmpty)
+        }
+    }
+
     @Test("Credits survive the round trip, and none come back as none")
     func creditsRoundTrip() async throws {
         try await withStore { store in

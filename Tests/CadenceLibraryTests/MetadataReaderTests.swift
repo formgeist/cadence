@@ -94,6 +94,28 @@ struct RealFileTests {
         return url
     }
 
+    @Test("The label comes from LABEL, then ORGANIZATION, then PUBLISHER", arguments: [
+        ([("LABEL", "ECM"), ("ORGANIZATION", "Other")], "ECM"),
+        ([("ORGANIZATION", "Blue Note")], "Blue Note"),
+        ([("PUBLISHER", "Warp")], "Warp"),
+    ])
+    func label(tags: [(String, String)], expected: String) throws {
+        let dir = try directory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let urls = try FLACFixture.build([
+            .init(name: "label", tags: [("TITLE", "T"), ("ALBUM", "A")] + tags),
+        ], in: dir)
+        #expect(try FLACMetadataReader().readTrack(at: urls[0]).label == expected)
+    }
+
+    @Test("A file with no label tag has no label")
+    func noLabel() throws {
+        let dir = try directory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let urls = try FLACFixture.build([.init(name: "bare", tags: [("TITLE", "T")])], in: dir)
+        #expect(try FLACMetadataReader().readTrack(at: urls[0]).label == nil)
+    }
+
     @Test("A fully tagged file round-trips")
     func wellTaggedFile() throws {
         let dir = try directory()

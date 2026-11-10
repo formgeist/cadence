@@ -98,7 +98,7 @@ struct SearchTrigger: View {
             HStack(spacing: Tokens.Space.s + 2) {
                 CadenceIcon("magnifyingglass", size: 11)
                     .foregroundStyle(Color(hex: 0x7A7A85))
-                Text("Search artists, albums, tracks")
+                Text("Search artists, albums, tracks, playlists, catalogs")
                     .font(Tokens.Typography.sans(13.5, .medium))
                     .foregroundStyle(Color(hex: 0x7A7A85))
                     .lineLimit(1)

@@ -46,6 +46,7 @@ public struct SFBMetadataReader: MetadataReader, Sendable {
             credits: Self.credits(metadata),
             genre: Self.clean(metadata.genre),
             year: Self.year(from: metadata.releaseDate),
+            label: Self.label(metadata, url: url),
             trackNumber: metadata.trackNumber,
             trackCount: metadata.trackTotal,
             discNumber: metadata.discNumber,
@@ -146,12 +147,29 @@ public struct SFBMetadataReader: MetadataReader, Sendable {
         return clean(metadata.composer)
     }
 
-    /// SFB has no properties for credits beyond the composer, but its Vorbis
-    /// comment and APE readers hand every field they don't recognise over in
-    /// `additionalMetadata`, under the key as the file spelled it. ID3 and MP4
-    /// files carry none there, so they only ever show a composer.
-    static func credits(_ metadata: AudioMetadata) -> [Credit] {
-        guard let extra = metadata.additionalMetadata else { return [] }
+    /// The tag names that carry a record label in Vorbis comments and APE
+    /// tags, most common spelling first.
+    static let labelFields = ["LABEL", "ORGANIZATION", "PUBLISHER"]
+
+    /// SFB has no property for the label. Vorbis and APE files hand it over
+    /// in `additionalMetadata`, like the credits; an MP3's `TPUB` frame is
+    /// read straight from the file. MP4 files carry it in a freeform atom SFB
+    /// does not surface, so they have none.
+    static func label(_ metadata: AudioMetadata, url: URL) -> String? {
+        if url.pathExtension.lowercased() == "mp3" {
+            return clean(ID3TextFrame.values(of: "TPUB", at: url)?.first)
+        }
+        let fields = additionalFields(metadata)
+        for name in labelFields {
+            if let value = fields[name]?.lazy.compactMap({ clean($0) }).first { return value }
+        }
+        return nil
+    }
+
+    /// `additionalMetadata` keyed by upper-cased field name, every value a
+    /// list — a repeated field arrives as an array, a single one as a string.
+    static func additionalFields(_ metadata: AudioMetadata) -> [String: [String]] {
+        guard let extra = metadata.additionalMetadata else { return [:] }
         var fields: [String: [String]] = [:]
         for (key, value) in extra {
             guard let key = key as? String else { continue }
@@ -162,6 +180,15 @@ public struct SFBMetadataReader: MetadataReader, Sendable {
             }
             fields[key.uppercased(), default: []].append(contentsOf: values)
         }
+        return fields
+    }
+
+    /// SFB has no properties for credits beyond the composer, but its Vorbis
+    /// comment and APE readers hand every field they don't recognise over in
+    /// `additionalMetadata`, under the key as the file spelled it. ID3 and MP4
+    /// files carry none there, so they only ever show a composer.
+    static func credits(_ metadata: AudioMetadata) -> [Credit] {
+        let fields = additionalFields(metadata)
         return Credit.fromTags { fields[$0] ?? [] }
     }
 

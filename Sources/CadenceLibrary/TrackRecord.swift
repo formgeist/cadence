@@ -20,6 +20,7 @@ struct TrackRecord: Codable, FetchableRecord, PersistableRecord {
     var credits: [Credit]?
     var genre: String?
     var year: Int?
+    var label: String?
 
     var trackNumber: Int?
     var trackCount: Int?
@@ -55,6 +56,7 @@ struct TrackRecord: Codable, FetchableRecord, PersistableRecord {
         credits = track.credits.isEmpty ? nil : track.credits
         genre = track.genre
         year = track.year
+        label = track.label
         trackNumber = track.trackNumber
         trackCount = track.trackCount
         discNumber = track.discNumber
@@ -88,6 +90,7 @@ struct TrackRecord: Codable, FetchableRecord, PersistableRecord {
             credits: credits ?? [],
             genre: genre,
             year: year,
+            label: label,
             trackNumber: trackNumber,
             trackCount: trackCount,
             discNumber: discNumber,
