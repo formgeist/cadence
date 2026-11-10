@@ -38,3 +38,34 @@ struct PlayLogStoreTests {
         }
     }
 }
+
+@Suite("SQLite store: similar-artist cache")
+struct SimilarArtistCacheStoreTests {
+    @Test("Answers survive a relaunch and a second store replaces the first")
+    func roundTrip() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cadence-similar-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent("library.sqlite")
+
+        let first = try SQLiteLibraryStore(url: url)
+        #expect(try await first.cachedSimilarArtists(forKey: "radiohead") == nil)
+        try await first.storeSimilarArtists([ExternalSimilarArtist(name: "Beck", match: 0.5)],
+                                            forKey: "radiohead",
+                                            fetchedAt: Date(timeIntervalSince1970: 100))
+        try await first.storeSimilarArtists([], forKey: "radiohead",
+                                            fetchedAt: Date(timeIntervalSince1970: 200))
+
+        let second = try SQLiteLibraryStore(url: url)
+        let cached = try await second.cachedSimilarArtists(forKey: "radiohead")
+        #expect(cached?.artists == [])
+        #expect(cached?.fetchedAt == Date(timeIntervalSince1970: 200))
+
+        try await second.storeSimilarArtists([], forKey: "beck", fetchedAt: Date())
+        #expect(try await second.similarArtistCacheCount() == 2)
+        try await second.clearSimilarArtistCache()
+        #expect(try await second.similarArtistCacheCount() == 0)
+        #expect(try await second.cachedSimilarArtists(forKey: "radiohead") == nil)
+    }
+}

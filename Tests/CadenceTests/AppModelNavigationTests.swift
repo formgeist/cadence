@@ -109,4 +109,20 @@ struct AppModelNavigationTests {
         #expect(model.screen == .library)
         #expect(!model.canGoForward)
     }
+
+    @Test("Moving from one artist to another starts the new discography at the top")
+    func artistToArtistResetsGridAnchor() {
+        let model = AppModel(store: PreviewData.emptyStore())
+        model.show(.artist("Alpha"))
+        model.artistAlbumGridScrollAnchor = Album.Key(albumArtist: "Alpha", title: "A", year: nil)
+        model.show(.artist("Beta"))
+        #expect(model.artistAlbumGridScrollAnchor == nil)
+
+        // An album detour and back to the same artist keeps the position.
+        let key = Album.Key(albumArtist: "Beta", title: "B", year: nil)
+        model.artistAlbumGridScrollAnchor = key
+        model.show(.album(key))
+        model.goBack()
+        #expect(model.artistAlbumGridScrollAnchor == key)
+    }
 }

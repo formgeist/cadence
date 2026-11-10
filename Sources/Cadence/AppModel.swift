@@ -109,7 +109,17 @@ final class AppModel {
 
     // MARK: Navigation
 
-    private(set) var screen: Screen = .library
+    private(set) var screen: Screen = .library {
+        didSet {
+            // The grid anchor names an album of the artist it was saved on.
+            // Moving to a different artist — a similar-artist link, or Back
+            // and Forward between two — must start that discography at the
+            // top rather than look for the other artist's record.
+            if case .artist(let new) = screen, case .artist(let old) = oldValue, new != old {
+                artistAlbumGridScrollAnchor = nil
+            }
+        }
+    }
     var tab: Tab = .artists {
         didSet { settings.set(tab.rawValue, forKey: .tab) }
     }
@@ -350,6 +360,10 @@ final class AppModel {
     private var genresByID: [String: Genre] = [:]
     private var albumsByGenre: [String: [Album]] = [:]
     private(set) var isLoading = true
+    /// Bumped by every load that succeeds, so caches built from the library —
+    /// the similarity index — can tell they are out of date without
+    /// comparing the library itself.
+    private(set) var libraryGeneration = 0
     private(set) var loadError: String?
     /// Set when the real database could not be opened and the preview library
     /// is standing in.
@@ -510,6 +524,7 @@ final class AppModel {
             }
             sortArtists()
             sortAlbums()
+            libraryGeneration += 1
             // A local library reads fast enough that the skeleton can finish
             // and disappear inside a single frame — never actually visible.
             // Padding only the first load out to a minimum is what makes it

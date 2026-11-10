@@ -396,6 +396,9 @@ struct CardGrid<Item: Identifiable, Card: View, Header: View>: View where Item.I
     /// What type-ahead matches against; nil turns type-ahead off, for a list
     /// with no stable key to type against.
     var typeAheadKey: ((Item) -> String)?
+    /// Scrolls with the grid, below the last row — the artist screen puts
+    /// its similar artists here.
+    var footer: AnyView? = nil
     var open: (Item) -> Void
     @ViewBuilder var header: Header
     /// Builds one card from its item, its position, whether it holds keyboard
@@ -437,6 +440,7 @@ struct CardGrid<Item: Identifiable, Card: View, Header: View>: View where Item.I
                 .scrollTargetLayout()
                 .padding(.horizontal, Tokens.Space.contentInset)
                 .padding(.vertical, Tokens.Space.xxl)
+                footer
             }
             .scrollContentBackground(.hidden)
             // Also the restore mechanism for Back — see `ArtistGrid` above.
@@ -495,6 +499,7 @@ struct AlbumGrid<Header: View>: View {
     var albums: [Album]
     var subtitle: AlbumCard.Subtitle = .artist
     @Binding var scrollAnchor: Album.Key?
+    var footer: AnyView? = nil
     @ViewBuilder var header: Header
 
     var body: some View {
@@ -502,6 +507,7 @@ struct AlbumGrid<Header: View>: View {
                  columnWidth: model.albumColumnWidth,
                  scrollAnchor: $scrollAnchor,
                  typeAheadKey: \.title,
+                 footer: footer,
                  open: { model.show(.album($0.key)) },
                  header: { header }) { album, index, isFocused, onSelect in
             AlbumCard(album: album, subtitle: subtitle, index: index,

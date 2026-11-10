@@ -232,6 +232,9 @@ public enum SettingsKey: String, Sendable {
     case scrobblingEnabled, scrobbleService, scrobbleUsername, pendingScrobbles
     /// Follow each file's sample rate on the output device — see #34.
     case matchSampleRate
+    /// Ask Last.fm for similar artists when an artist or album page opens.
+    /// Off unless the listener turns it on: it sends artist names out.
+    case similarArtistsFromLastFM
 }
 
 /// Small pieces of state that should survive a relaunch — volume, mute,

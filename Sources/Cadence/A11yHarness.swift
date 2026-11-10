@@ -48,6 +48,7 @@ enum A11yHarness {
                 .environment(container.searchFocus)
                 .environment(container.scrobble)
                 .environment(container.playLog)
+                .environment(container.discovery)
                 .environment(container.spotify)
                 .environment(\.isSilentPlayback, container.isSilentPlayback)
                 .preferredColorScheme(.dark)
