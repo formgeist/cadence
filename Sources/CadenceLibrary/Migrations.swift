@@ -224,6 +224,29 @@ public enum Migrations {
             }
         }
 
+        // The record label, read from LABEL/ORGANIZATION/PUBLISHER or TPUB.
+        // Null on rows imported before the column existed, until the files
+        // are re-read (Rescan Library, Re-reading Every File).
+        migrator.registerMigration("v11-track-label") { db in
+            try db.alter(table: "track") { t in
+                t.add(column: "label", .text)
+            }
+        }
+
+        // Catalogs: a named set of rules picking albums out of the library.
+        // Only the rules are stored — the albums are worked out from the
+        // library every load, so a catalog stays current as files come and
+        // go. The rules are a JSON `Catalog.Definition`.
+        migrator.registerMigration("v12-catalogs") { db in
+            try db.create(table: "catalog") { t in
+                t.primaryKey("id", .text)
+                t.column("name", .text).notNull()
+                t.column("definition", .text).notNull()
+                t.column("createdAt", .double).notNull()
+                t.column("updatedAt", .double).notNull()
+            }
+        }
+
         return migrator
     }
 }

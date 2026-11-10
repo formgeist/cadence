@@ -95,6 +95,24 @@ struct RootView: View {
             ArtistImageSheet(artist: artist)
                 .environment(model)
         }
+        .sheet(item: $model.editingCatalog) { editing in
+            CatalogEditorSheet(editing: editing)
+                .environment(model)
+        }
+        .confirmationDialog(
+            model.catalogPendingDeletion.map { "Delete “\($0.name)”?" } ?? "",
+            isPresented: Binding(get: { model.catalogPendingDeletion != nil },
+                                 set: { if !$0 { model.catalogPendingDeletion = nil } }),
+            presenting: model.catalogPendingDeletion
+        ) { catalog in
+            Button("Delete Catalog", role: .destructive) {
+                model.catalogPendingDeletion = nil
+                Task { await model.deleteCatalog(catalog) }
+            }
+            Button("Cancel", role: .cancel) { model.catalogPendingDeletion = nil }
+        } message: { _ in
+            Text("Only the catalog’s rules are deleted. The albums stay in your library.")
+        }
         .confirmationDialog(
             deletionPrompt,
             isPresented: Binding(get: { model.playlistPendingDeletion != nil },
@@ -204,6 +222,15 @@ struct RootView: View {
                 PlaylistDetailView(playlist: playlist)
             } else {
                 missing("That playlist has been deleted")
+            }
+        case .catalog(let id):
+            if let catalog = model.catalog(id: id) {
+                CatalogDetailView(catalog: catalog)
+                    .id(id)
+            } else if model.isInitialLoading {
+                SkeletonAlbumGrid()
+            } else {
+                missing("That catalog has been deleted")
             }
         }
     }

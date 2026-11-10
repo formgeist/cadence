@@ -25,10 +25,31 @@ struct TrackInfoSheet: View {
             }
 
             VStack(alignment: .leading, spacing: Tokens.Space.m) {
+                SectionLabel("Tags")
+                row("Album Artist", track.albumArtist)
+                row("Album", track.albumTitle)
+                // Year, label and genre always show, "Not tagged" when empty:
+                // catalogs filter on them, so a gap needs to be visible.
+                row("Year", track.year.map(String.init) ?? Self.notTagged)
+                row("Label", track.label ?? Self.notTagged)
+                row("Genre", track.genre ?? Self.notTagged)
+                if let composer = track.composer { row("Composer", composer) }
+                if let number = position(track.trackNumber, of: track.trackCount) {
+                    row("Track", number)
+                }
+                if let disc = position(track.discNumber, of: track.discCount) {
+                    row("Disc", disc)
+                }
+                if track.isCompilation { row("Compilation", "Yes") }
+            }
+
+            VStack(alignment: .leading, spacing: Tokens.Space.m) {
+                SectionLabel("File")
                 row("Format", track.format.badgeDescription)
                 row("Channels", channelDescription)
                 row("Duration", DurationFormat.clock(track.duration))
                 replayGainRows
+                row("Added", track.dateAdded.formatted(date: .abbreviated, time: .shortened))
                 row("Location", track.url.path)
             }
 
@@ -38,9 +59,18 @@ struct TrackInfoSheet: View {
             }
         }
         .padding(Tokens.Space.xxl)
-        .frame(width: 420)
+        .frame(width: 460)
         .background(Tokens.Palette.popover)
         .onExitCommand { dismiss() }
+    }
+
+    private static let notTagged = "Not tagged"
+
+    /// `3 of 12`, `3`, or nil when the tag is missing.
+    private func position(_ number: Int?, of total: Int?) -> String? {
+        guard let number else { return nil }
+        guard let total else { return "\(number)" }
+        return "\(number) of \(total)"
     }
 
     private var channelDescription: String {
@@ -70,7 +100,7 @@ struct TrackInfoSheet: View {
                 .font(Tokens.Typography.monoLabel)
                 .tracking(Tokens.Typography.Tracking.label)
                 .foregroundStyle(Tokens.Palette.textMuted)
-                .frame(width: 88, alignment: .leading)
+                .frame(width: 104, alignment: .leading)
             Text(value)
                 .font(Tokens.Typography.monoValue)
                 .foregroundStyle(Tokens.Palette.textSecondary)
