@@ -128,6 +128,12 @@ enum BenchHarness {
             .environment(container.playback)
             .environment(container.importer)
             .environment(loader)
+            // The artist page ends with its similar-artists section, which
+            // needs a controller over the bench's own model, not the
+            // container's preview one. No Last.fm lookup: a benchmark must
+            // not reach the network.
+            .environment(DiscoveryController(model: model, playLog: container.playLog,
+                                             settings: InMemorySettingsStore(), lookup: nil))
             .preferredColorScheme(.dark)
 
         let window = NSWindow(
