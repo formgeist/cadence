@@ -66,4 +66,22 @@ struct AppModelSearchTests {
         model.searchText = ""
         #expect(model.searchResults.isEmpty)
     }
+
+    @Test("Playlists match on name, prefix first, and count toward navigation")
+    func playlistsAreSearchable() async throws {
+        let track = stubTrack("Nightfall", artist: "Vera Lindqvist", album: "After Hours")
+        let late = Playlist(name: "Late Night Hours", trackIDs: [track.id], duration: 60)
+        let early = Playlist(name: "Hours Alone", trackIDs: [], duration: 0)
+        let other = Playlist(name: "Workout", trackIDs: [], duration: 0)
+        let model = AppModel(store: StubLibraryStore(tracks: [track], playlists: [late, early, other]))
+        await model.load()
+
+        try await runSearch(model, for: "hours")
+
+        #expect(model.searchResults.playlists.map(\.name) == ["Hours Alone", "Late Night Hours"])
+        let nonPlaylist = (model.searchResults.topHit != nil ? 1 : 0)
+            + model.searchResults.artists.count + model.searchResults.albums.count
+            + model.searchResults.tracks.count
+        #expect(model.searchNavigableCount == nonPlaylist + 2)
+    }
 }
