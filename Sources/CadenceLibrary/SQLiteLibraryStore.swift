@@ -581,3 +581,41 @@ extension SQLiteLibraryStore: PlayLogStore {
         }
     }
 }
+
+extension SQLiteLibraryStore: SimilarArtistCache {
+    public func cachedSimilarArtists(forKey key: String) async throws
+        -> (artists: [ExternalSimilarArtist], fetchedAt: Date)? {
+        try await pool.read { db in
+            guard let row = try Row.fetchOne(
+                db, sql: "SELECT fetchedAt, artists FROM similarArtistCache WHERE artistKey = ?",
+                arguments: [key]) else { return nil }
+            let json: String = row["artists"]
+            let artists = try JSONDecoder().decode([ExternalSimilarArtist].self, from: Data(json.utf8))
+            return (artists, Date(timeIntervalSince1970: row["fetchedAt"]))
+        }
+    }
+
+    public func storeSimilarArtists(_ artists: [ExternalSimilarArtist], forKey key: String,
+                                    fetchedAt: Date) async throws {
+        let json = String(decoding: try JSONEncoder().encode(artists), as: UTF8.self)
+        try await pool.write { db in
+            try db.execute(sql: """
+                INSERT INTO similarArtistCache (artistKey, fetchedAt, artists) VALUES (?, ?, ?)
+                ON CONFLICT(artistKey) DO UPDATE SET fetchedAt = excluded.fetchedAt,
+                                                     artists = excluded.artists
+                """, arguments: [key, fetchedAt.timeIntervalSince1970, json])
+        }
+    }
+
+    public func similarArtistCacheCount() async throws -> Int {
+        try await pool.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM similarArtistCache") ?? 0
+        }
+    }
+
+    public func clearSimilarArtistCache() async throws {
+        try await pool.write { db in
+            try db.execute(sql: "DELETE FROM similarArtistCache")
+        }
+    }
+}

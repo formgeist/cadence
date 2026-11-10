@@ -32,6 +32,7 @@ struct AlbumDetailView: View {
                     .padding(.top, 22)
                     .padding(.bottom, otherAlbums.isEmpty ? 44 : 36)
                 MoreFromArtist(artist: album.albumArtist, albums: otherAlbums)
+                SimilarAlbumsSection(album: album.key)
             }
         }
         .scrollContentBackground(.hidden)

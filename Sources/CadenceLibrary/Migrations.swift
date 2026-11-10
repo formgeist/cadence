@@ -212,6 +212,18 @@ public enum Migrations {
             }
         }
 
+        // Last.fm's similar-artists answers, cached by folded artist name so
+        // reopening an artist page does not ask again. The list is a JSON
+        // array of `ExternalSimilarArtist`; an empty array is a real answer
+        // ("Last.fm knows no one like them") and is cached too.
+        migrator.registerMigration("v10-similar-artist-cache") { db in
+            try db.create(table: "similarArtistCache") { t in
+                t.primaryKey("artistKey", .text)
+                t.column("fetchedAt", .double).notNull()
+                t.column("artists", .text).notNull()
+            }
+        }
+
         return migrator
     }
 }

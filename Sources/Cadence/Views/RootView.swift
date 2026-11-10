@@ -175,6 +175,11 @@ struct RootView: View {
         case .album(let key):
             if let album = model.album(for: key) {
                 AlbumDetailView(album: album)
+                    // One identity per album: following "You might also
+                    // like" swaps the album but keeps the same screen case,
+                    // and without this SwiftUI reuses the view and its
+                    // scroll offset lands the new album mid-page.
+                    .id(key)
             } else if model.isInitialLoading {
                 SkeletonAlbumDetail()
             } else {
@@ -183,6 +188,8 @@ struct RootView: View {
         case .artist(let name):
             if let artist = model.artist(named: name) {
                 ArtistDetailView(artist: artist)
+                    // Same as the album page, for a similar-artist link.
+                    .id(name)
             } else {
                 missing("That artist is no longer in your library")
             }

@@ -39,7 +39,8 @@ struct ArtistDetailView: View {
         switch model.artistAlbumLayout {
         case .grid:
             AlbumGrid(albums: albums, subtitle: .year,
-                      scrollAnchor: $model.artistAlbumGridScrollAnchor) { header }
+                      scrollAnchor: $model.artistAlbumGridScrollAnchor,
+                      footer: AnyView(SimilarArtistsSection(artist: artist.name))) { header }
                 .background(Tokens.Palette.surface)
         case .list:
             // Lazy so a long discography only builds the albums near the
@@ -50,6 +51,7 @@ struct ArtistDetailView: View {
                     ForEach(albums) { album in
                         AlbumSection(album: album)
                     }
+                    SimilarArtistsSection(artist: artist.name)
                 }
             }
             .scrollContentBackground(.hidden)

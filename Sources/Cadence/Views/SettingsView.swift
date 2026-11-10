@@ -63,6 +63,10 @@ struct SettingsView: View {
                     SettingsSection("Scrobbling") {
                         ScrobbleSettings()
                     }
+
+                    SettingsSection("Discovery") {
+                        DiscoverySettings()
+                    }
                 }
                 .frame(maxWidth: Tokens.Layout.settingsContentWidth, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -122,6 +126,62 @@ struct SettingsView: View {
     private var folderRemovalPrompt: String {
         guard let folder = model.folderPendingRemoval else { return "Remove folder?" }
         return "Remove “\(folder.lastPathComponent)” from your library?"
+    }
+}
+
+/// Similar artists and albums are worked out from the library alone unless
+/// this is on. Its own switch rather than riding on scrobbling: it needs no
+/// Last.fm account, and it sends different things — the names of the artists
+/// you open, not what you play.
+private struct DiscoverySettings: View {
+    @Environment(DiscoveryController.self) private var discovery
+
+    var body: some View {
+        @Bindable var discovery = discovery
+
+        VStack(alignment: .leading, spacing: Tokens.Space.l) {
+            SettingsRow(
+                "Similar artists from Last.fm",
+                caption: discovery.isLastFMAvailable
+                    ? "Ask Last.fm which artists are alike when you open an artist or album. "
+                        + "Sends the artist's name; answers are kept for 30 days. "
+                        + "Without it, suggestions come from your tags, playlists and history."
+                    : "This build has no Last.fm API key. "
+                        + "Suggestions come from your tags, playlists and history."
+            ) {
+                Toggle("", isOn: $discovery.usesLastFM)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .tint(Tokens.Palette.accent)
+                    .disabled(!discovery.isLastFMAvailable)
+                    .accessibilityLabel("Similar artists from Last.fm")
+            }
+
+            // Shown with the switch on or off: turning it off keeps the
+            // answers, and this is how to be rid of them.
+            if discovery.isLastFMAvailable {
+                SettingsRow("Saved Last.fm answers", caption: refreshCaption) {
+                    CapsuleButton(title: discovery.isRefreshing ? "Refreshing…" : "Refresh",
+                                  accessibilityLabel: "Refresh Last.fm answers") {
+                        Task { await discovery.refreshLastFM() }
+                    }
+                    .disabled(discovery.isRefreshing || (discovery.cachedArtistCount ?? 0) == 0)
+                }
+            }
+        }
+        .task { await discovery.countCachedArtists() }
+    }
+
+    private var refreshCaption: String {
+        let stored: String
+        switch discovery.cachedArtistCount {
+        case nil: return "Counting saved answers…"
+        case 0?: return "Nothing saved. Answers are saved as you open artists and albums."
+        case 1?: stored = "Similar artists saved for 1 artist."
+        case let count?: stored = "Similar artists saved for \(count) artists."
+        }
+        return stored + " Refresh forgets them, and each artist is asked again "
+            + "the next time you open it."
     }
 }
 

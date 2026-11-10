@@ -25,6 +25,9 @@ final class AppContainer {
     /// controller stays unaware of it, same as `nowPlaying`.
     let scrobble: ScrobbleController
     let playLog: PlayLogController
+    /// Similar artists and albums for the detail pages, with Last.fm's
+    /// answers folded in when the listener has turned that on.
+    let discovery: DiscoveryController
     /// File ▸ Import Spotify Playlist…, and the Spotify sign-in behind it.
     let spotify: SpotifyImporter
     /// Whether a text field has the keyboard, so the menu bar can get out of
@@ -145,6 +148,9 @@ final class AppContainer {
         // opened, memory otherwise (preview mode, or a failed open).
         var playLogStore: any PlayLogStore = InMemoryPlayLogStore(
             plays: mode == .preview ? PreviewData.playHistory() : [])
+        // Last.fm's similar-artist answers are kept in the library database
+        // beside the history; memory when that did not open.
+        var similarCache: any SimilarArtistCache = InMemorySimilarArtistCache()
 
         switch mode {
         case .live:
@@ -157,6 +163,7 @@ final class AppContainer {
                 let store = try SQLiteLibraryStore(url: try Self.libraryURL())
                 playLogStore = MockPlayLogStore.isRequested
                     ? MockPlayLogStore(library: store) : store
+                similarCache = store
                 let artwork = try DiskArtworkStore.makeDefault()
                 let scanner = LibraryScanner(
                     store: store, artwork: artwork, router: Self.metadataRouter)
@@ -210,6 +217,16 @@ final class AppContainer {
             playLog?.trackStarted(track)
         }
 
+        // Preview mode has no lookup, so design review never reaches Last.fm.
+        let lookup: SimilarArtistLookup? = switch mode {
+        case .live:
+            SimilarArtistLookup(source: LastFMSimilarArtists(apiKey: LastFMCredentials.apiKey),
+                                cache: similarCache)
+        case .preview: nil
+        }
+        discovery = DiscoveryController(model: model, playLog: playLog, settings: settings,
+                                        lookup: lookup)
+
         // Starts the poll loop and retries anything held from last launch.
         scrobble.observe(playback)
         playLog.observe(playback)
@@ -254,6 +271,7 @@ struct CadenceApp: App {
                 .environment(container.searchFocus)
                 .environment(container.scrobble)
                 .environment(container.playLog)
+                .environment(container.discovery)
                 .environment(container.spotify)
                 .environment(\.isSilentPlayback, container.isSilentPlayback)
                 .frame(minWidth: Tokens.Layout.minWindow.width,
