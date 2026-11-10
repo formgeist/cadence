@@ -136,7 +136,7 @@ struct SearchModal: View {
                 .foregroundStyle(Color(hex: 0x7A7A85))
                 .accessibilityHidden(true)
 
-            TextField("Search artists, albums, tracks", text: $model.searchText)
+            TextField("Search artists, albums, playlists, tracks", text: $model.searchText)
                 .textFieldStyle(.plain)
                 .font(Tokens.Typography.sans(17, .medium))
                 .foregroundStyle(Color(hex: 0xF0F0F5))
@@ -168,7 +168,7 @@ struct SearchModal: View {
     private var contentBody: some View {
         if model.searchText.isEmpty {
             if model.recentlyPlayed.isEmpty && model.recentSearches.isEmpty {
-                emptyState(message: "Search your library by artist, album, or track")
+                emptyState(message: "Search your library by artist, album, playlist, or track")
             } else {
                 suggestions
             }
@@ -288,7 +288,8 @@ struct SearchModal: View {
         let topHitCount = searchResults.topHit != nil ? 1 : 0
         let artistsStart = topHitCount
         let albumsStart = artistsStart + searchResults.artists.count
-        let tracksStart = albumsStart + searchResults.albums.count
+        let playlistsStart = albumsStart + searchResults.albums.count
+        let tracksStart = playlistsStart + searchResults.playlists.count
         let highlighted = model.searchEffectiveHighlight
 
         return VStack(alignment: .leading, spacing: 0) {
@@ -318,6 +319,16 @@ struct SearchModal: View {
                               action: { open(album) })
                 }, startIndex: albumsStart, highlightedIndex: highlighted, onHover: setHover)
             }
+            if !searchResults.playlists.isEmpty {
+                modalGroup("Playlists", searchResults.playlists.map { playlist in
+                    SearchRow(title: playlist.name,
+                              subtitle: playlist.trackIDs.count == 1
+                                  ? "1 track" : "\(playlist.trackIDs.count) tracks",
+                              trailing: DurationFormat.clock(playlist.duration),
+                              artworkID: model.coverIDs(forPlaylist: playlist).first,
+                              action: { open(playlist) })
+                }, startIndex: playlistsStart, highlightedIndex: highlighted, onHover: setHover)
+            }
             if !searchResults.tracks.isEmpty {
                 modalGroup("Tracks", searchResults.tracks.map { track in
                     SearchRow(title: track.title,
@@ -346,13 +357,14 @@ struct SearchModal: View {
         case topHit(Album)
         case artist(Artist)
         case album(Album)
+        case playlist(Playlist)
         case track(Track)
     }
 
     /// What row `index` actually is, in the same flat order
     /// `model.searchNavigableCount` walks: recently played then recent
     /// searches before any text, or top hit then artists then albums then
-    /// tracks once there's a query. This and everything below it that acts on
+    /// playlists then tracks once there's a query. This and everything below it that acts on
     /// the result are `static func`s taking `model` and `playback`
     /// explicitly, rather than instance methods reading them from `self` —
     /// the ⌘↵ key monitor in `onAppear` outlives any one `body` evaluation
@@ -381,6 +393,10 @@ struct SearchModal: View {
             return .album(searchResults.albums[index - offset])
         }
         offset += searchResults.albums.count
+        if index < offset + searchResults.playlists.count {
+            return .playlist(searchResults.playlists[index - offset])
+        }
+        offset += searchResults.playlists.count
         if index < offset + searchResults.tracks.count {
             return .track(searchResults.tracks[index - offset])
         }
@@ -399,6 +415,8 @@ struct SearchModal: View {
             open(album, model: model)
         case .artist(let artist):
             open(artist, model: model)
+        case .playlist(let playlist):
+            open(playlist, model: model)
         case nil:
             break
         }
@@ -421,6 +439,12 @@ struct SearchModal: View {
             guard let first = tracks.first else { return }
             model.commitCurrentSearch()
             playback.play(first, in: tracks)
+            model.endSearch()
+        case .playlist(let playlist):
+            let tracks = model.tracks(in: playlist)
+            guard !tracks.isEmpty else { return }
+            model.commitCurrentSearch()
+            playback.play(tracks, fromPlaylist: playlist.id)
             model.endSearch()
         case .recentSearch, nil:
             break
@@ -447,6 +471,16 @@ struct SearchModal: View {
         model.commitCurrentSearch()
         model.show(.artist(artist.name))
         model.endSearch()
+    }
+
+    private static func open(_ playlist: Playlist, model: AppModel) {
+        model.commitCurrentSearch()
+        model.show(.playlist(playlist.id))
+        model.endSearch()
+    }
+
+    private func open(_ playlist: Playlist) {
+        Self.open(playlist, model: model)
     }
 
     private func play(_ track: Track) {

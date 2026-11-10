@@ -199,14 +199,15 @@ final class AppModel {
     /// How many rows `SearchModal` currently shows, in the same flat order
     /// `SearchModal.activate(_:)` walks: recently played then recent
     /// searches before any text, or top hit then artists then albums then
-    /// tracks once there's a query. Keep in sync with `SearchModal`'s
+    /// playlists then tracks once there's a query. Keep in sync with `SearchModal`'s
     /// `suggestions` and `results` if either changes its grouping.
     var searchNavigableCount: Int {
         if searchText.isEmpty {
             return recentlyPlayed.count + recentSearches.count
         }
         return (searchResults.topHit != nil ? 1 : 0) + searchResults.artists.count
-            + searchResults.albums.count + searchResults.tracks.count
+            + searchResults.albums.count + searchResults.playlists.count
+            + searchResults.tracks.count
     }
 
     /// `searchHighlightedIndex` clamped to the current list, defaulting to
@@ -1202,12 +1203,14 @@ final class AppModel {
         var topHit: Album?
         var artists: [Artist]
         var albums: [Album]
+        var playlists: [Playlist] = []
         var tracks: [Track]
 
         static let empty = SearchResults(topHit: nil, artists: [], albums: [], tracks: [])
 
         var isEmpty: Bool {
-            topHit == nil && artists.isEmpty && albums.isEmpty && tracks.isEmpty
+            topHit == nil && artists.isEmpty && albums.isEmpty && playlists.isEmpty
+                && tracks.isEmpty
         }
     }
 
@@ -1391,6 +1394,22 @@ final class AppModel {
     /// queried separately: `tracks(matching:)` already matches against title,
     /// artist, albumArtist, albumTitle and composer, so any album or artist
     /// with a hit anywhere in that set has already surfaced a track here.
+    /// Playlists match on name alone, in memory — they are few, and the store's
+    /// FTS index covers tracks only. Names starting with the query rank first.
+    private func matchingPlaylists(_ needle: String) -> [Playlist] {
+        let folded = needle.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+        let matches = playlists.filter {
+            $0.name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+                .contains(folded)
+        }
+        let prefixed = matches.filter {
+            $0.name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+                .hasPrefix(folded)
+        }
+        let rest = matches.filter { match in !prefixed.contains { $0.id == match.id } }
+        return Array((prefixed + rest).prefix(3))
+    }
+
     private func runSearch(_ needle: String) async {
         let matchedTracks = try? await store.tracks(matching: needle)
         // Cancelled means a newer keystroke has already scheduled the query
@@ -1422,6 +1441,7 @@ final class AppModel {
             topHit: topHit,
             artists: Array(matchedArtists.prefix(3)),
             albums: Array(matchedAlbums.filter { $0.key != topHit?.key }.prefix(3)),
+            playlists: matchingPlaylists(needle),
             tracks: Array(matchedTracks.prefix(3))
         )
     }
