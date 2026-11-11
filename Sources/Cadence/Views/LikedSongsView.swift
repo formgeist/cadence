@@ -118,48 +118,8 @@ struct LikedSongsView: View {
         ScrollView {
             LazyVStack(spacing: 2) {
                 ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
-                    LikedTrackRow(
-                        track: track,
-                        position: index,
-                        isCurrent: playback.currentTrack?.id == track.id,
-                        isPlaying: playback.isPlaying,
-                        isSelected: selectedTrackID == track.id,
-                        onToggle: { toggle(track, in: tracks) }
-                    )
-                    .contentShape(Rectangle())
-                    // Out to a playlist in the sidebar, the same as any track
-                    // row. Nothing to reorder within: the order is the dates.
-                    .draggable(TrackSelection([track.id])) {
-                        TrackDragPreview.track(track)
-                    }
-                    .onTapGesture(count: 2) { play(track, in: tracks) }
-                    .onTapGesture { selectedTrackID = track.id }
-                    .pointingHandCursor()
-                    .cadenceContextMenu(onOpen: { selectedTrackID = track.id }) {
-                        // The like toggle in the shared track menu is this
-                        // list's own "remove", so no second one is passed.
-                        PlaylistMenu.track(
-                            track,
-                            model: model,
-                            play: { play(track, in: tracks) },
-                            addToQueue: { playback.appendToQueue([track]) })
-                    }
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(spokenLabel(for: track, position: index))
-                    .accessibilityHint("Plays this track")
-                    .accessibilityAddTraits(playback.currentTrack?.id == track.id
-                                            || selectedTrackID == track.id
-                                            ? [.isButton, .isSelected] : .isButton)
-                    .accessibilityAction(.default) { play(track, in: tracks) }
-                    .accessibilityAction(named: "Remove from \(AppModel.likedSongsName)") {
-                        Task { await model.setLiked(false, [track]) }
-                    }
-                    .accessibilityAction(named: "Go to artist") {
-                        model.show(.artist(track.artist))
-                    }
-                    .accessibilityAction(named: "Go to album") {
-                        model.show(.album(track.albumKey))
-                    }
+                    LikedSongsListItem(track: track, position: index, tracks: tracks,
+                                       selectedTrackID: $selectedTrackID)
                 }
             }
             .padding(.horizontal, Tokens.Space.m)
@@ -167,27 +127,81 @@ struct LikedSongsView: View {
         }
         .scrollContentBackground(.hidden)
     }
+}
+
+/// One row of Liked Songs with everything that hangs off it — dragging out to
+/// a playlist, clicks, the menu and the rotor. Its own view so the list's
+/// body stays small enough for the type checker.
+private struct LikedSongsListItem: View {
+    @Environment(AppModel.self) private var model
+    @Environment(PlaybackController.self) private var playback
+
+    var track: Track
+    var position: Int
+    /// The whole list, in order — what playing a row queues.
+    var tracks: [Track]
+    @Binding var selectedTrackID: Track.ID?
+
+    private var isCurrent: Bool { playback.currentTrack?.id == track.id }
+    private var isSelected: Bool { selectedTrackID == track.id }
+
+    var body: some View {
+        row
+            .cadenceContextMenu(onOpen: { selectedTrackID = track.id }) {
+                // The like toggle in the shared track menu is this list's own
+                // "remove", so no second one is passed.
+                PlaylistMenu.track(track, model: model, play: play,
+                                   addToQueue: { playback.appendToQueue([track]) })
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(spokenLabel)
+            .accessibilityHint("Plays this track")
+            .accessibilityAddTraits(isCurrent || isSelected ? [.isButton, .isSelected] : .isButton)
+            .accessibilityAction(.default, play)
+            .accessibilityAction(named: Text("Remove from \(AppModel.likedSongsName)"), unlike)
+            .accessibilityAction(named: Text("Go to artist"), goToArtist)
+            .accessibilityAction(named: Text("Go to album"), goToAlbum)
+    }
+
+    private var row: some View {
+        LikedTrackRow(track: track, position: position, isCurrent: isCurrent,
+                      isPlaying: playback.isPlaying, isSelected: isSelected,
+                      onToggle: toggle)
+            .contentShape(Rectangle())
+            // Out to a playlist in the sidebar, the same as any track row.
+            // Nothing to reorder within: the order is the dates.
+            .draggable(TrackSelection([track.id])) {
+                TrackDragPreview.track(track)
+            }
+            .onTapGesture(count: 2, perform: play)
+            .onTapGesture { selectedTrackID = track.id }
+            .pointingHandCursor()
+    }
 
     /// In Liked Songs' own order, so playing row 3 carries on down the list
     /// rather than into the album that track came from.
-    private func play(_ track: Track, in tracks: [Track]) {
+    private func play() {
         selectedTrackID = track.id
         playback.play(track, in: tracks)
     }
 
-    private func toggle(_ track: Track, in tracks: [Track]) {
-        if playback.currentTrack?.id == track.id {
+    private func toggle() {
+        if isCurrent {
             selectedTrackID = track.id
             playback.togglePlayPause()
         } else {
-            play(track, in: tracks)
+            play()
         }
     }
 
-    private func spokenLabel(for track: Track, position: Int) -> String {
+    private func unlike() { Task { await model.setLiked(false, [track]) } }
+    private func goToArtist() { model.show(.artist(track.artist)) }
+    private func goToAlbum() { model.show(.album(track.albumKey)) }
+
+    private var spokenLabel: String {
         var parts = ["\(position + 1)", track.title, track.artist, track.albumTitle]
         parts.append(NowPlayingPane.spokenDuration(track.duration))
-        if playback.currentTrack?.id == track.id { parts.append("Now playing") }
+        if isCurrent { parts.append("Now playing") }
         return parts.joined(separator: ", ")
     }
 }
