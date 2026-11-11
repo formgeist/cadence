@@ -107,20 +107,8 @@ struct HomeView: View {
                 // side read as one row of postcards, whatever their length.
                 HStack(alignment: .top, spacing: Tokens.Space.l) {
                     ForEach(shown) { memory in
-                        let album = model.album(for: memory.subject.albumKey)
-                        MemoryCard(
-                            memory: memory,
-                            heading: model.title(of: memory.subject),
-                            detail: memory.subject.trackTitle == nil
-                                ? memory.subject.albumKey.albumArtist
-                                : "\(memory.subject.albumKey.albumArtist) · \(memory.subject.albumKey.title)",
-                            artworkID: album?.artworkID,
-                            showsArtwork: true,
-                            actionLabel: "Opens the album"
-                        ) {
-                            model.show(.album(memory.subject.albumKey))
-                        }
-                        .frame(maxWidth: .infinity)
+                        memoryCard(memory)
+                            .frame(maxWidth: .infinity)
                     }
                     // Hold the column width when fewer than three come back,
                     // so one note is not stretched across the whole page.
@@ -130,6 +118,22 @@ struct HomeView: View {
                 }
                 .fixedSize(horizontal: false, vertical: true)
             }
+        }
+    }
+
+    /// One of Home's notes: the record's cover, what it is about, and a
+    /// click through to the record.
+    private func memoryCard(_ memory: Memory) -> MemoryCard {
+        let key = memory.subject.albumKey
+        let detail: String = memory.subject.trackTitle == nil
+            ? key.albumArtist : "\(key.albumArtist) · \(key.title)"
+        return MemoryCard(memory: memory,
+                          heading: model.title(of: memory.subject),
+                          detail: detail,
+                          artworkID: model.album(for: key)?.artworkID,
+                          showsArtwork: true,
+                          actionLabel: "Opens the album") {
+            model.show(.album(key))
         }
     }
 
