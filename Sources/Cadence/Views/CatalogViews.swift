@@ -62,7 +62,7 @@ extension Catalog {
 }
 
 /// One catalog in the grid: tiled covers, name, album count. Not a `Button`,
-/// for the reason `PlaylistCard` is not — the hover Play pill is a button of
+/// for the reason `PlaylistCard` is not — the hover Play button is a button of
 /// its own.
 private struct CatalogCard: View {
     @Environment(AppModel.self) private var model
@@ -73,6 +73,7 @@ private struct CatalogCard: View {
 
     @State private var isHovering = false
     @State private var isHoveringArt = false
+    @State private var isHoveringPlay = false
 
     private var albums: [Album] { model.albums(inCatalog: catalog.id) }
     private var detail: String { catalog.albumSummary(count: albums.count) }
@@ -98,7 +99,12 @@ private struct CatalogCard: View {
                     }
                 }
                 .animation(.easeOut(duration: 0.12), value: isHoveringArt)
-                .onHover { isHoveringArt = $0 }
+                .onHover { hovering in
+                    isHoveringArt = hovering
+                    // The button leaves with the hover, often before its
+                    // own exit fires.
+                    if !hovering { isHoveringPlay = false }
+                }
                 .keyboardFocusRing(isKeyboardFocused,
                                   in: RoundedRectangle(cornerRadius: Tokens.Radius.control,
                                                        style: .continuous))
@@ -116,7 +122,7 @@ private struct CatalogCard: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .opacity(isHovering ? 0.86 : 1)
+        .opacity(isHovering && !isHoveringPlay ? 0.86 : 1)
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
         .pointingHandCursor()
@@ -132,15 +138,7 @@ private struct CatalogCard: View {
     }
 
     private var playOverlay: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: Tokens.Radius.control, style: .continuous)
-                .fill(.black.opacity(0.55))
-                .allowsHitTesting(false)
-
-            CapsuleButton(title: "Play", systemImage: "play.fill",
-                          accessibilityLabel: "Play \(catalog.name)", action: play)
-                .scaleEffect(0.82)
-        }
+        CoverPlayButton(subject: catalog.name, isHovered: $isHoveringPlay, action: play)
     }
 }
 

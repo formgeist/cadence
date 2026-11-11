@@ -560,6 +560,7 @@ struct AlbumCard: View, Equatable {
     var onSelect: () -> Void = {}
     @State private var isHovering = false
     @State private var isHoveringArt = false
+    @State private var isHoveringPlay = false
     /// Where the pointer last was inside this card, and how big the card is —
     /// between them they place the drag chip. See `anchored(in:at:)`.
     @State private var pointer: CGPoint = .zero
@@ -583,7 +584,7 @@ struct AlbumCard: View, Equatable {
     /// keeps the press for itself and the drag is never handed over, so a
     /// record could not be dragged onto a playlist. The track rows, which
     /// drag fine, are plain views with a tap gesture, and so is this. The
-    /// hover pill's own button still wins its clicks over the tap.
+    /// hover Play button's own button still wins its clicks over the tap.
     var body: some View {
         VStack(alignment: .leading, spacing: 11) {
             ArtworkView(artworkID: album.artworkID,
@@ -600,7 +601,12 @@ struct AlbumCard: View, Equatable {
                     }
                 }
                 .animation(.easeOut(duration: 0.12), value: isHoveringArt)
-                .onHover { isHoveringArt = $0 }
+                .onHover { hovering in
+                    isHoveringArt = hovering
+                    // The button leaves with the hover, often before its
+                    // own exit fires.
+                    if !hovering { isHoveringPlay = false }
+                }
                 .keyboardFocusRing(isKeyboardFocused,
                                   in: RoundedRectangle(cornerRadius: Tokens.Radius.control,
                                                        style: .continuous))
@@ -620,7 +626,7 @@ struct AlbumCard: View, Equatable {
                     .lineLimit(1)
             }
         }
-        .opacity(isHovering ? 0.86 : 1)
+        .opacity(isHovering && !isHoveringPlay ? 0.86 : 1)
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
         .pointingHandCursor()
@@ -651,25 +657,16 @@ struct AlbumCard: View, Equatable {
         // With no button underneath, this is what VoiceOver's press (and
         // AXPress) runs.
         .accessibilityAction(.default, open)
-        // The hover pill is hidden from VoiceOver along with the rest of the
+        // The hover Play button is hidden from VoiceOver along with the rest of the
         // card's children, so the same action is offered here instead.
         .accessibilityAction(named: "Play") { playback.play(album) }
     }
 
-    /// Appears over the cover on hover: a scrim behind a "Play" pill that
-    /// starts the album from the top without opening it. Same treatment as
-    /// the artist header's Edit overlay, so the two read as one idea.
+    /// Appears over the cover on hover: the accent Play button in the corner,
+    /// which starts the album from the top without opening it.
     private var playOverlay: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: Tokens.Radius.control, style: .continuous)
-                .fill(.black.opacity(0.55))
-                .allowsHitTesting(false)
-
-            CapsuleButton(title: "Play", systemImage: "play.fill",
-                          accessibilityLabel: "Play \(album.title)") {
-                playback.play(album)
-            }
-            .scaleEffect(0.82)
+        CoverPlayButton(subject: album.title, isHovered: $isHoveringPlay) {
+            playback.play(album)
         }
     }
 
@@ -822,7 +819,7 @@ private struct PlaylistGrid: View {
 /// One playlist in the Playlists grid: its cover, name and size. Also a drop
 /// target — dragging tracks or an album onto it adds them.
 ///
-/// Not a `Button`, for the reason `AlbumCard` is not: the hover Play pill is a
+/// Not a `Button`, for the reason `AlbumCard` is not: the hover Play button is a
 /// button of its own, and nesting one inside another leaves the inner one
 /// unreliable. A tap gesture opens the playlist; the pill wins its own clicks.
 private struct PlaylistCard: View {
@@ -835,6 +832,7 @@ private struct PlaylistCard: View {
 
     @State private var isHovering = false
     @State private var isHoveringArt = false
+    @State private var isHoveringPlay = false
     @State private var isTargeted = false
 
     private var detail: String {
@@ -859,14 +857,19 @@ private struct PlaylistCard: View {
                 .aspectRatio(1, contentMode: .fit)
                 // Built only while hovered, like `AlbumCard`'s: an idle scrim
                 // on every card is measurable cost in a long grid. An empty
-                // playlist has nothing to play, so it gets no pill.
+                // playlist has nothing to play, so it gets no Play button.
                 .overlay {
                     if isHoveringArt && !playlist.trackIDs.isEmpty {
                         playOverlay.transition(.opacity)
                     }
                 }
                 .animation(.easeOut(duration: 0.12), value: isHoveringArt)
-                .onHover { isHoveringArt = $0 }
+                .onHover { hovering in
+                    isHoveringArt = hovering
+                    // The button leaves with the hover, often before its
+                    // own exit fires.
+                    if !hovering { isHoveringPlay = false }
+                }
                 .overlay {
                     if isTargeted {
                         RoundedRectangle(cornerRadius: Tokens.Radius.control,
@@ -892,7 +895,7 @@ private struct PlaylistCard: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .opacity(isHovering && !isTargeted ? 0.86 : 1)
+        .opacity(isHovering && !isTargeted && !isHoveringPlay ? 0.86 : 1)
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
         .pointingHandCursor()
@@ -913,24 +916,16 @@ private struct PlaylistCard: View {
         .accessibilityAddTraits(.isButton)
         // With no button underneath, this is what VoiceOver's press runs.
         .accessibilityAction(.default, open)
-        // The hover pill is hidden from VoiceOver with the rest of the card's
+        // The hover Play button is hidden from VoiceOver with the rest of the card's
         // children, so the same action is offered here.
         .accessibilityAction(named: "Play", play)
     }
 
-    /// Appears over the cover on hover: a scrim behind a "Play" pill that
-    /// starts the playlist from the top without opening it — the same
+    /// Appears over the cover on hover: the accent Play button in the corner,
+    /// which starts the playlist from the top without opening it — the same
     /// treatment as `AlbumCard`.
     private var playOverlay: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: Tokens.Radius.control, style: .continuous)
-                .fill(.black.opacity(0.55))
-                .allowsHitTesting(false)
-
-            CapsuleButton(title: "Play", systemImage: "play.fill",
-                          accessibilityLabel: "Play \(playlist.name)", action: play)
-                .scaleEffect(0.82)
-        }
+        CoverPlayButton(subject: playlist.name, isHovered: $isHoveringPlay, action: play)
     }
 }
 
@@ -950,6 +945,7 @@ struct RecentCard: View {
     var onSelect: () -> Void = {}
     @State private var isHovering = false
     @State private var isHoveringArt = false
+    @State private var isHoveringPlay = false
 
     var body: some View {
         Button {
@@ -966,7 +962,12 @@ struct RecentCard: View {
                         }
                     }
                     .animation(.easeOut(duration: 0.12), value: isHoveringArt)
-                    .onHover { isHoveringArt = $0 }
+                    .onHover { hovering in
+                    isHoveringArt = hovering
+                    // The button leaves with the hover, often before its
+                    // own exit fires.
+                    if !hovering { isHoveringPlay = false }
+                }
                     .keyboardFocusRing(isKeyboardFocused,
                                        in: RoundedRectangle(cornerRadius: Tokens.Radius.control,
                                                             style: .continuous))
@@ -984,7 +985,7 @@ struct RecentCard: View {
                         .lineLimit(1)
                 }
             }
-            .opacity(isHovering ? 0.86 : 1)
+            .opacity(isHovering && !isHoveringPlay ? 0.86 : 1)
         }
         .plainControl()
         .focusable(false)
@@ -993,7 +994,7 @@ struct RecentCard: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(spokenLabel)
         .accessibilityAddTraits(.isButton)
-        // The hover pill is hidden from VoiceOver with the card's children.
+        // The hover Play button is hidden from VoiceOver with the card's children.
         .accessibilityAction(named: "Play", play)
     }
 
@@ -1013,18 +1014,10 @@ struct RecentCard: View {
         }
     }
 
-    /// Scrim and "Play" pill over the cover, as on `AlbumCard`: starts the
+    /// The corner Play button over the cover, as on `AlbumCard`: starts the
     /// album or playlist from the top without opening it.
     private var playOverlay: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: Tokens.Radius.control, style: .continuous)
-                .fill(.black.opacity(0.55))
-                .allowsHitTesting(false)
-
-            CapsuleButton(title: "Play", systemImage: "play.fill",
-                          accessibilityLabel: "Play \(title)", action: play)
-                .scaleEffect(0.82)
-        }
+        CoverPlayButton(subject: title, isHovered: $isHoveringPlay, action: play)
     }
 
     @ViewBuilder
