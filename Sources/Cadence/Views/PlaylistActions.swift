@@ -216,6 +216,37 @@ enum PlaylistMenu {
         static let credits = "person.2"
         static let folder = "folder"
         static let newFolder = "folder.badge.plus"
+        static let like = "heart"
+        static let unlike = "heart.slash"
+    }
+
+    /// Liking or unliking one track — wherever a track has a menu, so a
+    /// track can be liked from a playlist or the queue as well as an album.
+    static func like(_ track: Track, model: AppModel) -> MenuItem {
+        let liked = model.isLiked(track)
+        return .action(liked ? "Remove from \(AppModel.likedSongsName)"
+                             : "Add to \(AppModel.likedSongsName)",
+                       liked ? Symbol.unlike : Symbol.like) {
+            Task { await model.toggleLike(track, announce: true) }
+        }
+    }
+
+    /// Liked Songs, right-clicked in the sidebar. Only the playing verbs: it
+    /// cannot be renamed, moved or deleted, because the user did not make it.
+    static func likedSongs(model: AppModel, playback: PlaybackController) -> [MenuItem] {
+        let tracks = model.likedTracks
+        let hasTracks = !tracks.isEmpty
+        return [
+            .action("Play", Symbol.play, enabled: hasTracks) {
+                if let first = tracks.first { playback.play(first, in: tracks) }
+            },
+            .action("Shuffle", Symbol.shuffle, enabled: hasTracks) {
+                playback.shuffle(tracks)
+            },
+            .action("Add to Queue", Symbol.addToQueue, enabled: hasTracks) {
+                playback.appendToQueue(tracks)
+            },
+        ]
     }
 
     /// "Add to Playlist" wherever tracks are listed. A submenu rather than a
@@ -366,6 +397,7 @@ enum PlaylistMenu {
             items.append(.action("Add to Queue", Symbol.addToQueue, addToQueue))
         }
         items.append(.separator)
+        items.append(like(track, model: model))
         items.append(destinations(model: model, tracks: [track]))
         items.append(.separator)
         items.append(.action("Reveal in Finder", Symbol.revealInFinder) {

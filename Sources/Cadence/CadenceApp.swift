@@ -416,6 +416,15 @@ struct CadenceCommands: Commands {
             .keyboardShortcut("j", modifiers: .command)
             .disabled(container.model.albums.isEmpty)
 
+            Button(container.playback.currentTrack.map { container.model.isLiked($0) } == true
+                   ? "Remove from \(AppModel.likedSongsName)"
+                   : "Add to \(AppModel.likedSongsName)") {
+                guard let track = container.playback.currentTrack else { return }
+                Task { await container.model.toggleLike(track, announce: true) }
+            }
+            .keyboardShortcut("l", modifiers: .command)
+            .disabled(container.playback.currentTrack == nil)
+
             Divider()
 
             Picker("ReplayGain", selection: Binding(

@@ -25,6 +25,9 @@ final class AppModel {
         case playlist(Playlist.ID)
         /// One catalog's albums, by id for the same reason.
         case catalog(Catalog.ID)
+        /// Every liked track, newest first — the smart playlist the heart on
+        /// a track row fills.
+        case likedSongs
         /// Preferences, as a full page inside the window rather than the
         /// separate `Settings` window it started as. Reached from the title
         /// bar's gear or ⌘, and left with Back.
@@ -504,6 +507,7 @@ final class AppModel {
             async let librarySizeFetch = store.librarySize()
             async let customArtistImagesFetch = store.customArtistImages()
             async let catalogsFetch = store.catalogs()
+            async let likedFetch = store.likedTrackIDs()
 
             allTracks = try await tracksFetch
             albums = Album.grouped(from: allTracks)
@@ -544,6 +548,7 @@ final class AppModel {
             catalogSuggestions = Self.catalogSuggestions(albums: albums, artists: artists,
                                                          genres: genres)
             setCatalogs(try await catalogsFetch)
+            setLikedTrackIDs(try await likedFetch)
             // A track removed from the library should not sit in this list
             // forever, wasting one of its five slots on something
             // `recentlyPlayed` will never resolve again.
@@ -1170,6 +1175,73 @@ final class AppModel {
             show(.library)
             tab = .playlists
         }
+    }
+
+    // MARK: Liked songs
+
+    /// What the sidebar row and its screen are called.
+    nonisolated static let likedSongsName = "Liked Songs"
+
+    /// Newest first, as the store keeps them. Ids only, resolved through
+    /// `tracksByID`, so a track that leaves the library drops out without
+    /// this list needing to be told — the store's cascade forgets it too.
+    private(set) var likedTrackIDs: [Track.ID] = []
+    /// The same ids as a set, for the heart on every row: asking an array
+    /// would be a linear scan per row drawn.
+    private var likedIDSet: Set<Track.ID> = []
+
+    func isLiked(_ track: Track) -> Bool { likedIDSet.contains(track.id) }
+
+    /// What Liked Songs lists and plays, newest first.
+    var likedTracks: [Track] { likedTrackIDs.compactMap { tracksByID[$0] } }
+
+    var likedSongsSummary: String {
+        let count = likedTracks.count
+        return count == 1 ? "1 track" : "\(count) tracks"
+    }
+
+    /// Flips one track's heart.
+    func toggleLike(_ track: Track, announce: Bool = false) async {
+        await setLiked(!isLiked(track), [track], announce: announce)
+    }
+
+    /// Likes or unlikes tracks. The heart changes at once rather than after
+    /// the write, so a click never looks ignored; if the write fails, the
+    /// list goes back to what the store holds and the banner says why.
+    ///
+    /// `announce` is for a menu or a shortcut, where the heart that changed
+    /// may be nowhere on screen — the same reason adding to a playlist says
+    /// so. A click on a heart is its own evidence.
+    func setLiked(_ liked: Bool, _ tracks: [Track], announce: Bool = false) async {
+        let ids = tracks.map(\.id).filter { tracksByID[$0] != nil && likedIDSet.contains($0) != liked }
+        guard !ids.isEmpty else { return }
+        if liked {
+            var seen = Set<Track.ID>()
+            setLikedTrackIDs(ids.filter { seen.insert($0).inserted } + likedTrackIDs)
+        } else {
+            let doomed = Set(ids)
+            setLikedTrackIDs(likedTrackIDs.filter { !doomed.contains($0) })
+        }
+        do {
+            try await store.setLiked(liked, trackIDs: ids)
+            guard announce else { return }
+            let subject = tracks.count == 1 ? "“\(tracks[0].title)”"
+                : "\(ids.count) tracks"
+            notice = liked ? "Added \(subject) to \(Self.likedSongsName)"
+                : "Removed \(subject) from \(Self.likedSongsName)"
+        } catch {
+            actionError = "Could not \(liked ? "like" : "unlike") "
+                + (tracks.count == 1 ? "“\(tracks[0].title)”" : "those tracks")
+                + ": " + error.localizedDescription
+            if let stored = try? await store.likedTrackIDs() {
+                setLikedTrackIDs(stored)
+            }
+        }
+    }
+
+    private func setLikedTrackIDs(_ ids: [Track.ID]) {
+        likedTrackIDs = ids
+        likedIDSet = Set(ids)
     }
 
     // MARK: Playlist folders

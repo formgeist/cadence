@@ -192,9 +192,20 @@ public protocol LibraryStore: Sendable {
     /// Creates the catalog, or replaces the one with the same id.
     func saveCatalog(_ catalog: Catalog) async throws
     func deleteCatalog(_ id: Catalog.ID) async throws
+
+    /// The tracks behind Liked Songs, most recently liked first. Tracks liked
+    /// together come back in the order they were handed to `setLiked`. Empty
+    /// by default, for stores that keep no likes.
+    func likedTrackIDs() async throws -> [Track.ID]
+    /// Likes or unlikes tracks. Liking one already liked keeps the moment it
+    /// was first liked, so it does not jump back to the top of the list; ids
+    /// with no track behind them are skipped, as `addTracks` skips them.
+    func setLiked(_ liked: Bool, trackIDs: [Track.ID]) async throws
 }
 
 extension LibraryStore {
+    public func likedTrackIDs() async throws -> [Track.ID] { [] }
+    public func setLiked(_ liked: Bool, trackIDs: [Track.ID]) async throws {}
     public func catalogs() async throws -> [Catalog] { [] }
     public func saveCatalog(_ catalog: Catalog) async throws {}
     public func deleteCatalog(_ id: Catalog.ID) async throws {}

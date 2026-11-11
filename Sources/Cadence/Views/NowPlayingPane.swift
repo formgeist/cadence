@@ -52,27 +52,35 @@ struct NowPlayingPane: View {
             .padding(.horizontal, Tokens.Space.paneInset)
             .padding(.top, Tokens.Space.xl)
 
-            VStack(alignment: .leading, spacing: 5) {
-                Text(track.title)
-                    .font(Tokens.Typography.paneTitle)
-                    .foregroundStyle(Color(hex: 0xF1F1F5))
-                    .lineLimit(2)
-                InlineLink(text: track.artist, font: Tokens.Typography.sans(12.5, .semibold),
-                           color: Tokens.Palette.textSecondary) {
-                    model.show(.artist(track.artist))
+            HStack(alignment: .top, spacing: Tokens.Space.s) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(track.title)
+                        .font(Tokens.Typography.paneTitle)
+                        .foregroundStyle(Color(hex: 0xF1F1F5))
+                        .lineLimit(2)
+                    InlineLink(text: track.artist, font: Tokens.Typography.sans(12.5, .semibold),
+                               color: Tokens.Palette.textSecondary) {
+                        model.show(.artist(track.artist))
+                    }
+                    InlineLink(text: track.albumTitle, font: Tokens.Typography.caption,
+                               color: Color(hex: 0x64646E)) {
+                        model.show(.album(track.albumKey))
+                    }
                 }
-                InlineLink(text: track.albumTitle, font: Tokens.Typography.caption,
-                           color: Color(hex: 0x64646E)) {
-                    model.show(.album(track.albumKey))
-                }
+                // Three separate stops for one fact; one is enough. `.combine` also
+                // swallows the two links' own button semantics, so they come back as
+                // named rotor actions rather than disappearing from VoiceOver.
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Now playing: \(track.title), \(track.artist), \(track.albumTitle)")
+                .accessibilityAction(named: "Go to artist") { model.show(.artist(track.artist)) }
+                .accessibilityAction(named: "Go to album") { model.show(.album(track.albumKey)) }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                // Always shown here, outline or solid: this is the one place
+                // the playing track's heart is the subject, not row clutter.
+                LikeButton(track: track, isRowHovered: true, glyphSize: 14)
+                    .padding(.top, 1)
             }
-            // Three separate stops for one fact; one is enough. `.combine` also
-            // swallows the two links' own button semantics, so they come back as
-            // named rotor actions rather than disappearing from VoiceOver.
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("Now playing: \(track.title), \(track.artist), \(track.albumTitle)")
-            .accessibilityAction(named: "Go to artist") { model.show(.artist(track.artist)) }
-            .accessibilityAction(named: "Go to album") { model.show(.album(track.albumKey)) }
             .padding(.horizontal, Tokens.Space.paneInset)
             .padding(.top, 18)
 
