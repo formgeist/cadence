@@ -167,7 +167,8 @@ final class AppContainer {
                 let artwork = try DiskArtworkStore.makeDefault()
                 let scanner = LibraryScanner(
                     store: store, artwork: artwork, router: Self.metadataRouter)
-                model = AppModel(store: store, settings: settings, artwork: artwork)
+                model = AppModel(store: store, settings: settings, artwork: artwork,
+                                 memories: store)
                 // Removing a track from the library can orphan its cover the
                 // same way a deleted file does — see pruneOrphanedArtwork's
                 // own reasoning (#40). AppModel only knows the store
@@ -200,7 +201,8 @@ final class AppContainer {
         case .preview:
             folders = SecurityScopedFolders(defaultsKey: "CadencePreviewBookmarks")
             model = AppModel(store: previewStore ?? PreviewData.store(), settings: settings,
-                             artwork: previewArtwork)
+                             artwork: previewArtwork,
+                             memories: InMemoryMemoryStore(memories: PreviewData.memories()))
             importer = LibraryImporter(scanner: nil, bookmarks: folders)
             artworkLoader = ArtworkLoader(store: previewArtwork)
         }

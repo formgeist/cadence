@@ -305,6 +305,30 @@ What qualifies is decided at track-start time, in `recordPlayed(_:from:)`:
 There is no sort and no zoom — recency is the order — so the library header
 drops its options menu on this tab.
 
+## Memories
+
+A memory is a short note — up to 500 characters — kept against a record or a
+song on it: where you were, who gave it to you, why it matters. Add one from
+**Add Memory…** in any track's or album's context menu, or the speech-bubble
+button in an album's header.
+
+They come back in three places:
+
+- **The album page**, between the header and the tracklist: every note on the
+  record and its songs, newest first, each one click from editing. Songs with
+  a note carry a small bubble beside their title.
+- **Home**, under the album of the day: up to three notes, picked afresh each
+  day and the same all day, the way the album of the day is. Notes written in
+  the last day wait while older ones exist — Home is for coming back to
+  things. A card opens its record.
+- **The album of the day** card, which quotes the record's newest note.
+
+Notes live in the `memory` table and are keyed by names — album artist, title
+and year, plus the song's title and artist — not by track id, like the play
+log. A memory outlives a rescan, a moved folder, even the record leaving the
+library: it simply stays out of sight until the record is back. Emptying a
+note's text deletes it.
+
 ## Building UI before the audio layer works
 
 `MockPlayerEngine` advances a clock instead of decoding, and fakes the gapless

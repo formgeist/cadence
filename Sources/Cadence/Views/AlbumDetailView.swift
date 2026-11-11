@@ -27,6 +27,7 @@ struct AlbumDetailView: View {
         ScrollView {
             VStack(spacing: 0) {
                 header
+                AlbumMemoriesSection(album: album)
                 AlbumTrackList(album: album)
                     .padding(.horizontal, Tokens.Space.albumInset)
                     .padding(.top, 22)
@@ -83,6 +84,13 @@ struct AlbumDetailView: View {
                         PlaylistMenu.albumAdditions(model: model, playback: playback,
                                                     tracks: orderedTracks)
                     }
+                    // A note against the record, for later — shown above the
+                    // tracklist, on Home, and when it is the album of the day.
+                    CapsuleButton(systemImage: PlaylistMenu.Symbol.memory,
+                                  accessibilityLabel: "Add a memory about \(album.title)") {
+                        model.editingMemory = .create(.album(album.key))
+                    }
+                    .help("Add a memory")
                 }
                 .padding(.top, 10)
             }
@@ -449,11 +457,20 @@ private struct TrackRow: View {
             .frame(width: 28, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(track.title)
-                    .font(Tokens.Typography.trackTitle)
-                    .foregroundStyle(isCurrent
-                                     ? Tokens.Palette.accent : Color(hex: 0xE6E6EC))
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(track.title)
+                        .font(Tokens.Typography.trackTitle)
+                        .foregroundStyle(isCurrent
+                                         ? Tokens.Palette.accent : Color(hex: 0xE6E6EC))
+                        .lineLimit(1)
+                    // Marks a song with a note; the note itself is in the
+                    // record's Memories above the list.
+                    if model.hasMemory(track) {
+                        CadenceIcon(PlaylistMenu.Symbol.memory, size: 10)
+                            .foregroundStyle(Tokens.Palette.textMuted)
+                            .help("Has a memory")
+                    }
+                }
                 if let artistLinkTarget {
                     InlineLink(text: artistLinkTarget, font: Tokens.Typography.sans(11, .medium),
                                color: Color(hex: 0x7A7A84)) {
@@ -484,6 +501,7 @@ private struct TrackRow: View {
         }
         parts.append(NowPlayingPane.spokenDuration(track.duration))
         parts.append(NowPlayingPane.spokenFormat(track.format))
+        if model.hasMemory(track) { parts.append("Has a memory") }
         if isCurrent { parts.append("Now playing") }
         return parts.joined(separator: ", ")
     }

@@ -628,6 +628,68 @@ extension SQLiteLibraryStore {
     }
 }
 
+// MARK: - Memories
+
+extension SQLiteLibraryStore: MemoryStore {
+    public func memories() async throws -> [Memory] {
+        try await pool.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT id, albumArtist, albumTitle, albumYear, trackTitle, trackArtist,
+                       text, createdAt, updatedAt
+                FROM memory ORDER BY createdAt DESC
+                """).compactMap { row -> Memory? in
+                guard let id = UUID(uuidString: row["id"]) else { return nil }
+                let album = Album.Key(albumArtist: row["albumArtist"],
+                                      title: row["albumTitle"], year: row["albumYear"])
+                let subject: Memory.Subject
+                if let title: String = row["trackTitle"] {
+                    subject = .track(title: title,
+                                     artist: (row["trackArtist"] as String?) ?? album.albumArtist,
+                                     album: album)
+                } else {
+                    subject = .album(album)
+                }
+                return Memory(id: id, subject: subject, text: row["text"],
+                              createdAt: Date(timeIntervalSince1970: row["createdAt"]),
+                              updatedAt: Date(timeIntervalSince1970: row["updatedAt"]))
+            }
+        }
+    }
+
+    public func saveMemory(_ memory: Memory) async throws {
+        let album = memory.subject.albumKey
+        var trackTitle: String?
+        var trackArtist: String?
+        if case .track(let title, let artist, _) = memory.subject {
+            trackTitle = title
+            trackArtist = artist
+        }
+        try await pool.write { db in
+            try db.execute(sql: """
+                INSERT INTO memory (id, albumArtist, albumTitle, albumYear, trackTitle,
+                                    trackArtist, text, createdAt, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET albumArtist = excluded.albumArtist,
+                                              albumTitle = excluded.albumTitle,
+                                              albumYear = excluded.albumYear,
+                                              trackTitle = excluded.trackTitle,
+                                              trackArtist = excluded.trackArtist,
+                                              text = excluded.text,
+                                              updatedAt = excluded.updatedAt
+                """, arguments: [memory.id.uuidString, album.albumArtist, album.title,
+                                 album.year, trackTitle, trackArtist, memory.text,
+                                 memory.createdAt.timeIntervalSince1970,
+                                 memory.updatedAt.timeIntervalSince1970])
+        }
+    }
+
+    public func deleteMemory(_ id: Memory.ID) async throws {
+        try await pool.write { db in
+            try db.execute(sql: "DELETE FROM memory WHERE id = ?", arguments: [id.uuidString])
+        }
+    }
+}
+
 extension SQLiteLibraryStore: SimilarArtistCache {
     public func cachedSimilarArtists(forKey key: String) async throws
         -> (artists: [ExternalSimilarArtist], fetchedAt: Date)? {

@@ -236,6 +236,10 @@ struct CadenceGlyph: Sendable {
         .line("M15.6 6.6l3.2-.9 2.9 12.6-3.2.9z"),
     ])
     private static let chevronDown = CadenceGlyph([.line("M7 10l5 5 5-5")])
+    /// A speech bubble with two lines of writing: a memory, a note kept
+    /// against a record.
+    private static let memory = CadenceGlyph([.line(
+        "M6 5h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-6.5L7 20.5V17H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zM8 9.5h8M8 12.5h5")])
     private static let photo = CadenceGlyph([
         .rect(4, 5, 16, 14, radius: 2.5, filled: false), .ring(9, 10, 1.4),
         .line("M4.5 16.5l4.2-3.7a1.4 1.4 0 0 1 1.9.1l2.6 2.6 1.5-1.4a1.4 1.4 0 0 1 1.9 0l2.9 2.5"),
@@ -323,6 +327,7 @@ struct CadenceGlyph: Sendable {
         "tag": genreTag,
         "books.vertical": catalog,
         "chevron.down": chevronDown,
+        "text.bubble": memory,
         "photo": photo,
         "text.badge.plus": addToPlaylist,
         "magnifyingglass": search,

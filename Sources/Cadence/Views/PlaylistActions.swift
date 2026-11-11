@@ -216,6 +216,14 @@ enum PlaylistMenu {
         static let credits = "person.2"
         static let folder = "folder"
         static let newFolder = "folder.badge.plus"
+        static let memory = "text.bubble"
+    }
+
+    /// "Add Memory…" — a note against a song or a record, for later.
+    static func addMemory(_ subject: Memory.Subject, model: AppModel) -> MenuItem {
+        .action("Add Memory…", Symbol.memory) {
+            model.editingMemory = .create(subject)
+        }
     }
 
     /// "Add to Playlist" wherever tracks are listed. A submenu rather than a
@@ -339,6 +347,7 @@ enum PlaylistMenu {
             },
             .separator,
             destinations(model: model, tracks: tracks),
+            addMemory(.album(album.key), model: model),
             .separator,
             .action("Reveal in Finder", Symbol.revealInFinder, enabled: !tracks.isEmpty) {
                 NSWorkspace.shared.activateFileViewerSelecting(tracks.map(\.url))
@@ -367,6 +376,7 @@ enum PlaylistMenu {
         }
         items.append(.separator)
         items.append(destinations(model: model, tracks: [track]))
+        items.append(addMemory(Memory.Subject(track: track), model: model))
         items.append(.separator)
         items.append(.action("Reveal in Finder", Symbol.revealInFinder) {
             NSWorkspace.shared.activateFileViewerSelecting([track.url])

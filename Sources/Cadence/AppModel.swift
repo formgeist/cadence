@@ -445,10 +445,12 @@ final class AppModel {
     var forgetFolder: ((URL) -> Void)?
 
     init(store: any LibraryStore, settings: any SettingsStore = InMemorySettingsStore(),
-         artwork: (any ArtworkStore)? = nil) {
+         artwork: (any ArtworkStore)? = nil,
+         memories memoryStore: any MemoryStore = InMemoryMemoryStore()) {
         self.store = store
         self.settings = settings
         self.artwork = artwork
+        self.memoryStore = memoryStore
         // "Recents" is the pre-Home name of the first tab.
         if let raw = settings.string(forKey: .tab),
            let restored = Tab(rawValue: raw == "Recents" ? Tab.home.rawValue : raw) {
@@ -504,6 +506,7 @@ final class AppModel {
             async let librarySizeFetch = store.librarySize()
             async let customArtistImagesFetch = store.customArtistImages()
             async let catalogsFetch = store.catalogs()
+            async let memoriesFetch = memoryStore.memories()
 
             allTracks = try await tracksFetch
             albums = Album.grouped(from: allTracks)
@@ -544,6 +547,9 @@ final class AppModel {
             catalogSuggestions = Self.catalogSuggestions(albums: albums, artists: artists,
                                                          genres: genres)
             setCatalogs(try await catalogsFetch)
+            // Notes are not the library: one that fails to read should not
+            // stop the records from showing. Keep what was there instead.
+            if let fetched = try? await memoriesFetch { setMemories(fetched) }
             // A track removed from the library should not sit in this list
             // forever, wasting one of its five slots on something
             // `recentlyPlayed` will never resolve again.
@@ -955,6 +961,115 @@ final class AppModel {
     var currentAlbum: Album? {
         guard case .album(let key) = screen else { return nil }
         return album(for: key)
+    }
+
+    // MARK: Memories
+
+    /// Where memories are kept — the library database in the app, memory in
+    /// previews and tests.
+    private let memoryStore: any MemoryStore
+
+    /// Every memory, newest first.
+    private(set) var memories: [Memory] = []
+    /// By record, newest first — what an album page and the album of the day
+    /// read, without filtering every note on each body pass.
+    private var memoriesByAlbum: [Album.Key: [Memory]] = [:]
+
+    /// What the memory editor is open for.
+    enum MemoryEditing: Identifiable, Hashable {
+        case create(Memory.Subject)
+        case edit(Memory)
+
+        var id: String {
+            switch self {
+            case .create(let subject): "create-\(subject.hashValue)"
+            case .edit(let memory): memory.id.uuidString
+            }
+        }
+
+        var subject: Memory.Subject {
+            switch self {
+            case .create(let subject): subject
+            case .edit(let memory): memory.subject
+            }
+        }
+    }
+
+    /// Non-nil while the memory editor sheet is up.
+    var editingMemory: MemoryEditing?
+
+    /// Every note on a record — about it or any song on it — newest first.
+    func memories(aboutAlbum key: Album.Key) -> [Memory] {
+        memoriesByAlbum[key] ?? []
+    }
+
+    /// The notes about one song, newest first.
+    func memories(about track: Track) -> [Memory] {
+        memories(aboutAlbum: track.albumKey).filter { $0.subject.matches(track) }
+    }
+
+    func hasMemory(_ track: Track) -> Bool {
+        memories(aboutAlbum: track.albumKey).contains { $0.subject.matches(track) }
+    }
+
+    /// What Home brings back today, leaving out notes whose record is no
+    /// longer in the library — a card should open something.
+    func resurfacedMemories(now: Date = Date(), limit: Int = 3) -> [Memory] {
+        Memory.resurfaced(from: memories, now: now, limit: limit) {
+            self.albumsByKey[$0.subject.albumKey] != nil
+        }
+    }
+
+    /// `“Anhedonia”` for a song, the record's title for a whole record —
+    /// the heading a note is shown under.
+    func title(of subject: Memory.Subject) -> String {
+        switch subject {
+        case .album(let key): key.title
+        case .track(let title, _, _): "“\(title)”"
+        }
+    }
+
+    /// Saves a new note, or the changes to one. Emptying a note's text is
+    /// the same as deleting it — there is nothing left to keep.
+    func saveMemory(text: String, editing: MemoryEditing) async {
+        guard let cleaned = Memory.cleaned(text) else {
+            if case .edit(let existing) = editing { await deleteMemory(existing) }
+            return
+        }
+        let memory: Memory
+        switch editing {
+        case .create(let subject):
+            memory = Memory(subject: subject, text: cleaned)
+        case .edit(let existing):
+            guard existing.text != cleaned else { return }
+            var updated = existing
+            updated.text = cleaned
+            updated.updatedAt = Date()
+            memory = updated
+        }
+        do {
+            try await memoryStore.saveMemory(memory)
+            setMemories(try await memoryStore.memories())
+            if case .create = editing {
+                notice = "Saved a memory for \(title(of: memory.subject))"
+            }
+        } catch {
+            actionError = "Could not save the memory: " + error.localizedDescription
+        }
+    }
+
+    func deleteMemory(_ memory: Memory) async {
+        do {
+            try await memoryStore.deleteMemory(memory.id)
+            setMemories(try await memoryStore.memories())
+        } catch {
+            actionError = "Could not delete the memory: " + error.localizedDescription
+        }
+    }
+
+    private func setMemories(_ fetched: [Memory]) {
+        memories = fetched.sorted(by: Memory.newestFirst)
+        memoriesByAlbum = Dictionary(grouping: memories, by: \.subject.albumKey)
     }
 
     // MARK: Playlists

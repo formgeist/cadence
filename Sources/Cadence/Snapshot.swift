@@ -261,6 +261,13 @@ enum Snapshot {
                  return AnyView(catalog.map { CatalogEditorSheet(editing: .edit($0)) })
              }) { _ in },
 
+        // Writing a note against a song — the memory editor, filled in.
+        Shot(name: "13i-memory-editor", size: CGSize(width: 520, height: 360),
+             makeRoot: { container in
+                 let memory = container.model.memories.first { $0.subject.trackTitle != nil }
+                 return AnyView(memory.map { MemoryEditorSheet(editing: .edit($0)) })
+             }) { _ in },
+
         // Nothing imported yet. The first screen anyone sees.
         Shot(name: "14-empty-library", size: Tokens.Layout.defaultWindow,
              store: { PreviewData.emptyStore() }) { container in

@@ -95,6 +95,10 @@ struct RootView: View {
             ArtistImageSheet(artist: artist)
                 .environment(model)
         }
+        .sheet(item: $model.editingMemory) { editing in
+            MemoryEditorSheet(editing: editing)
+                .environment(model)
+        }
         .sheet(item: $model.editingCatalog) { editing in
             CatalogEditorSheet(editing: editing)
                 .environment(model)

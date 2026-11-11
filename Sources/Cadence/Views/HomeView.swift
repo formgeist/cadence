@@ -29,6 +29,7 @@ struct HomeView: View {
                     if let albumOfTheDay {
                         AlbumOfTheDayCard(pick: albumOfTheDay)
                     }
+                    memories
                     recentlyPlayed(columns: columns)
                     listening
                 }
@@ -88,6 +89,50 @@ struct HomeView: View {
         }
     }
 
+    // MARK: Memories
+
+    /// A few notes brought back for today — the same all day, different
+    /// tomorrow. Each opens the record it is about.
+    @ViewBuilder
+    private var memories: some View {
+        let shown = model.resurfacedMemories()
+        VStack(alignment: .leading, spacing: Tokens.Space.l) {
+            SectionLabel("Memories")
+            if shown.isEmpty {
+                Text("Right-click a song or an album and choose Add Memory… to keep a note about it. They come back here.")
+                    .font(Tokens.Typography.body)
+                    .foregroundStyle(Tokens.Palette.textTertiary)
+            } else {
+                // Equal columns rather than adaptive: three notes side by
+                // side read as one row of postcards, whatever their length.
+                HStack(alignment: .top, spacing: Tokens.Space.l) {
+                    ForEach(shown) { memory in
+                        let album = model.album(for: memory.subject.albumKey)
+                        MemoryCard(
+                            memory: memory,
+                            heading: model.title(of: memory.subject),
+                            detail: memory.subject.trackTitle == nil
+                                ? memory.subject.albumKey.albumArtist
+                                : "\(memory.subject.albumKey.albumArtist) · \(memory.subject.albumKey.title)",
+                            artworkID: album?.artworkID,
+                            showsArtwork: true,
+                            actionLabel: "Opens the album"
+                        ) {
+                            model.show(.album(memory.subject.albumKey))
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    // Hold the column width when fewer than three come back,
+                    // so one note is not stretched across the whole page.
+                    ForEach(shown.count..<max(shown.count, 3), id: \.self) { _ in
+                        Color.clear.frame(maxWidth: .infinity, maxHeight: 1)
+                    }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
     // MARK: Listening stats
 
     private var listening: some View {
@@ -143,6 +188,28 @@ private struct AlbumOfTheDayCard: View {
                     .foregroundStyle(Tokens.Palette.textTertiary)
                     .lineLimit(1)
                     .padding(.top, 2)
+                // The newest note on the record, if there is one: the album
+                // of the day is exactly when a memory is worth seeing again.
+                if let memory = model.memories(aboutAlbum: pick.album.key).first {
+                    Button { model.editingMemory = .edit(memory) } label: {
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            CadenceIcon("text.bubble", size: 10)
+                                .foregroundStyle(Tokens.Palette.accent)
+                                .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 2 }
+                            Text(memoryLine(memory))
+                                .font(Tokens.Typography.sans(12.5, .medium))
+                                .italic()
+                                .foregroundStyle(Color(hex: 0xC8C8D0))
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .plainControl()
+                    .padding(.top, Tokens.Space.xs)
+                    .accessibilityLabel("Memory: \(memoryLine(memory)), \(memory.dateDescription)")
+                    .accessibilityHint("Edits this memory")
+                }
             }
             Spacer(minLength: Tokens.Space.l)
 
@@ -157,6 +224,14 @@ private struct AlbumOfTheDayCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .panelBackground()
         .accessibilityElement(children: .contain)
+    }
+
+    /// `“The note.”`, or `“Anhedonia” — the note.` for a song on the record.
+    private func memoryLine(_ memory: Memory) -> String {
+        if let title = memory.subject.trackTitle {
+            return "“\(title)” — \(memory.text)"
+        }
+        return "“\(memory.text)”"
     }
 }
 
