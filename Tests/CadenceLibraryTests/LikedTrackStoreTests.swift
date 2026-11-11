@@ -24,7 +24,8 @@ struct LikedTrackStoreTests {
     @Test("A fresh library has nothing liked")
     func startsEmpty() async throws {
         try await withStore { store in
-            #expect(try await store.likedTrackIDs().isEmpty)
+            let liked = try await store.likedTrackIDs()
+            #expect(liked.isEmpty)
         }
     }
 
