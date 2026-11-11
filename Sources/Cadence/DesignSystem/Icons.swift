@@ -61,6 +61,9 @@ struct CadenceIcon: View {
 struct CadenceGlyph: Sendable {
     static let artboard: CGFloat = 24
     static let strokeWidth: CGFloat = 1.75
+    /// The die draws far larger than other glyphs, so its outline is thinner
+    /// on the artboard to land near the same weight on screen.
+    static let dieStrokeWidth: CGFloat = 1.0
 
     struct Part: Sendable {
         var path: Path
@@ -277,6 +280,24 @@ struct CadenceGlyph: Sendable {
         .line("M8.2 15.8l.5-2.4 5.3-5.3a1.2 1.2 0 0 1 1.7 0l.2.2a1.2 1.2 0 0 1 0 1.7l-5.3 5.3z"),
     ])
 
+    /// Die faces, for the title bar's "Just play something": a rounded square
+    /// with the usual pips. The roll swaps faces mid-tumble, so all six exist.
+    private static func die(_ pips: [(CGFloat, CGFloat)]) -> CadenceGlyph {
+        CadenceGlyph([Part(path: Path(roundedRect: CGRect(x: 4.5, y: 4.5, width: 15, height: 15),
+                                      cornerRadius: 3.6),
+                           fill: false, stroke: dieStrokeWidth)]
+                     + pips.map { .dot($0.0, $0.1, 1.25) })
+    }
+    private static let pipLow: CGFloat = 8.9, pipMid: CGFloat = 12, pipHigh: CGFloat = 15.1
+    private static let die1 = die([(pipMid, pipMid)])
+    private static let die2 = die([(pipHigh, pipLow), (pipLow, pipHigh)])
+    private static let die3 = die([(pipHigh, pipLow), (pipMid, pipMid), (pipLow, pipHigh)])
+    private static let die4 = die([(pipLow, pipLow), (pipHigh, pipLow), (pipLow, pipHigh), (pipHigh, pipHigh)])
+    private static let die5 = die([(pipLow, pipLow), (pipHigh, pipLow), (pipMid, pipMid),
+                                   (pipLow, pipHigh), (pipHigh, pipHigh)])
+    private static let die6 = die([(pipLow, pipLow), (pipLow, pipMid), (pipLow, pipHigh),
+                                   (pipHigh, pipLow), (pipHigh, pipMid), (pipHigh, pipHigh)])
+
     /// Keyed by the SF Symbol each glyph replaces, plus two names with no SF
     /// equivalent that the app reuses for a verb: `text.badge.plus` (add to
     /// playlist) and `music.note.list` (the playlist itself).
@@ -335,6 +356,12 @@ struct CadenceGlyph: Sendable {
         "checkmark.circle.fill": added,
         "xmark.circle.fill": clear,
         "pencil.circle.fill": edit,
+        "die.face.1": die1,
+        "die.face.2": die2,
+        "die.face.3": die3,
+        "die.face.4": die4,
+        "die.face.5": die5,
+        "die.face.6": die6,
     ]
 }
 

@@ -409,6 +409,15 @@ struct CadenceCommands: Commands {
 
             Divider()
 
+            // Same as the die beside the search field, which rolls too.
+            Button("Just Play Something") {
+                container.model.justPlaySomething(on: container.playback)
+            }
+            .keyboardShortcut("j", modifiers: .command)
+            .disabled(container.model.albums.isEmpty)
+
+            Divider()
+
             Picker("ReplayGain", selection: Binding(
                 get: { container.playback.replayGainMode },
                 set: { container.playback.replayGainMode = $0 }
