@@ -103,8 +103,8 @@ private struct PlaySomethingDie: View {
 
     private static let rollDuration = 1.83
     /// Sized so the die's face stands nearly as tall as the search field.
-    static let glyphSize: CGFloat = 32
-    static var box: CGFloat { glyphSize * CadenceIcon.boxScale }
+    nonisolated static let glyphSize: CGFloat = 32
+    nonisolated static var box: CGFloat { glyphSize * CadenceIcon.boxScale }
 
     var body: some View {
         Button { model.justPlaySomething(on: playback) } label: {
@@ -270,7 +270,7 @@ private struct TumblingDie: View {
     private static let pipRadius = 1.25 / 7.5
     private static let cornerRadius = 3.6 / 7.5
     /// Camera distance in face units: close enough to read as 3D.
-    private static let camera = 4.5
+    nonisolated private static let camera = 4.5
 
     private static func pips(_ n: Int) -> [SIMD2<Double>] {
         let k = pipOffset
