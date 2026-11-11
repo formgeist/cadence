@@ -17,13 +17,15 @@ import AppKit
 /// inside its 24-unit box, so the box is `boxScale` larger than `size` to
 /// make the visible glyph match; `boxScale` trims that for dense rows.
 struct CadenceIcon: View {
-    static let boxScale: CGFloat = 1.4
+    nonisolated static let boxScale: CGFloat = 1.4
 
     let name: String
     var size: CGFloat = 13
     var boxScale: CGFloat = CadenceIcon.boxScale
 
-    init(_ name: String, size: CGFloat = 13, boxScale: CGFloat = CadenceIcon.boxScale) {
+    /// Nonisolated so a keyframe animator's content closure, which is not
+    /// main-actor isolated, can build one.
+    nonisolated init(_ name: String, size: CGFloat = 13, boxScale: CGFloat = CadenceIcon.boxScale) {
         self.name = name
         self.size = size
         self.boxScale = boxScale
