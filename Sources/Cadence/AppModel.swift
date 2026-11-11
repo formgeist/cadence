@@ -610,6 +610,27 @@ final class AppModel {
         albumsByKey[key]
     }
 
+    /// "Just play something": any album with something to play, avoiding the
+    /// one already playing so each pick changes the record — unless the
+    /// library holds only that one.
+    func randomAlbum(excluding current: Album.Key? = nil) -> Album? {
+        let playable = albums.filter { $0.discs.contains { !$0.tracks.isEmpty } }
+        let fresh = playable.filter { $0.key != current }
+        return (fresh.isEmpty ? playable : fresh).randomElement()
+    }
+
+    /// Counts "Just play something" picks, so the title bar's die rolls
+    /// whether the pick came from the die itself or from the menu shortcut.
+    private(set) var somethingPlayed = 0
+
+    /// Play a random album from track 1. Shared by the title bar's die and
+    /// the Playback menu's ⌘J.
+    func justPlaySomething(on playback: PlaybackController) {
+        guard let album = randomAlbum(excluding: playback.currentTrack?.albumKey) else { return }
+        playback.play(album)
+        somethingPlayed += 1
+    }
+
     /// An artist has no picture of their own. The user's own choice wins;
     /// failing that, the first cover they released stands in, which is what
     /// every other music app does too.
