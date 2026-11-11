@@ -658,11 +658,16 @@ extension SQLiteLibraryStore: MemoryStore {
 
     public func saveMemory(_ memory: Memory) async throws {
         let album = memory.subject.albumKey
-        var trackTitle: String?
-        var trackArtist: String?
+        // `let`s, not `var`s: the write closure below runs on the pool's
+        // queue, and a captured `var` is not allowed across that hop.
+        let trackTitle: String?
+        let trackArtist: String?
         if case .track(let title, let artist, _) = memory.subject {
             trackTitle = title
             trackArtist = artist
+        } else {
+            trackTitle = nil
+            trackArtist = nil
         }
         try await pool.write { db in
             try db.execute(sql: """
