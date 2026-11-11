@@ -545,6 +545,25 @@ struct PlayPauseButton: View {
     }
 }
 
+/// The hover Play button on a cover in a grid: the header's round accent
+/// button, small and tucked into the lower-right corner so the artwork
+/// stays the subject. No scrim — the button's own shadow separates it.
+/// `isHovered` lets the card skip its hover dimming while the pointer is on
+/// the button, so the button never reads as washed out over the cover.
+struct CoverPlayButton: View {
+    var subject: String
+    var size: CGFloat = 42
+    @Binding var isHovered: Bool
+    var action: () -> Void
+
+    var body: some View {
+        PlayPauseButton(isPlaying: false, size: size, subject: subject, action: action)
+            .onHover { isHovered = $0 }
+            .padding(Tokens.Space.s)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+    }
+}
+
 /// The accent-filled Play pill and its outlined siblings on the album header.
 struct CapsuleButton: View {
     enum Kind { case filled, outlined }
