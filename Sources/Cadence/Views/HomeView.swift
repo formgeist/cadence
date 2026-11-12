@@ -192,7 +192,7 @@ private struct AlbumOfTheDayCard: View {
     /// `“The note.”`, or `“Anhedonia” — the note.` for a song on the record.
     private func memoryLine(_ memory: Memory) -> String {
         if let title = memory.subject.trackTitle {
-            return "“\(title)” — \(memory.text)"
+            return "\(title) — “\(memory.text)”"
         }
         return "“\(memory.text)”"
     }

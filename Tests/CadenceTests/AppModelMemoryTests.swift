@@ -252,10 +252,10 @@ struct AppModelMemoryTests {
         #expect(model.filteredMemories.count == 1)
     }
 
-    @Test("A song note is headed by its title, a record note by the record")
+    @Test("A song note is headed by its bare title, a record note by the record")
     func titles() async {
         let model = await makeModel()
-        #expect(model.title(of: .init(track: anhedonia)) == "“Anhedonia”")
+        #expect(model.title(of: .init(track: anhedonia)) == "Anhedonia")
         #expect(model.title(of: .album(anhedonia.albumKey)) == "Sound of the Slow Hours")
     }
 }

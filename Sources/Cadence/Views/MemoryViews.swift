@@ -106,7 +106,7 @@ struct MemoryEditorSheet: View {
         case .album(let key):
             return "\(key.title) · \(key.albumArtist)"
         case .track(let title, let artist, let album):
-            return "“\(title)” · \(artist) · from \(album.title)"
+            return "\(title) · \(artist) · from \(album.title)"
         }
     }
 
@@ -384,7 +384,7 @@ struct AlbumMemoriesSection: View {
                           alignment: .leading, spacing: Tokens.Space.m) {
                     ForEach(notes) { memory in
                         MemoryCard(memory: memory,
-                                   heading: memory.subject.trackTitle.map { "“\($0)”" },
+                                   heading: memory.subject.trackTitle,
                                    actionLabel: "Reads the whole memory") {
                             model.readingMemory = memory
                         }

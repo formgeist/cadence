@@ -1104,12 +1104,13 @@ final class AppModel {
         albumsByKey[memory.subject.albumKey] != nil
     }
 
-    /// `“Anhedonia”` for a song, the record's title for a whole record —
-    /// the heading a note is shown under.
+    /// The song's title for a song's note, the record's for a record's — the
+    /// heading a note is shown under. Bare, with no quote marks: it is a
+    /// title, set as one.
     func title(of subject: Memory.Subject) -> String {
         switch subject {
         case .album(let key): key.title
-        case .track(let title, _, _): "“\(title)”"
+        case .track(let title, _, _): title
         }
     }
 
@@ -1135,7 +1136,8 @@ final class AppModel {
             try await memoryStore.saveMemory(memory)
             setMemories(try await memoryStore.memories())
             if case .create = editing {
-                notice = "Saved a memory for \(title(of: memory.subject))"
+                // Quoted here, as notices quote every name in a sentence.
+                notice = "Saved a memory for “\(title(of: memory.subject))”"
             }
         } catch {
             actionError = "Could not save the memory: " + error.localizedDescription
