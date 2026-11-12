@@ -332,7 +332,8 @@ button in an album's header.
 They come back in five places:
 
 - **The Now Playing pane**, below the playback controls and above the queue:
-  the playing song's newest note,
+  the playing song's newest note, folded to three lines with "Show more" when
+  it runs longer,
   with "+1 more" when it has several. Song notes only — a note on the whole
   record would sit there for every track of it.
 

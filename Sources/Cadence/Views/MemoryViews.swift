@@ -399,55 +399,104 @@ private struct MemoryGridCard: View {
 
 // MARK: - In the Now Playing pane
 
-/// The playing song's newest memory, under its title in the Now Playing pane.
-/// Song notes only: a note on the whole record would sit there for every
-/// track of it, and stop being about this one. Clicking it edits it.
+/// The playing song's newest memory, under the controls in the Now Playing
+/// pane. Song notes only: a note on the whole record would sit there for
+/// every track of it, and stop being about this one.
+///
+/// Collapsed to a few lines so a long note cannot crowd out the queue below;
+/// "Show more" opens the rest when there is more. Clicking the note edits it.
 struct NowPlayingMemory: View {
     @Environment(AppModel.self) private var model
     var track: Track
 
+    /// Lines shown before "Show more".
+    static let collapsedLines = 3
+
     @State private var isHovering = false
+    @State private var isExpanded = false
+    /// The note's height at full length and at the collapsed limit, measured
+    /// off-screen, so "Show more" appears only when something is cut off.
+    @State private var fullHeight: CGFloat = 0
+    @State private var collapsedHeight: CGFloat = 0
+
+    private var isTruncated: Bool { fullHeight > collapsedHeight + 1 }
 
     var body: some View {
         let notes = model.memories(about: track)
         if let memory = notes.first {
-            Button { model.editingMemory = .edit(memory) } label: {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        CadenceIcon(PlaylistMenu.Symbol.memory, size: 10)
-                            .foregroundStyle(Tokens.Palette.accent)
-                            .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 2 }
-                        Text(memory.text)
-                            .font(Tokens.Typography.sans(12.5, .medium))
-                            .italic()
-                            .foregroundStyle(Color(hex: 0xD6D6DD))
-                            .lineSpacing(2)
-                            // The pane is short on room; the artwork comes
-                            // first, so the note gives way after a few lines.
-                            .lineLimit(4)
-                            .multilineTextAlignment(.leading)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    CadenceIcon(PlaylistMenu.Symbol.memory, size: 10)
+                        .foregroundStyle(Tokens.Palette.accent)
+                        .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 2 }
+                    noteText(memory.text)
+                        .lineLimit(isExpanded ? nil : Self.collapsedLines)
+                        .background(measured(memory.text, lines: nil, into: $fullHeight))
+                        .background(measured(memory.text, lines: Self.collapsedLines,
+                                             into: $collapsedHeight))
+                        .contentShape(Rectangle())
+                        .pointingHandCursor()
+                        .onTapGesture { model.editingMemory = .edit(memory) }
+                        .accessibilityLabel("Memory about \(track.title): \(memory.text)")
+                        .accessibilityHint("Edits this memory")
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityAction(.default) { model.editingMemory = .edit(memory) }
+                }
+                HStack(spacing: Tokens.Space.s) {
                     Text(notes.count > 1
                          ? "\(memory.dateDescription) · +\(notes.count - 1) more"
                          : memory.dateDescription)
                         .font(Tokens.Typography.captionSmall)
                         .foregroundStyle(Tokens.Palette.textFaint)
-                        .padding(.leading, 20)
+                    Spacer(minLength: 0)
+                    if isTruncated || isExpanded {
+                        Button(isExpanded ? "Show less" : "Show more") {
+                            withAnimation(.easeOut(duration: 0.18)) { isExpanded.toggle() }
+                        }
+                        .plainControl()
+                        .font(Tokens.Typography.sans(11, .bold))
+                        .foregroundStyle(Tokens.Palette.accent)
+                    }
                 }
-                .padding(Tokens.Space.m)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(isHovering ? Tokens.Palette.rowHover : Tokens.Palette.card,
-                            in: RoundedRectangle(cornerRadius: Tokens.Radius.card,
-                                                 style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous)
-                    .strokeBorder(Tokens.Palette.border, lineWidth: 1))
-                .contentShape(Rectangle())
+                .padding(.leading, 20)
             }
-            .plainControl()
+            .padding(Tokens.Space.m)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(isHovering ? Tokens.Palette.rowHover : Tokens.Palette.card,
+                        in: RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous)
+                .strokeBorder(Tokens.Palette.border, lineWidth: 1))
             .onHover { isHovering = $0 }
-            .accessibilityLabel("Memory about \(track.title): \(memory.text), \(memory.dateDescription)")
-            .accessibilityHint("Edits this memory")
+            .accessibilityElement(children: .contain)
+            // A new song starts folded, whatever the last one was left at.
+            .onChange(of: track.id) { _, _ in isExpanded = false }
         }
+    }
+
+    private func noteText(_ text: String) -> some View {
+        Text(text)
+            .font(Tokens.Typography.sans(12.5, .medium))
+            .italic()
+            .foregroundStyle(Color(hex: 0xD6D6DD))
+            .lineSpacing(2)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// An invisible copy of the note at `lines`, reporting its height. Laid
+    /// out at the same width as the real one, so the two heights compare.
+    private func measured(_ text: String, lines: Int?,
+                          into height: Binding<CGFloat>) -> some View {
+        noteText(text)
+            .lineLimit(lines)
+            .hidden()
+            .background {
+                GeometryReader { geometry in
+                    Color.clear
+                        .onAppear { height.wrappedValue = geometry.size.height }
+                        .onChange(of: geometry.size.height) { _, new in height.wrappedValue = new }
+                }
+            }
+            .accessibilityHidden(true)
     }
 }
