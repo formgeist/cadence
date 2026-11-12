@@ -84,6 +84,12 @@ struct NowPlayingPane: View {
             .padding(.horizontal, Tokens.Space.paneInset)
             .padding(.top, 18)
 
+            // The song's own memory, if it has one — this is when it means
+            // most. Nothing at all for a song without one.
+            NowPlayingMemory(track: track)
+                .padding(.horizontal, Tokens.Space.paneInset)
+                .padding(.top, Tokens.Space.m)
+
             VStack(spacing: 7) {
                 ScrubBar(
                     fraction: playback.progress.fraction,

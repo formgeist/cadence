@@ -396,3 +396,58 @@ private struct MemoryGridCard: View {
         "Memory: \(model.title(of: memory.subject)), \(detail). \(memory.text). \(memory.dateDescription)"
     }
 }
+
+// MARK: - In the Now Playing pane
+
+/// The playing song's newest memory, under its title in the Now Playing pane.
+/// Song notes only: a note on the whole record would sit there for every
+/// track of it, and stop being about this one. Clicking it edits it.
+struct NowPlayingMemory: View {
+    @Environment(AppModel.self) private var model
+    var track: Track
+
+    @State private var isHovering = false
+
+    var body: some View {
+        let notes = model.memories(about: track)
+        if let memory = notes.first {
+            Button { model.editingMemory = .edit(memory) } label: {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        CadenceIcon(PlaylistMenu.Symbol.memory, size: 10)
+                            .foregroundStyle(Tokens.Palette.accent)
+                            .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 2 }
+                        Text(memory.text)
+                            .font(Tokens.Typography.sans(12.5, .medium))
+                            .italic()
+                            .foregroundStyle(Color(hex: 0xD6D6DD))
+                            .lineSpacing(2)
+                            // The pane is short on room; the artwork comes
+                            // first, so the note gives way after a few lines.
+                            .lineLimit(4)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Text(notes.count > 1
+                         ? "\(memory.dateDescription) · +\(notes.count - 1) more"
+                         : memory.dateDescription)
+                        .font(Tokens.Typography.captionSmall)
+                        .foregroundStyle(Tokens.Palette.textFaint)
+                        .padding(.leading, 20)
+                }
+                .padding(Tokens.Space.m)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(isHovering ? Tokens.Palette.rowHover : Tokens.Palette.card,
+                            in: RoundedRectangle(cornerRadius: Tokens.Radius.card,
+                                                 style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous)
+                    .strokeBorder(Tokens.Palette.border, lineWidth: 1))
+                .contentShape(Rectangle())
+            }
+            .plainControl()
+            .onHover { isHovering = $0 }
+            .accessibilityLabel("Memory about \(track.title): \(memory.text), \(memory.dateDescription)")
+            .accessibilityHint("Edits this memory")
+        }
+    }
+}

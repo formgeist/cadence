@@ -329,7 +329,11 @@ song on it: where you were, who gave it to you, why it matters. Add one from
 **Add Memory…** in any track's or album's context menu, or the speech-bubble
 button in an album's header.
 
-They come back in four places:
+They come back in five places:
+
+- **The Now Playing pane**, under the title: the playing song's newest note,
+  with "+1 more" when it has several. Song notes only — a note on the whole
+  record would sit there for every track of it.
 
 - **The Memories page** (⌘7, under Catalogs in the sidebar): every note,
   newest first, in a grid sized like the Playlists one. Each card is the
