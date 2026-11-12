@@ -133,6 +133,41 @@ struct AppModelMemoryTests {
                                         album: anhedonia.albumKey)) == nil)
     }
 
+    @Test("Playing a song note plays that song in its record's order")
+    func playSongNote() async throws {
+        let model = await makeModel()
+        let playback = PlaybackController(engine: MockPlayerEngine(rate: 1))
+        let album = try #require(model.album(for: anhedonia.albumKey))
+
+        model.play(Memory(subject: .init(track: undertow), text: "Lofoten."), on: playback)
+
+        #expect(playback.currentTrack?.id == undertow.id)
+        #expect(playback.queue.map(\.id) == album.discs.flatMap(\.tracks).map(\.id))
+    }
+
+    @Test("Playing a record note plays the record from the top")
+    func playAlbumNote() async throws {
+        let model = await makeModel()
+        let playback = PlaybackController(engine: MockPlayerEngine(rate: 1))
+        let album = try #require(model.album(for: anhedonia.albumKey))
+
+        model.play(Memory(subject: .album(album.key), text: "The flat."), on: playback)
+
+        #expect(playback.currentTrack?.id == album.discs.flatMap(\.tracks).first?.id)
+    }
+
+    @Test("A note on a record no longer in the library cannot play")
+    func playMissingRecord() async {
+        let model = await makeModel()
+        let playback = PlaybackController(engine: MockPlayerEngine(rate: 1))
+        let gone = Memory(subject: .album(Album.Key(albumArtist: "Nobody", title: "Gone",
+                                                     year: nil)), text: "Gone.")
+
+        #expect(!model.canPlay(gone))
+        model.play(gone, on: playback)
+        #expect(playback.currentTrack == nil)
+    }
+
     @Test("A song note is headed by its title, a record note by the record")
     func titles() async {
         let model = await makeModel()
