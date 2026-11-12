@@ -93,7 +93,7 @@ struct SidebarView: View {
         case .artist: tab == .artists
         case .genre: tab == .genres
         case .catalog: tab == .catalogs
-        case .album, .playlist, .settings: false
+        case .album, .playlist, .likedSongs, .settings: false
         }
     }
 
@@ -193,13 +193,15 @@ private struct PlaylistSection: View {
                     ?? false
             } isTargeted: { isTargeted = $0 }
 
-            if model.playlists.isEmpty && model.playlistFolders.isEmpty {
-                Text("Nothing yet")
-                    .font(Tokens.Typography.sans(11.5, .medium))
-                    .foregroundStyle(Color(hex: 0x55555F))
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 2)
-            } else {
+            // Always first and always there, even with nothing liked yet: it
+            // is where the heart on a track row sends things, and an empty
+            // one says how to fill it. Not in a folder and not draggable — it
+            // is the library's own list, not one the user made.
+            LikedSongsRow(isSelected: model.screen == .likedSongs)
+                .padding(.horizontal, 10)
+                .padding(.bottom, 1)
+
+            if !model.playlists.isEmpty || !model.playlistFolders.isEmpty {
                 // Folders first, then the loose playlists: the folders are
                 // the structure, and a folder sandwiched between playlists
                 // reads as one more playlist until you spot the chevron.
@@ -365,6 +367,80 @@ private struct FolderGroup: View {
                     .allowsHitTesting(false)
             }
         }
+    }
+}
+
+/// Liked Songs in the sidebar. Shaped like a playlist row, with a heart where
+/// the cover goes. Tracks dropped on it are liked, the way tracks dropped on a
+/// playlist are added to it.
+private struct LikedSongsRow: View {
+    @Environment(AppModel.self) private var model
+    @Environment(PlaybackController.self) private var playback
+    var isSelected: Bool
+
+    @State private var isHovering = false
+    @State private var isTargeted = false
+
+    private var isLit: Bool { isSelected || isHovering || isTargeted }
+
+    var body: some View {
+        Button { model.show(.likedSongs) } label: {
+            HStack(spacing: 10) {
+                LikedSongsBadge(side: 18, glyphSize: 8.5)
+                Text(AppModel.likedSongsName)
+                    .font(Tokens.Typography.sans(12.5, .medium))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(isLit ? Color(hex: 0xEDEDF2) : Color(hex: 0x90909B))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background {
+                RoundedRectangle(cornerRadius: Tokens.Radius.row, style: .continuous)
+                    .fill(isSelected ? Tokens.Palette.navActive
+                          : (isHovering || isTargeted ? Tokens.Palette.navHover : .clear))
+            }
+            .overlay {
+                if isTargeted {
+                    RoundedRectangle(cornerRadius: Tokens.Radius.row, style: .continuous)
+                        .strokeBorder(Tokens.Palette.accent, lineWidth: 1)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .plainControl()
+        .onHover { isHovering = $0 }
+        .dropDestination(for: TrackSelection.self) { selections, _ in
+            let tracks = selections.flatMap(\.trackIDs).compactMap { model.track(id: $0) }
+            guard !tracks.isEmpty else { return false }
+            Task { await model.setLiked(true, tracks, announce: true) }
+            return true
+        } isTargeted: { isTargeted = $0 }
+        .cadenceContextMenu {
+            PlaylistMenu.likedSongs(model: model, playback: playback)
+        }
+        .accessibilityLabel("\(AppModel.likedSongsName), \(model.likedSongsSummary)")
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+    }
+}
+
+/// A heart on an accent tile — what Liked Songs shows where a playlist shows
+/// its covers, in the sidebar and as its page's header art.
+struct LikedSongsBadge: View {
+    var side: CGFloat
+    var glyphSize: CGFloat
+    var cornerRadius: CGFloat = Tokens.Radius.thumb
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(LinearGradient(colors: [Tokens.Palette.accent, Color(hex: 0x8E2A36)],
+                                     startPoint: .topLeading, endPoint: .bottomTrailing))
+            CadenceIcon("heart.fill", size: glyphSize)
+                .foregroundStyle(.white)
+        }
+        .frame(width: side, height: side)
+        .accessibilityHidden(true)
     }
 }
 

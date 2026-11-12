@@ -280,6 +280,23 @@ Two things worth knowing:
   `playlistItem.trackID` cascades. That is what lets the playlist screen treat
   a row offset and a stored position as the same number.
 
+### Liked Songs
+
+Liked Songs is a smart playlist: the hearts decide what is in it, so it cannot
+be renamed, reordered, filed in a folder or deleted. It sits pinned above the
+playlists in the sidebar, and lists every liked track, most recently liked
+first.
+
+A track is liked by the heart beside it on an album or artist page (solid when
+liked, an outline on hover otherwise), the heart under the title in the Now
+Playing pane, Add to Liked Songs in any track's context menu, **⌘L** for the
+playing track, or by dropping tracks on the Liked Songs row.
+
+Likes are rows in `likedTrack` — a track id and when it was liked — with the
+same cascade as `playlistItem`: removing a track from the library unlikes it,
+while a rescan, which keeps ids, does not. Liking a track already liked keeps
+its original date, so it does not jump back to the top.
+
 ## Recents
 
 The Recents grid is albums and playlists in one wall, most-recently played

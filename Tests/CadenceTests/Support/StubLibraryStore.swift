@@ -16,6 +16,7 @@ actor StubLibraryStore: LibraryStore {
         case createPlaylist, addTracks, removeTracks, moveTracks
         case renamePlaylist, deletePlaylist, remove, setPlaylistImage
         case createFolder, renameFolder, deleteFolder, movePlaylist
+        case setLiked
     }
 
     private let inner: InMemoryLibraryStore
@@ -27,8 +28,9 @@ actor StubLibraryStore: LibraryStore {
     private(set) var removedTrackIDs: [Track.ID] = []
 
     init(tracks: [Track] = [], playlists: [Playlist] = [], folders: [PlaylistFolder] = [],
-         failing: Set<Operation> = []) {
-        self.inner = InMemoryLibraryStore(tracks: tracks, playlists: playlists, folders: folders)
+         liked: [Track.ID] = [], failing: Set<Operation> = []) {
+        self.inner = InMemoryLibraryStore(tracks: tracks, playlists: playlists, folders: folders,
+                                          liked: liked)
         self.failing = failing
     }
 
@@ -118,6 +120,13 @@ actor StubLibraryStore: LibraryStore {
     func movePlaylist(_ id: Playlist.ID, toFolder folderID: PlaylistFolder.ID?) async throws {
         try guardAgainst(.movePlaylist)
         try await inner.movePlaylist(id, toFolder: folderID)
+    }
+
+    func likedTrackIDs() async throws -> [Track.ID] { try await inner.likedTrackIDs() }
+
+    func setLiked(_ liked: Bool, trackIDs: [Track.ID]) async throws {
+        try guardAgainst(.setLiked)
+        try await inner.setLiked(liked, trackIDs: trackIDs)
     }
 
     func upsert(_ tracks: [Track]) async throws { try await inner.upsert(tracks) }

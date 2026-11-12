@@ -236,6 +236,13 @@ struct CadenceGlyph: Sendable {
         .line("M15.6 6.6l3.2-.9 2.9 12.6-3.2.9z"),
     ])
     private static let chevronDown = CadenceGlyph([.line("M7 10l5 5 5-5")])
+    /// Two lobes and a point: liking a track. The outline is the verb, the
+    /// solid one says it is done.
+    private static let heartPath =
+        "M12 18.8L5.5 12.3A3.8 3.8 0 1 1 12 9.6A3.8 3.8 0 1 1 18.5 12.3Z"
+    private static let heart = CadenceGlyph([.line(heartPath)])
+    private static let heartFill = CadenceGlyph([.solid(heartPath, rounding: 1.75)])
+    private static let heartSlash = CadenceGlyph([.line(heartPath), .line("M4.5 4.5l15 15")])
     private static let photo = CadenceGlyph([
         .rect(4, 5, 16, 14, radius: 2.5, filled: false), .ring(9, 10, 1.4),
         .line("M4.5 16.5l4.2-3.7a1.4 1.4 0 0 1 1.9.1l2.6 2.6 1.5-1.4a1.4 1.4 0 0 1 1.9 0l2.9 2.5"),
@@ -323,6 +330,9 @@ struct CadenceGlyph: Sendable {
         "tag": genreTag,
         "books.vertical": catalog,
         "chevron.down": chevronDown,
+        "heart": heart,
+        "heart.fill": heartFill,
+        "heart.slash": heartSlash,
         "photo": photo,
         "text.badge.plus": addToPlaylist,
         "magnifyingglass": search,
