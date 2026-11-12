@@ -233,13 +233,17 @@ struct MemoryReaderSheet: View {
     }
 }
 
-// MARK: - The marker on a track row
+// MARK: - The memory button on a track row
 
-/// The bubble beside a song's heart on an album page: there because the song
-/// has a memory, and a way into it — a click opens the newest in the reader.
-struct MemoryMarker: View {
+/// The bubble beside a song's heart on an album page, and the same idea as
+/// the heart. A song with a memory always shows it, solid in the accent, and
+/// a click opens the newest in the reader. A song without one shows a faint
+/// bubble only while its row is hovered, so a page of them does not compete
+/// with the titles, and a click starts a new memory for it.
+struct MemoryButton: View {
     @Environment(AppModel.self) private var model
-    var memory: Memory
+    var track: Track
+    var isRowHovered: Bool
 
     /// Matches `LikeButton.side`, so the two marks sit as a pair.
     static let side: CGFloat = 20
@@ -247,17 +251,27 @@ struct MemoryMarker: View {
     @State private var isHovering = false
 
     var body: some View {
-        Button { model.readingMemory = memory } label: {
-            CadenceIcon(PlaylistMenu.Symbol.memory, size: 10)
-                .foregroundStyle(isHovering ? Tokens.Palette.accent : Tokens.Palette.textMuted)
+        let newest = model.memories(about: track).first
+        Button {
+            if let newest {
+                model.readingMemory = newest
+            } else {
+                model.editingMemory = .create(Memory.Subject(track: track))
+            }
+        } label: {
+            CadenceIcon(PlaylistMenu.Symbol.memory, size: 11)
+                .foregroundStyle(newest != nil ? Tokens.Palette.accent
+                                 : (isHovering ? Tokens.Palette.textPrimary
+                                    : Tokens.Palette.textMuted))
                 .frame(width: Self.side, height: Self.side)
                 .contentShape(Rectangle())
+                .opacity(newest != nil || isRowHovered || isHovering ? 1 : 0)
         }
         .plainControl()
         .focusable(false)
         .onHover { isHovering = $0 }
-        .help("Read the memory")
-        // The row reads "Has a memory" and offers "Read memory" itself.
+        .help(newest != nil ? "Read the memory" : "Add a memory")
+        // The row says "Has a memory" and offers these as rotor actions.
         .accessibilityHidden(true)
     }
 }

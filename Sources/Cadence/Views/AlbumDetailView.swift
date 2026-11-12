@@ -365,7 +365,7 @@ struct AlbumTrackList: View {
             Text("#").frame(width: 28, alignment: .leading)
             Text("TITLE").frame(maxWidth: .infinity, alignment: .leading)
             // The heart column has no heading: the glyph is its own label.
-            Color.clear.frame(width: MemoryMarker.side + 2 + LikeButton.side, height: 1)
+            Color.clear.frame(width: MemoryButton.side + 2 + LikeButton.side, height: 1)
             Text("QUALITY").frame(width: 90, alignment: .leading)
             Text("TIME").frame(width: 56, alignment: .trailing)
         }
@@ -453,6 +453,9 @@ private struct TrackRow: View {
                                  isAvailable: model.hasMemory(track)) {
                 model.readingMemory = model.memories(about: track).first
             }
+            .accessibilityAction(named: "Add memory", isAvailable: !model.hasMemory(track)) {
+                model.editingMemory = .create(Memory.Subject(track: track))
+            }
             // The heart is swallowed by `.ignore` too, and only shows on hover.
             .accessibilityAction(named: model.isLiked(track)
                                  ? "Remove from \(AppModel.likedSongsName)"
@@ -511,15 +514,11 @@ private struct TrackRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            // The song's marks, side by side and clear of its title: a
-            // bubble that opens its memory, then the heart. The bubble's slot
-            // is kept on every row, so the hearts line up down the album.
+            // The song's marks, side by side and clear of its title: the
+            // memory bubble, then the heart. Both work the same way — solid
+            // and always there once set, a hover-only outline until then.
             HStack(spacing: 2) {
-                if let memory = model.memories(about: track).first {
-                    MemoryMarker(memory: memory)
-                } else {
-                    Color.clear.frame(width: MemoryMarker.side, height: 1)
-                }
+                MemoryButton(track: track, isRowHovered: isHovering)
                 LikeButton(track: track, isRowHovered: isHovering)
             }
 

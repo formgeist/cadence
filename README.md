@@ -362,8 +362,10 @@ They come back in five places:
 - **The album page**, under the tracklist: every note on the record and its
   songs, newest first. A long record can push them out of sight, so the header
   shows a "2 Memories" button that scrolls down to them (with no notes yet,
-  the same spot adds the first). In the tracklist, a song with a note carries a
-  bubble beside its heart — clear of the title — that opens the note.
+  the same spot adds the first). In the tracklist, a bubble sits beside each
+  song's heart and works like it: red and always shown once the song has a
+  note (a click opens it), a faint outline on hover until then (a click
+  starts one).
 - **Home**: the hero at the top is either the album of the day or one of your
   memories, decided by the date — the same all day, and a memory about one
   day in three (`DailyPick.memoryOdds`). A memory hero shows the note with its
