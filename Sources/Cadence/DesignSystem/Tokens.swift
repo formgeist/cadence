@@ -209,7 +209,15 @@ enum Tokens {
         /// The immersive artwork lift on hover.
         static let artLift = Animation.timingCurve(0.22, 0.8, 0.28, 1, duration: 0.4)
         static let controls = Animation.easeOut(duration: 0.22)
-        static let hover = Animation.easeOut(duration: 0.12)
+        /// Colour and wash changes as the pointer comes and goes. Long
+        /// enough to read as a fade rather than a flicker, short enough that
+        /// sweeping down a list never trails behind the pointer.
+        static let hover = Animation.easeOut(duration: 0.18)
+        /// A cover rising under the pointer: a soft spring, no overshoot
+        /// you would notice.
+        static let lift = Animation.spring(response: 0.34, dampingFraction: 0.82)
+        /// A button giving under a click and springing back.
+        static let press = Animation.spring(response: 0.22, dampingFraction: 0.65)
     }
 }
 

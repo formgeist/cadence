@@ -122,6 +122,11 @@ actor StubLibraryStore: LibraryStore {
         try await inner.movePlaylist(id, toFolder: folderID)
     }
 
+    func setPlaylistOrder(_ ids: [Playlist.ID]) async throws {
+        try guardAgainst(.movePlaylist)
+        try await inner.setPlaylistOrder(ids)
+    }
+
     func likedTrackIDs() async throws -> [Track.ID] { try await inner.likedTrackIDs() }
 
     func setLiked(_ liked: Bool, trackIDs: [Track.ID]) async throws {

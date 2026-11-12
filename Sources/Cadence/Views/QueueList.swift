@@ -208,7 +208,7 @@ private struct VolumeSlider: View {
             .frame(height: 3)
             .frame(maxHeight: .infinity)
             .contentShape(Rectangle())
-            .onHover { isHovering = $0 }
+            .animatedHover($isHovering)
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value = min(max(0, $0.location.x / width), 1) }

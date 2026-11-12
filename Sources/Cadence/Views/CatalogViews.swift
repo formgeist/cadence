@@ -95,10 +95,11 @@ private struct CatalogCard: View {
                 .aspectRatio(1, contentMode: .fit)
                 .overlay {
                     if isHoveringArt && !albums.isEmpty {
-                        playOverlay.transition(.opacity)
+                        playOverlay.transition(.coverButton)
                     }
                 }
-                .animation(.easeOut(duration: 0.12), value: isHoveringArt)
+                .animation(Tokens.Motion.lift, value: isHoveringArt)
+                .coverLift(isHoveringArt)
                 .onHover { hovering in
                     isHoveringArt = hovering
                     // The button leaves with the hover, often before its
@@ -122,9 +123,8 @@ private struct CatalogCard: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .opacity(isHovering && !isHoveringPlay ? 0.86 : 1)
         .contentShape(Rectangle())
-        .onHover { isHovering = $0 }
+        .animatedHover($isHovering)
         .pointingHandCursor()
         .onTapGesture(perform: open)
         .cadenceContextMenu {
@@ -299,7 +299,7 @@ struct CatalogDetailView: View {
                 }
 
                 HStack(spacing: 10) {
-                    PlayPauseButton(isPlaying: isPlaying, subject: catalog.name) {
+                    PlayPauseButton(isPlaying: isPlaying, subject: catalog.name, showsTitle: true) {
                         if isLoaded {
                             playback.togglePlayPause()
                         } else if let first = orderedTracks.first {
@@ -307,9 +307,10 @@ struct CatalogDetailView: View {
                         }
                     }
                     .disabled(orderedTracks.isEmpty)
-                    CapsuleButton(title: "Shuffle") {
+                    CapsuleButton(systemImage: "shuffle", accessibilityLabel: "Shuffle") {
                         playback.shuffle(orderedTracks)
                     }
+                    .help("Shuffle")
                     .disabled(orderedTracks.isEmpty)
                     CapsuleButton(title: "Edit Rules", systemImage: "pencil") {
                         model.editingCatalog = .edit(catalog)

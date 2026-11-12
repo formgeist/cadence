@@ -167,6 +167,12 @@ public protocol LibraryStore: Sendable {
     func deletePlaylistFolder(_ id: PlaylistFolder.ID) async throws
     /// Files a playlist under a folder, or with `nil` back at the top level.
     func movePlaylist(_ id: Playlist.ID, toFolder folderID: PlaylistFolder.ID?) async throws
+    /// Puts the playlists in this order, first to last. One order across
+    /// every folder and the top level: the sidebar reads each folder's
+    /// members out of it, so ordering within a folder is ordering this.
+    /// Playlists left out keep their place relative to each other, after
+    /// the ones named.
+    func setPlaylistOrder(_ ids: [Playlist.ID]) async throws
     func tracks(matching query: String) async throws -> [Track]
     func upsert(_ tracks: [Track]) async throws
     /// Removes tracks from the library outright — not from one playlist, from

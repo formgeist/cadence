@@ -234,7 +234,7 @@ struct HoverHighlight: ViewModifier {
                     .fill(isActive ? activeColor : (isHovering ? hoverColor : .clear))
             }
             .contentShape(Rectangle())
-            .onHover { isHovering = $0 }
+            .animatedHover($isHovering)
     }
 }
 
@@ -285,7 +285,7 @@ struct ScrubBar: View {
             .frame(height: height)
             .frame(maxHeight: .infinity, alignment: .center)
             .contentShape(Rectangle())
-            .onHover { isHovering = $0 }
+            .animatedHover($isHovering)
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { onScrub(min(max(0, $0.location.x / width), 1)) }
@@ -321,10 +321,18 @@ struct ScrubBar: View {
 /// Bare button styling — no bezel, no focus ring, just the content. Every
 /// control in the design is a styled div, so this is the baseline.
 struct PlainControlStyle: ButtonStyle {
+    /// How far the control shrinks while held. 1 — no give — for rows and
+    /// links, where a whole line of text shrinking would look broken;
+    /// less for the round and pill buttons, which should feel pressed.
+    var pressScale: CGFloat = 1
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .opacity(configuration.isPressed ? 0.7 : 1)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? pressScale : 1)
             .contentShape(Rectangle())
+            .animation(reduceMotion ? nil : Tokens.Motion.press, value: configuration.isPressed)
     }
 }
 
@@ -333,7 +341,64 @@ extension View {
     /// control in the app wants — a bezel-less `Button` reads as its content
     /// alone, so without this it looks and feels just like inert text or
     /// artwork until clicked.
-    func plainControl() -> some View { buttonStyle(PlainControlStyle()).pointingHandCursor() }
+    func plainControl(pressScale: CGFloat = 1) -> some View {
+        buttonStyle(PlainControlStyle(pressScale: pressScale)).pointingHandCursor()
+    }
+
+    /// `.onHover` that eases the change in, so washes, colours and anything
+    /// else drawn from the flag fade rather than snap. Instant under Reduce
+    /// Motion.
+    func animatedHover(_ isHovering: Binding<Bool>) -> some View {
+        modifier(AnimatedHover(isHovering: isHovering))
+    }
+
+    /// A cover rising slightly under the pointer, its shadow deepening with
+    /// it — the cue that the artwork is a thing to click, not a picture.
+    /// Only the hovered card animates, so a grid of thousands pays nothing.
+    func coverLift(_ isLifted: Bool, cornerRadius: CGFloat = Tokens.Radius.control) -> some View {
+        modifier(CoverLift(isLifted: isLifted, cornerRadius: cornerRadius))
+    }
+}
+
+private struct AnimatedHover: ViewModifier {
+    @Binding var isHovering: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content.onHover { hovering in
+            guard hovering != isHovering else { return }
+            if reduceMotion {
+                isHovering = hovering
+            } else {
+                withAnimation(Tokens.Motion.hover) { isHovering = hovering }
+            }
+        }
+    }
+}
+
+private struct CoverLift: ViewModifier {
+    var isLifted: Bool
+    var cornerRadius: CGFloat
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// The shadow is a shape built only while lifted, not a `.shadow` on
+    /// every card: an idle effect on each of 2,500 covers is what made the
+    /// grid drop frames before (see `AlbumCard`), and a shadow that is
+    /// merely transparent still costs its pass.
+    func body(content: Content) -> some View {
+        let lifted = isLifted && !reduceMotion
+        content
+            .background {
+                if lifted {
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .fill(.black)
+                        .shadow(color: .black.opacity(0.5), radius: 14, y: 8)
+                        .transition(.opacity)
+                }
+            }
+            .scaleEffect(lifted ? 1.025 : 1)
+            .animation(reduceMotion ? nil : Tokens.Motion.lift, value: isLifted)
+    }
 }
 
 /// One glyph, a hover wash, and a name for VoiceOver. The sidebar's add
@@ -367,7 +432,7 @@ struct IconButton: View {
                 }
         }
         .plainControl()
-        .onHover { isHovering = $0 }
+        .animatedHover($isHovering)
         .accessibilityLabel(label)
         .accessibilityAddTraits(isActive ? [.isButton, .isSelected] : .isButton)
         .help(label)
@@ -385,6 +450,7 @@ struct InlineLink: View {
     var font: Font
     var color: Color
     var lineLimit: Int? = 1
+    var tracking: CGFloat = 0
     var action: () -> Void
 
     @State private var isHovering = false
@@ -393,12 +459,14 @@ struct InlineLink: View {
         Button(action: action) {
             Text(text)
                 .font(font)
+                .tracking(tracking)
+                .multilineTextAlignment(.leading)
                 .foregroundStyle(isHovering ? Tokens.Palette.textPrimary : color)
                 .underline(isHovering)
                 .lineLimit(lineLimit)
         }
         .plainControl()
-        .onHover { isHovering = $0 }
+        .animatedHover($isHovering)
     }
 }
 
@@ -518,28 +586,63 @@ struct PlayPauseButton: View {
     var size: CGFloat = 52
     /// Names what the button does *now*, so a header can say which record.
     var subject: String?
+    /// A page header's primary verb says itself — "Play" or "Pause" beside
+    /// the glyph, in a pill `size` tall. Off for the round corner buttons on
+    /// covers, which sit over artwork and have no room for words.
+    var showsTitle: Bool = false
     var action: () -> Void
 
     @State private var isHovering = false
     @Environment(\.isEnabled) private var isEnabled
 
+    private var drawnHeight: CGFloat { showsTitle ? CapsuleButton.height : size }
+
     var body: some View {
         Button(action: action) {
-            ZStack {
-                Circle().fill(isHovering && isEnabled
-                              ? Tokens.Palette.accentHover : Tokens.Palette.accent)
-                CadenceIcon(isPlaying ? "pause.fill" : "play.fill", size: size * 0.36)
+            Group {
+                if showsTitle {
+                    // The filled `CapsuleButton`'s metrics, so the pill lines
+                    // up with the 38pt buttons beside it and matches the
+                    // Play pill on Home.
+                    HStack(spacing: 9) {
+                        CadenceIcon(isPlaying ? "pause.fill" : "play.fill", size: 12)
+                        Text(isPlaying ? "Pause" : "Play")
+                            .font(Tokens.Typography.sans(13.5, .bold))
+                            .lineLimit(1)
+                            .fixedSize()
+                    }
                     .foregroundStyle(.white)
-                    // The play triangle is optically left-heavy; nudging it
-                    // right centres it in the circle.
-                    .offset(x: isPlaying ? 0 : size * 0.04)
+                    .padding(.horizontal, 20)
+                    // Wide enough for "Pause", so swapping the word does not
+                    // nudge the buttons beside it.
+                    .frame(minWidth: 96)
+                    .frame(height: CapsuleButton.height)
+                    .background {
+                        Capsule().fill(isHovering && isEnabled
+                                       ? Tokens.Palette.accentHover : Tokens.Palette.accent)
+                    }
+                } else {
+                    ZStack {
+                        Circle().fill(isHovering && isEnabled
+                                      ? Tokens.Palette.accentHover : Tokens.Palette.accent)
+                        CadenceIcon(isPlaying ? "pause.fill" : "play.fill", size: size * 0.36)
+                            .foregroundStyle(.white)
+                            // The play triangle is optically left-heavy;
+                            // nudging it right centres it in the circle.
+                            .offset(x: isPlaying ? 0 : size * 0.04)
+                    }
+                    .frame(width: size, height: size)
+                }
             }
-            .frame(width: size, height: size)
-            .shadow(color: Tokens.Palette.accent.opacity(0.32), radius: size * 0.3, y: size * 0.2)
+            // Scaled to the height actually drawn, so the pill's glow is no
+            // bigger than the round button's would be at that size.
+            .shadow(color: Tokens.Palette.accent.opacity(0.32),
+                    radius: drawnHeight * 0.3, y: drawnHeight * 0.2)
             .opacity(isEnabled ? 1 : 0.4)
         }
-        .plainControl()
-        .onHover { isHovering = $0 }
+        .scaleEffect(isHovering && isEnabled ? 1.04 : 1)
+        .plainControl(pressScale: 0.94)
+        .animatedHover($isHovering)
         .accessibilityLabel([isPlaying ? "Pause" : "Play", subject]
             .compactMap { $0 }.joined(separator: " "))
     }
@@ -548,25 +651,67 @@ struct PlayPauseButton: View {
 /// The hover Play button on a cover in a grid: the header's round accent
 /// button, small and tucked into the lower-right corner so the artwork
 /// stays the subject. No scrim — the button's own shadow separates it.
-/// `isHovered` lets the card skip its hover dimming while the pointer is on
-/// the button, so the button never reads as washed out over the cover.
+/// `isHovered` tells the card when the pointer is on the button itself.
 struct CoverPlayButton: View {
     var subject: String
     var size: CGFloat = 42
+    /// Shows Pause — for the record that is playing right now.
+    var isPlaying: Bool = false
     @Binding var isHovered: Bool
     var action: () -> Void
 
     var body: some View {
-        PlayPauseButton(isPlaying: false, size: size, subject: subject, action: action)
-            .onHover { isHovered = $0 }
+        PlayPauseButton(isPlaying: isPlaying, size: size, subject: subject, action: action)
+            .animatedHover($isHovered)
             .padding(Tokens.Space.s)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+    }
+}
+
+/// The corner button on an album's cover. While that record is playing it
+/// is always there, as Pause, so the album you are hearing stands out
+/// wherever it shows up. Otherwise — paused, or any other record — it
+/// appears only on hover as Play: resuming the loaded record where it
+/// stopped, or starting another from the top.
+///
+/// Its own view so that only it, not the whole card, reads the player: a
+/// grid of cards would otherwise all redraw on every track change.
+struct AlbumCoverPlayOverlay: View {
+    @Environment(PlaybackController.self) private var playback
+    var album: Album
+    var isHoveringArt: Bool
+    @Binding var isHoveringPlay: Bool
+
+    var body: some View {
+        let isLoaded = playback.currentTrack?.albumKey == album.key
+        let isPlaying = isLoaded && playback.isPlaying
+        Group {
+            if isPlaying || isHoveringArt {
+                CoverPlayButton(subject: album.title, isPlaying: isPlaying,
+                                isHovered: $isHoveringPlay) {
+                    if isLoaded { playback.togglePlayPause() } else { playback.play(album) }
+                }
+                .transition(.coverButton)
+            }
+        }
+        .animation(Tokens.Motion.lift, value: isHoveringArt || isPlaying)
+    }
+}
+
+extension AnyTransition {
+    /// The corner Play button arriving: grows out of the cover's corner
+    /// while it fades in, rather than blinking on.
+    static var coverButton: AnyTransition {
+        .scale(scale: 0.6, anchor: .bottomTrailing).combined(with: .opacity)
     }
 }
 
 /// The accent-filled Play pill and its outlined siblings on the album header.
 struct CapsuleButton: View {
     enum Kind { case filled, outlined }
+
+    /// Every header pill and round icon button is this tall.
+    static let height: CGFloat = 38
 
     var title: String?
     var systemImage: String?
@@ -595,12 +740,16 @@ struct CapsuleButton: View {
                     Text(title)
                         .font(Tokens.Typography.sans(kind == .filled ? 13.5 : 13,
                                                      kind == .filled ? .bold : .semibold))
+                        // A narrow header squeezes the row; a label broken
+                        // over two lines inside a 38pt pill is unreadable.
+                        .lineLimit(1)
+                        .fixedSize()
                 }
             }
             .foregroundStyle(foreground)
-            .frame(height: 38)
+            .frame(height: Self.height)
             .padding(.horizontal, title == nil ? 0 : (kind == .filled ? 20 : 18))
-            .frame(width: title == nil ? 38 : nil)
+            .frame(width: title == nil ? Self.height : nil)
             .background {
                 Capsule().fill(fill)
             }
@@ -611,8 +760,8 @@ struct CapsuleButton: View {
             }
             .opacity(isEnabled ? 1 : 0.4)
         }
-        .plainControl()
-        .onHover { isHovering = $0 }
+        .plainControl(pressScale: 0.95)
+        .animatedHover($isHovering)
         // Icon-only buttons have no text to fall back on.
         .accessibilityLabel(accessibilityLabel ?? title ?? "Button")
         .accessibilityAddTraits(isActive ? [.isButton, .isSelected] : .isButton)
@@ -674,5 +823,59 @@ struct CoverMosaic: View {
                         caption: caption, captionSize: captionSize, stripe: stripe,
                         displaySize: displaySize)
         }
+    }
+}
+
+/// Lays its children out left to right, starting a new line when the next
+/// one would not fit — for rows of badges and chips whose count and widths
+/// depend on the record. Children keep their ideal size; pair them with
+/// `.fixedSize()` if they would otherwise compress.
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 8
+    var lineSpacing: CGFloat? = nil
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let rows = arrange(subviews, width: proposal.width ?? .infinity)
+        let width = rows.map(\.width).max() ?? 0
+        let height = rows.map(\.height).reduce(0, +)
+            + CGFloat(max(rows.count - 1, 0)) * (lineSpacing ?? spacing)
+        return CGSize(width: width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize,
+                       subviews: Subviews, cache: inout ()) {
+        var y = bounds.minY
+        for row in arrange(subviews, width: bounds.width) {
+            var x = bounds.minX
+            for index in row.indices {
+                let size = subviews[index].sizeThatFits(.unspecified)
+                // Centred on the line, so a taller chip does not drop its
+                // neighbours to its baseline.
+                subviews[index].place(at: CGPoint(x: x, y: y + (row.height - size.height) / 2),
+                                      proposal: ProposedViewSize(size))
+                x += size.width + spacing
+            }
+            y += row.height + (lineSpacing ?? spacing)
+        }
+    }
+
+    private struct Row { var indices: [Int] = []; var width: CGFloat = 0; var height: CGFloat = 0 }
+
+    private func arrange(_ subviews: Subviews, width: CGFloat) -> [Row] {
+        var rows: [Row] = []
+        var row = Row()
+        for index in subviews.indices {
+            let size = subviews[index].sizeThatFits(.unspecified)
+            let needed = row.indices.isEmpty ? size.width : row.width + spacing + size.width
+            if !row.indices.isEmpty, needed > width {
+                rows.append(row)
+                row = Row()
+            }
+            row.width = row.indices.isEmpty ? size.width : row.width + spacing + size.width
+            row.height = max(row.height, size.height)
+            row.indices.append(index)
+        }
+        if !row.indices.isEmpty { rows.append(row) }
+        return rows
     }
 }

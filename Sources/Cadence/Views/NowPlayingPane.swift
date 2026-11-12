@@ -45,7 +45,7 @@ struct NowPlayingPane: View {
                     }
             }
             .plainControl()
-            .onHover { isHoveringArt = $0 }
+            .animatedHover($isHoveringArt)
             .animation(.easeOut(duration: 0.12), value: isHoveringArt)
             .accessibilityLabel("Artwork for \(track.albumTitle)")
             .accessibilityHint("Opens full-screen artwork")
@@ -54,10 +54,10 @@ struct NowPlayingPane: View {
 
             HStack(alignment: .top, spacing: Tokens.Space.s) {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(track.title)
-                        .font(Tokens.Typography.paneTitle)
-                        .foregroundStyle(Color(hex: 0xF1F1F5))
-                        .lineLimit(2)
+                    InlineLink(text: track.title, font: Tokens.Typography.paneTitle,
+                               color: Color(hex: 0xF1F1F5), lineLimit: 2) {
+                        model.show(.album(track.albumKey))
+                    }
                     InlineLink(text: track.artist, font: Tokens.Typography.sans(12.5, .semibold),
                                color: Tokens.Palette.textSecondary) {
                         model.show(.artist(track.artist))
@@ -354,7 +354,7 @@ private struct TransportButton: View {
                 .frame(width: 26)
         }
         .plainControl()
-        .onHover { isHovering = $0 }
+        .animatedHover($isHovering)
         .accessibilityLabel(label)
     }
 }
@@ -375,7 +375,7 @@ private struct ModeButton: View {
                 .frame(width: 26)
         }
         .plainControl()
-        .onHover { isHovering = $0 }
+        .animatedHover($isHovering)
         .accessibilityLabel(label)
         .accessibilityValue(isOn ? "On" : "Off")
         .accessibilityAddTraits(isOn ? .isSelected : [])

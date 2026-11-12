@@ -138,7 +138,7 @@ private struct NavigationRow: View {
             }
         }
         .plainControl()
-        .onHover { isHovering = $0 }
+        .animatedHover($isHovering)
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 }
@@ -310,7 +310,7 @@ private struct FolderGroup: View {
                 .contentShape(Rectangle())
             }
             .plainControl()
-            .onHover { isHovering = $0 }
+            .animatedHover($isHovering)
             // Playlists only: a folder holds no tracks, so it should not
             // light up for them.
             .dropDestination(for: PlaylistMoveItem.self) { items, _ in
@@ -409,7 +409,7 @@ private struct LikedSongsRow: View {
             .contentShape(Rectangle())
         }
         .plainControl()
-        .onHover { isHovering = $0 }
+        .animatedHover($isHovering)
         .dropDestination(for: TrackSelection.self) { selections, _ in
             let tracks = selections.flatMap(\.trackIDs).compactMap { model.track(id: $0) }
             guard !tracks.isEmpty else { return false }
@@ -460,6 +460,9 @@ private struct PlaylistRow: View {
     /// drop on is unambiguous in a stack of five that look alike. Never for a
     /// dragged playlist — see `onPlaylistHover`.
     @State private var isTargeted = false
+    /// Which side of this row a dragged playlist would land on, drawn as an
+    /// insertion line there. Nil when no playlist is over the row.
+    @State private var insertion: AppModel.PlaylistPlacement?
     /// Where the pointer is and how big the row is, so the drag chip can sit
     /// under the pointer — see `TrackDragPreview.anchored(in:at:)`.
     @State private var pointer: CGPoint = .zero
@@ -495,8 +498,20 @@ private struct PlaylistRow: View {
                     .strokeBorder(Tokens.Palette.accent, lineWidth: 1)
             }
         }
+        .overlay(alignment: insertion == .after ? .bottom : .top) {
+            if insertion != nil {
+                Capsule()
+                    .fill(Tokens.Palette.accent)
+                    .frame(height: 2)
+                    .padding(.horizontal, 4)
+                    // Into the 1pt gap between rows, so the line sits between
+                    // two playlists rather than on one of them.
+                    .offset(y: insertion == .after ? 1.5 : -1.5)
+                    .allowsHitTesting(false)
+            }
+        }
         .contentShape(Rectangle())
-        .onHover { isHovering = $0 }
+        .animatedHover($isHovering)
         .pointingHandCursor()
         .background {
             GeometryReader { geometry in
@@ -526,6 +541,8 @@ private struct PlaylistRow: View {
         .onDrop(of: [.cadenceTracks, .cadencePlaylistMove],
                 delegate: PlaylistRowDropDelegate(model: model, playlist: playlist,
                                                   isTrackTargeted: $isTargeted,
+                                                  insertion: $insertion,
+                                                  rowHeight: rowSize.height,
                                                   onPlaylistHover: onPlaylistHover))
         .cadenceContextMenu {
             PlaylistMenu.actions(model: model, playback: playback, playlist: playlist)
@@ -550,11 +567,19 @@ private struct PlaylistRow: View {
 /// Tracks light the row: they land in this playlist. A dragged playlist does
 /// not: it lands in this row's folder (or the top level), so the hover is
 /// reported upwards through `onPlaylistHover` and the folder lights instead.
+/// The row only shows an insertion line above or below itself — the top
+/// half of the row puts the playlist before it, the bottom half after.
 private struct PlaylistRowDropDelegate: DropDelegate {
     let model: AppModel
     let playlist: Playlist
     @Binding var isTrackTargeted: Bool
+    @Binding var insertion: AppModel.PlaylistPlacement?
+    let rowHeight: CGFloat
     let onPlaylistHover: (Bool) -> Void
+
+    private func placement(_ info: DropInfo) -> AppModel.PlaylistPlacement {
+        info.location.y < rowHeight / 2 ? .before : .after
+    }
 
     private func carriesPlaylist(_ info: DropInfo) -> Bool {
         info.hasItemsConforming(to: [.cadencePlaylistMove])
@@ -565,20 +590,34 @@ private struct PlaylistRowDropDelegate: DropDelegate {
     }
 
     func dropEntered(info: DropInfo) {
-        if carriesPlaylist(info) { onPlaylistHover(true) } else { isTrackTargeted = true }
+        if carriesPlaylist(info) {
+            onPlaylistHover(true)
+            insertion = placement(info)
+        } else {
+            isTrackTargeted = true
+        }
     }
 
     func dropExited(info: DropInfo) {
-        if carriesPlaylist(info) { onPlaylistHover(false) } else { isTrackTargeted = false }
+        if carriesPlaylist(info) {
+            onPlaylistHover(false)
+            insertion = nil
+        } else {
+            isTrackTargeted = false
+        }
     }
 
     /// Move for a playlist, copy for tracks: the cursor badge says which is
     /// about to happen.
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: carriesPlaylist(info) ? .move : .copy)
+        guard carriesPlaylist(info) else { return DropProposal(operation: .copy) }
+        let side = placement(info)
+        if insertion != side { insertion = side }
+        return DropProposal(operation: .move)
     }
 
     func performDrop(info: DropInfo) -> Bool {
+        let side = placement(info)
         // Not every drop is followed by an exit, and a count left at one
         // would keep the folder lit after the drag is over.
         dropExited(info: info)
@@ -596,7 +635,8 @@ private struct PlaylistRowDropDelegate: DropDelegate {
                     case .success(let item):
                         Self.log.debug("Playlist drop decoded onto \(playlist.name, privacy: .public)")
                         Task { @MainActor in
-                            model.handleDrop(.playlist(item.playlistID), on: .playlist(playlist))
+                            model.handleDrop(.playlist(item.playlistID),
+                                             on: .playlist(playlist, placement: side))
                         }
                     case .failure(let error):
                         Self.log.error("Playlist drop failed to decode: \(error, privacy: .public)")

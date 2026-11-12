@@ -216,6 +216,43 @@ struct AppModelPlaylistFolderTests {
         #expect(model.playlist(id: moving.id)?.folderID == nil)
     }
 
+    @Test("A playlist dropped above or below a sibling in its folder is reordered there")
+    func reorderWithinFolder() async throws {
+        let work = PlaylistFolder(name: "Work")
+        let a = playlist("A", in: work)
+        let b = playlist("B", in: work)
+        let c = playlist("C", in: work)
+        let loose = playlist("Loose")
+        let model = AppModel(store: StubLibraryStore(playlists: [a, loose, b, c],
+                                                     folders: [work]))
+        await model.load()
+
+        // Down: A after C.
+        let lastRow = try #require(model.playlist(id: c.id))
+        await model.performDrop(.playlist(a.id), on: .playlist(lastRow, placement: .after))
+        #expect(model.playlists(in: work.id).map(\.id) == [b.id, c.id, a.id])
+
+        // Up: C before B.
+        let firstRow = try #require(model.playlist(id: b.id))
+        await model.performDrop(.playlist(c.id), on: .playlist(firstRow, placement: .before))
+        #expect(model.playlists(in: work.id).map(\.id) == [c.id, b.id, a.id])
+        #expect(model.playlists(in: nil).map(\.id) == [loose.id])
+    }
+
+    @Test("A playlist dropped beside one in another folder lands at that spot")
+    func reorderIntoOtherFolder() async throws {
+        let work = PlaylistFolder(name: "Work")
+        let a = playlist("A", in: work)
+        let b = playlist("B", in: work)
+        let moving = playlist("Moving")
+        let model = AppModel(store: StubLibraryStore(playlists: [a, b, moving], folders: [work]))
+        await model.load()
+
+        let row = try #require(model.playlist(id: b.id))
+        await model.performDrop(.playlist(moving.id), on: .playlist(row, placement: .before))
+        #expect(model.playlists(in: work.id).map(\.id) == [a.id, moving.id, b.id])
+    }
+
     @Test("A playlist dropped on itself is refused")
     func playlistOntoItself() async throws {
         let late = playlist("Late Desk")

@@ -71,7 +71,7 @@ struct ArtistDetailView: View {
                        height: Tokens.Layout.artistHeaderArt)
                 .overlay { editArtOverlay }
                 .shadow(color: .black.opacity(0.55), radius: 25, y: 12)
-                .onHover { isHoveringArt = $0 }
+                .animatedHover($isHoveringArt)
 
             VStack(alignment: .leading, spacing: 12) {
                 Text(artist.name)
@@ -86,7 +86,7 @@ struct ArtistDetailView: View {
                     .foregroundStyle(Color(hex: 0x82828D))
 
                 HStack(spacing: 10) {
-                    PlayPauseButton(isPlaying: isArtistPlaying, subject: artist.name) {
+                    PlayPauseButton(isPlaying: isArtistPlaying, subject: artist.name, showsTitle: true) {
                         if isArtistLoaded {
                             playback.togglePlayPause()
                         } else if let first = orderedTracks.first {
@@ -94,9 +94,10 @@ struct ArtistDetailView: View {
                         }
                     }
                     .disabled(orderedTracks.isEmpty)
-                    CapsuleButton(title: "Shuffle") {
+                    CapsuleButton(systemImage: "shuffle", accessibilityLabel: "Shuffle") {
                         playback.shuffle(orderedTracks)
                     }
+                    .help("Shuffle")
                 }
                 .padding(.top, 6)
             }
