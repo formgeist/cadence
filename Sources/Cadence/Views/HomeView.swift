@@ -189,7 +189,7 @@ private struct AlbumOfTheDayCard: View {
         .accessibilityElement(children: .contain)
     }
 
-    /// `“The note.”`, or `“Anhedonia” — the note.` for a song on the record.
+    /// `“The note.”`, or `Anhedonia — “The note.”` for a song on the record.
     private func memoryLine(_ memory: Memory) -> String {
         if let title = memory.subject.trackTitle {
             return "\(title) — “\(memory.text)”"
