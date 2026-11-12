@@ -97,7 +97,9 @@ struct DailyPickTests {
     @Test("Nothing to show is nil; one kind alone is always chosen")
     func oneSided() {
         #expect(DailyPick.choose(album: nil, memories: [], now: base) == nil)
-        #expect(DailyPick.choose(album: albumPick(), memories: [], now: base) == .album(albumPick()))
+        // One instance: each `albumPick()` mints a track with a fresh id.
+        let album = albumPick()
+        #expect(DailyPick.choose(album: album, memories: [], now: base) == .album(album))
         let memory = note()
         #expect(DailyPick.choose(album: nil, memories: [memory], now: base) == .memory(memory))
     }
