@@ -270,6 +270,12 @@ enum Snapshot {
             container.model.tab = .memories
         },
 
+        // The same page narrowed to one #tag's group.
+        Shot(name: "13k-library-memories-tag", size: Tokens.Layout.defaultWindow) { container in
+            container.model.tab = .memories
+            container.model.memoryTagFilter = Memory.tagKey("Ingrid")
+        },
+
         // Writing a note against a song — the memory editor, filled in.
         Shot(name: "13i-memory-editor", size: CGSize(width: 520, height: 360),
              makeRoot: { container in

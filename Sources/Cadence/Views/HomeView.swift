@@ -241,7 +241,7 @@ private struct MemoryOfTheDayCard: View {
                     .lineLimit(1)
                 // The note is the point of the card; clicking it edits it.
                 Button { model.editingMemory = .edit(memory) } label: {
-                    Text("“\(memory.text)”")
+                    Text(MemoryText.styled("“\(memory.text)”"))
                         .font(Tokens.Typography.sans(13.5, .medium))
                         .italic()
                         .foregroundStyle(Color(hex: 0xD6D6DD))

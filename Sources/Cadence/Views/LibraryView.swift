@@ -64,7 +64,7 @@ struct LibraryView: View {
                 } else if model.memories.isEmpty {
                     MemoriesEmptyState()
                 } else {
-                    MemoryGrid()
+                    MemoriesPage()
                 }
             }
         }

@@ -768,13 +768,13 @@ public enum PreviewData {
         func ago(_ days: Double) -> Date { now.addingTimeInterval(-days * day) }
         var notes: [Memory] = [
             Memory(subject: .album(slowHours[0].albumKey),
-                   text: "Bought this at the shop on Skånegatan the week it came out. Played it every night that first winter in the new flat.",
+                   text: "Bought this at the shop on #Skånegatan the week it came out. Played it every night that first winter in the new flat with #Ingrid.",
                    createdAt: ago(240)),
             Memory(subject: Memory.Subject(track: slowHours[2]),
-                   text: "The song that was on when Ingrid called to say she got the job.",
+                   text: "The song that was on when #Ingrid called to say she got the job.",
                    createdAt: ago(95)),
             Memory(subject: .album(compilation[0].albumKey),
-                   text: "Road trip to Lofoten, 2022. Three of us, one car, this on repeat.",
+                   text: "Road trip to #Lofoten, 2022. Three of us, one car, this on repeat.",
                    createdAt: ago(400)),
             Memory(subject: Memory.Subject(track: ordinary[0]),
                    text: "First dance at Sam and Noor's wedding.",

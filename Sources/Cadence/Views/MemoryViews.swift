@@ -37,7 +37,7 @@ struct MemoryEditorSheet: View {
             ZStack(alignment: .topLeading) {
                 if text.isEmpty {
                     // `TextEditor` has no placeholder of its own.
-                    Text("Where were you? Who were you with? Why does it matter?")
+                    Text("Where were you? Who were you with? Add #tags like #Axel to group notes.")
                         .font(Tokens.Typography.sans(13.5, .medium))
                         .foregroundStyle(Tokens.Palette.textFaint)
                         .padding(.horizontal, 5)
@@ -156,7 +156,7 @@ struct MemoryCard: View {
                                 .lineLimit(1)
                         }
                     }
-                    Text(memory.text)
+                    Text(MemoryText.styled(memory.text))
                         .font(Tokens.Typography.sans(13, .medium))
                         .foregroundStyle(Color(hex: 0xD6D6DD))
                         .lineSpacing(2)
@@ -234,22 +234,176 @@ struct AlbumMemoriesSection: View {
 
 // MARK: - The Memories page
 
-/// Every memory, newest first, as a grid sized like the Playlists one: each
-/// card the record's cover, what the note is about, and the note itself.
+/// The Memories tab: a filter bar — a field and the `#tag` chips — over the
+/// grid of every memory that passes it.
+struct MemoriesPage: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        VStack(spacing: 0) {
+            MemoryFilterBar()
+            if model.filteredMemories.isEmpty {
+                noMatches
+            } else {
+                MemoryGrid()
+            }
+        }
+    }
+
+    private var noMatches: some View {
+        EmptyState(
+            systemImage: "magnifyingglass",
+            title: "No memories match",
+            message: "Nothing in your notes, or the songs and records they are about,\n"
+                + "matches that. Try fewer words, or another tag."
+        ) {
+            CapsuleButton(title: "Clear Filter") { model.clearMemoryFilter() }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// The field that narrows the page as you type, and a chip per `#tag` —
+/// picking one shows that group, and picking it again shows them all.
+private struct MemoryFilterBar: View {
+    @Environment(AppModel.self) private var model
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        @Bindable var model = model
+
+        VStack(alignment: .leading, spacing: Tokens.Space.m) {
+            HStack(spacing: Tokens.Space.s) {
+                CadenceIcon("magnifyingglass", size: 11)
+                    .foregroundStyle(Tokens.Palette.textMuted)
+                TextField("Filter memories, songs, records or #tags", text: $model.memoryQuery)
+                    .textFieldStyle(.plain)
+                    .font(Tokens.Typography.sans(13, .medium))
+                    .foregroundStyle(Tokens.Palette.textPrimary)
+                    .focused($isFocused)
+                    .textEntryFocus(isFocused)
+                    .onExitCommand { model.memoryQuery = "" }
+                    .accessibilityLabel("Filter memories")
+                if !model.memoryQuery.isEmpty {
+                    IconButton(systemImage: "xmark.circle.fill", label: "Clear filter",
+                               glyphSize: 10, side: 18) {
+                        model.memoryQuery = ""
+                    }
+                }
+            }
+            .padding(.horizontal, 12)
+            .frame(maxWidth: 420, minHeight: 32)
+            .background {
+                RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous)
+                    .fill(Tokens.Palette.fieldBackground)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous)
+                    .strokeBorder(isFocused ? Tokens.Palette.fieldFocusBorder
+                                            : Tokens.Palette.fieldBorder, lineWidth: 1)
+            }
+
+            if !model.memoryTags.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: Tokens.Space.s) {
+                        TagChip(title: "All", count: model.memories.count,
+                                isSelected: model.activeMemoryTag == nil) {
+                            model.memoryTagFilter = nil
+                        }
+                        ForEach(model.memoryTags) { tag in
+                            TagChip(title: "#\(tag.name)", count: tag.count,
+                                    isSelected: model.activeMemoryTag?.key == tag.key) {
+                                // Picking the chip that is already on goes
+                                // back to all of them.
+                                model.memoryTagFilter =
+                                    model.memoryTagFilter == tag.key ? nil : tag.key
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, Tokens.Space.contentInset)
+        .padding(.top, Tokens.Space.l)
+        .padding(.bottom, Tokens.Space.xs)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// One `#tag` in the filter bar: its name and how many notes carry it.
+private struct TagChip: View {
+    var title: String
+    var count: Int
+    var isSelected: Bool
+    var action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Text(title)
+                    .font(Tokens.Typography.sans(12, .semibold))
+                Text("\(count)")
+                    .font(Tokens.Typography.mono(10.5))
+                    .foregroundStyle(isSelected ? .white.opacity(0.75) : Tokens.Palette.textFaint)
+            }
+            .foregroundStyle(isSelected ? .white : (isHovering ? Tokens.Palette.textPrimary
+                                                               : Tokens.Palette.textSecondary))
+            .padding(.horizontal, 12)
+            .frame(height: 28)
+            .background {
+                Capsule().fill(isSelected ? Tokens.Palette.accent
+                               : (isHovering ? Tokens.Palette.navHover : Tokens.Palette.card))
+            }
+            .overlay {
+                if !isSelected {
+                    Capsule().strokeBorder(Tokens.Palette.border, lineWidth: 1)
+                }
+            }
+        }
+        .plainControl()
+        .onHover { isHovering = $0 }
+        .accessibilityLabel("\(title), \(count == 1 ? "1 memory" : "\(count) memories")")
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+    }
+}
+
+/// The filtered memories, newest first, as a grid sized like the Playlists
+/// one: each card the record's cover, what the note is about, and the note.
 struct MemoryGrid: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
         @Bindable var model = model
 
-        CardGrid(items: model.memories,
+        CardGrid(items: model.filteredMemories,
                  columnWidth: model.albumColumnWidth,
                  scrollAnchor: $model.memoryGridScrollAnchor,
-                 typeAheadKey: { model.title(of: $0.subject) },
+                 // Off: typing belongs to the filter field above the grid.
+                 typeAheadKey: nil,
                  open: { model.show(.album($0.subject.albumKey)) },
                  header: { EmptyView() }) { memory, _, isFocused, onSelect in
             MemoryGridCard(memory: memory, isKeyboardFocused: isFocused, onSelect: onSelect)
         }
+    }
+}
+
+/// A note's text with its `#tags` picked out in the accent, so the words that
+/// group it read as such wherever it is shown.
+enum MemoryText {
+    static func styled(_ text: String) -> AttributedString {
+        var result = AttributedString()
+        var cursor = text.startIndex
+        for range in Memory.tagRanges(in: text) {
+            result += AttributedString(String(text[cursor..<range.lowerBound]))
+            var tag = AttributedString(String(text[range]))
+            tag.swiftUI.foregroundColor = Tokens.Palette.accent
+            result += tag
+            cursor = range.upperBound
+        }
+        result += AttributedString(String(text[cursor...]))
+        return result
     }
 }
 
@@ -355,7 +509,7 @@ private struct MemoryGridCard: View {
                 CadenceIcon(PlaylistMenu.Symbol.memory, size: 10)
                     .foregroundStyle(Tokens.Palette.accent)
                     .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 2 }
-                Text(memory.text)
+                Text(MemoryText.styled(memory.text))
                     .font(Tokens.Typography.sans(12.5, .medium))
                     .foregroundStyle(Color(hex: 0xD6D6DD))
                     .lineSpacing(2)
@@ -474,7 +628,7 @@ struct NowPlayingMemory: View {
     }
 
     private func noteText(_ text: String) -> some View {
-        Text(text)
+        Text(MemoryText.styled(text))
             .font(Tokens.Typography.sans(12.5, .medium))
             .italic()
             .foregroundStyle(Color(hex: 0xD6D6DD))

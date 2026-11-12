@@ -980,6 +980,37 @@ final class AppModel {
 
     /// Every memory, newest first.
     private(set) var memories: [Memory] = []
+    /// Every `#tag` across the memories, A–Z — the Memories page's chips.
+    private(set) var memoryTags: [MemoryTag] = []
+
+    /// What the Memories page's filter field holds. Kept here rather than in
+    /// the view, so opening a record from a filtered page and coming back
+    /// finds the page as it was left.
+    var memoryQuery = ""
+    /// The chip picked on the Memories page, by `MemoryTag.key`; nil for all.
+    var memoryTagFilter: String?
+
+    /// The picked tag, if notes still carry it — one whose last note was just
+    /// edited away filters nothing rather than emptying the page.
+    var activeMemoryTag: MemoryTag? {
+        memoryTagFilter.flatMap { key in memoryTags.first { $0.key == key } }
+    }
+
+    var isFilteringMemories: Bool {
+        activeMemoryTag != nil
+            || !memoryQuery.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    /// What the Memories page shows: every note, narrowed by the chip and the
+    /// filter field, newest first.
+    var filteredMemories: [Memory] {
+        Memory.filter(memories, query: memoryQuery, tag: activeMemoryTag?.key)
+    }
+
+    func clearMemoryFilter() {
+        memoryQuery = ""
+        memoryTagFilter = nil
+    }
     /// By record, newest first — what an album page and the album of the day
     /// read, without filtering every note on each body pass.
     private var memoriesByAlbum: [Album.Key: [Memory]] = [:]
@@ -1103,6 +1134,7 @@ final class AppModel {
     private func setMemories(_ fetched: [Memory]) {
         memories = fetched.sorted(by: Memory.newestFirst)
         memoriesByAlbum = Dictionary(grouping: memories, by: \.subject.albumKey)
+        memoryTags = Memory.tags(in: memories)
     }
 
     // MARK: Playlists
@@ -1651,7 +1683,11 @@ final class AppModel {
         case .genres: "\(genres.count) GENRES"
         case .playlists: "\(playlists.count) PLAYLISTS"
         case .catalogs: catalogs.count == 1 ? "1 CATALOG" : "\(catalogs.count) CATALOGS"
-        case .memories: memories.count == 1 ? "1 MEMORY" : "\(memories.count) MEMORIES"
+        case .memories:
+            // "2 OF 9 MEMORIES" while a filter narrows the page.
+            isFilteringMemories && filteredMemories.count != memories.count
+                ? "\(filteredMemories.count) OF \(memories.count) MEMORIES"
+                : (memories.count == 1 ? "1 MEMORY" : "\(memories.count) MEMORIES")
         }
     }
 

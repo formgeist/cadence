@@ -344,6 +344,15 @@ They come back in five places:
   deletes. A note whose record has left the library stays here, with a
   placeholder cover and nothing to play.
 
+  A filter field at the top narrows the grid as you type, matching the note
+  and the song, record and artist it is about (every word, ignoring case and
+  accents). Under it, a chip per `#tag` groups the notes: write `#Axel` or
+  `#Bristol` anywhere in a note and it joins that group. Tags are read from
+  the text — case-folded, any script (`#Ærø`), never mid-word (`C#minor`) —
+  so there is nothing to manage; edit the word out and the note leaves the
+  group. Tags are picked out in the accent wherever a note is shown. Memory
+  text is deliberately not part of the ⌘K search: that stays about music.
+
 - **The album page**, under the tracklist: every note on the record and its
   songs, newest first, each one click from editing. A long record can push
   them out of sight, so the header shows a "2 Memories" button that scrolls

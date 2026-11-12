@@ -126,3 +126,52 @@ struct DailyPickTests {
         #expect(albums > memories)
     }
 }
+
+@Suite("Memory tags and filter")
+struct MemoryTagTests {
+
+    private func note(_ text: String, about subject: Memory.Subject = .album(slowHours)) -> Memory {
+        Memory(subject: subject, text: text)
+    }
+
+    @Test("Tags are #words in any script, once each, never mid-word")
+    func parsing() {
+        #expect(Memory.tagNames(in: "Live with #Axel and #Hulda at #Mellerup-Efterskole.")
+                == ["Axel", "Hulda", "Mellerup-Efterskole"])
+        #expect(Memory.tagNames(in: "#Ærø then #Malmö") == ["Ærø", "Malmö"])
+        #expect(Memory.tagNames(in: "#axel again, #Axel") == ["axel"])
+        #expect(Memory.tagNames(in: "In C#minor, track #, ##") .isEmpty)
+        #expect(Memory.tagRanges(in: "with #Axel.").count == 1)
+    }
+
+    @Test("Tags gather across notes, case-folded, under the commonest spelling")
+    func gathering() {
+        let tags = Memory.tags(in: [
+            note("#Axel at the lake"), note("#axel again #Bristol"), note("Bus to #Axel's"),
+        ])
+        #expect(tags.map(\.name) == ["Axel", "Bristol"])
+        #expect(tags.map(\.count) == [3, 1])
+        #expect(tags.first?.key == Memory.tagKey("#AXEL"))
+    }
+
+    @Test("The filter matches the note and what it is about, every word, folded")
+    func query() {
+        let song = note("Den var stor for #Axel", about: .track(title: "I Ærmet", artist: "Zar Paulo",
+                                                                album: other))
+        #expect(song.matches(query: ""))
+        #expect(song.matches(query: "axel"))
+        #expect(song.matches(query: "#axel"))
+        #expect(song.matches(query: "ærmet zar"))
+        #expect(song.matches(query: "nocturne"))          // the record's title
+        #expect(!song.matches(query: "axel bristol"))     // every word must match
+    }
+
+    @Test("Filtering by tag and query keeps the order given")
+    func filtering() {
+        let a = note("#Axel one"), b = note("#Bristol two"), c = note("#Axel #Bristol three")
+        let axel = Memory.tagKey("Axel")
+        #expect(Memory.filter([a, b, c], query: "", tag: axel).map(\.text) == [a.text, c.text])
+        #expect(Memory.filter([a, b, c], query: "three", tag: axel).map(\.text) == [c.text])
+        #expect(Memory.filter([a, b, c], query: "", tag: nil).count == 3)
+    }
+}

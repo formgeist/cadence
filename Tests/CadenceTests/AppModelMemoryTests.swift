@@ -168,6 +168,39 @@ struct AppModelMemoryTests {
         #expect(playback.currentTrack == nil)
     }
 
+    @Test("The Memories page filters by tag and by words, and says how many")
+    func pageFilter() async {
+        let model = await makeModel([
+            Memory(subject: .init(track: anhedonia), text: "Live with #Axel", createdAt: Date() - 300),
+            Memory(subject: .init(track: undertow), text: "#Bristol, rain", createdAt: Date() - 200),
+            Memory(subject: .album(anhedonia.albumKey), text: "#axel's first record",
+                   createdAt: Date() - 100),
+        ])
+        model.tab = .memories
+        #expect(model.memoryTags.map(\.name) == ["Axel", "Bristol"])
+        #expect(model.filteredMemories.count == 3)
+        #expect(model.screenCount == "3 MEMORIES")
+
+        model.memoryTagFilter = Memory.tagKey("Axel")
+        #expect(model.filteredMemories.map(\.text) == ["#axel's first record", "Live with #Axel"])
+        #expect(model.screenCount == "2 OF 3 MEMORIES")
+
+        model.memoryQuery = "anhedonia"
+        #expect(model.filteredMemories.map(\.text) == ["Live with #Axel"])
+
+        model.clearMemoryFilter()
+        #expect(model.filteredMemories.count == 3)
+        #expect(!model.isFilteringMemories)
+    }
+
+    @Test("A picked tag that no note carries any more filters nothing")
+    func staleTag() async {
+        let model = await makeModel([Memory(subject: .album(anhedonia.albumKey), text: "Rain.")])
+        model.memoryTagFilter = Memory.tagKey("Gone")
+        #expect(model.activeMemoryTag == nil)
+        #expect(model.filteredMemories.count == 1)
+    }
+
     @Test("A song note is headed by its title, a record note by the record")
     func titles() async {
         let model = await makeModel()
