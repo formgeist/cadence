@@ -247,6 +247,18 @@ public enum Migrations {
             }
         }
 
+        // Liked Songs: one row per liked track, with when it was liked so the
+        // list reads newest first. By track id with a cascade, the same as
+        // `playlistItem`: a track removed from the library leaves Liked Songs
+        // with it, while a rescan — which keeps ids — leaves likes alone.
+        migrator.registerMigration("v13-liked-tracks") { db in
+            try db.create(table: "likedTrack") { t in
+                t.primaryKey("trackID", .text)
+                    .references("track", onDelete: .cascade)
+                t.column("likedAt", .double).notNull().indexed()
+            }
+        }
+
         // Memories: short notes against a record or a song on it. Keyed by
         // names, not ids, like `playLog` — a note has to outlive a rescan, a
         // moved folder, even the record leaving the library and coming back.

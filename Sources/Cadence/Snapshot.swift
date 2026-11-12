@@ -33,6 +33,10 @@ private struct SlowStore: LibraryStore {
     func catalogs() async throws -> [Catalog] { try await wrapped.catalogs() }
     func saveCatalog(_ catalog: Catalog) async throws { try await wrapped.saveCatalog(catalog) }
     func deleteCatalog(_ id: Catalog.ID) async throws { try await wrapped.deleteCatalog(id) }
+    func likedTrackIDs() async throws -> [Track.ID] { try await wrapped.likedTrackIDs() }
+    func setLiked(_ liked: Bool, trackIDs: [Track.ID]) async throws {
+        try await wrapped.setLiked(liked, trackIDs: trackIDs)
+    }
     @discardableResult
     func createPlaylist(named name: String) async throws -> Playlist {
         try await wrapped.createPlaylist(named: name)
@@ -310,6 +314,17 @@ enum Snapshot {
         Shot(name: "17-playlist", size: Tokens.Layout.defaultWindow) { container in
             guard let playlist = container.model.playlists.first else { return }
             container.model.show(.playlist(playlist.id))
+        },
+
+        // Liked Songs, with the preview library's handful of hearts.
+        Shot(name: "17b-liked-songs", size: Tokens.Layout.defaultWindow) { container in
+            container.model.show(.likedSongs)
+        },
+
+        // Nothing liked yet: the empty state says where the hearts are.
+        Shot(name: "17c-liked-songs-empty", size: Tokens.Layout.defaultWindow,
+             store: { PreviewData.store(liked: []) }) { container in
+            container.model.show(.likedSongs)
         },
 
         // A playlist you have just made and not filled. Reachable in one click

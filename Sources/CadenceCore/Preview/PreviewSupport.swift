@@ -258,13 +258,32 @@ public actor InMemoryLibraryStore: LibraryStore {
     private var storedPlaylists: [Playlist]
     private var storedFolders: [PlaylistFolder]
     private var storedCatalogs: [Catalog]
+    /// Newest first, as `likedTrackIDs()` returns them.
+    private var liked: [Track.ID]
 
     public init(tracks: [Track], playlists: [Playlist] = [], folders: [PlaylistFolder] = [],
-                catalogs: [Catalog] = []) {
+                catalogs: [Catalog] = [], liked: [Track.ID] = []) {
         self.tracks = tracks
         self.storedPlaylists = playlists
         self.storedFolders = folders
         self.storedCatalogs = catalogs
+        self.liked = liked
+    }
+
+    public func likedTrackIDs() async throws -> [Track.ID] { liked }
+
+    /// Mirrors the real store: a new batch goes in front in the order given,
+    /// a track already liked keeps its place, and unknown ids are skipped.
+    public func setLiked(_ isLiked: Bool, trackIDs: [Track.ID]) async throws {
+        if isLiked {
+            let known = Set(tracks.map(\.id))
+            var seen = Set(liked)
+            let fresh = trackIDs.filter { known.contains($0) && seen.insert($0).inserted }
+            liked.insert(contentsOf: fresh, at: 0)
+        } else {
+            let doomed = Set(trackIDs)
+            liked.removeAll { doomed.contains($0) }
+        }
     }
 
     public func catalogs() async throws -> [Catalog] { storedCatalogs }
@@ -730,9 +749,15 @@ public enum PreviewData {
         }.reversed()
     }
 
-    public static func store(playlists: [Playlist] = PreviewData.playlists)
+    /// A handful of liked tracks across several records, newest first, so
+    /// Liked Songs and the hearts on an album page have something to show.
+    public static let likedTrackIDs: [Track.ID] =
+        [slowHours[2], ordinary[0], compilation[1], slowHours[5], boxSet[0]].map(\.id)
+
+    public static func store(playlists: [Playlist] = PreviewData.playlists,
+                             liked: [Track.ID] = PreviewData.likedTrackIDs)
         -> InMemoryLibraryStore {
-        InMemoryLibraryStore(tracks: tracks, playlists: playlists)
+        InMemoryLibraryStore(tracks: tracks, playlists: playlists, liked: liked)
     }
 
     /// A few notes across the preview library — on whole records and on

@@ -227,6 +227,8 @@ struct RootView: View {
             } else {
                 missing("That playlist has been deleted")
             }
+        case .likedSongs:
+            LikedSongsView()
         case .catalog(let id):
             if let catalog = model.catalog(id: id) {
                 CatalogDetailView(catalog: catalog)

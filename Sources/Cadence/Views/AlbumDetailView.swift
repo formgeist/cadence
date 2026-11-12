@@ -364,6 +364,8 @@ struct AlbumTrackList: View {
         HStack(spacing: Tokens.Space.l) {
             Text("#").frame(width: 28, alignment: .leading)
             Text("TITLE").frame(maxWidth: .infinity, alignment: .leading)
+            // The heart column has no heading: the glyph is its own label.
+            Color.clear.frame(width: LikeButton.side, height: 1)
             Text("QUALITY").frame(width: 90, alignment: .leading)
             Text("TIME").frame(width: 56, alignment: .trailing)
         }
@@ -446,6 +448,12 @@ private struct TrackRow: View {
             .accessibilityAction(named: "Go to artist", isAvailable: artistLinkTarget != nil) {
                 if let artistLinkTarget { model.show(.artist(artistLinkTarget)) }
             }
+            // The heart is swallowed by `.ignore` too, and only shows on hover.
+            .accessibilityAction(named: model.isLiked(track)
+                                 ? "Remove from \(AppModel.likedSongsName)"
+                                 : "Add to \(AppModel.likedSongsName)") {
+                Task { await model.toggleLike(track) }
+            }
     }
 
     /// The artist name shown as a link under the title — nil when the row
@@ -491,7 +499,7 @@ private struct TrackRow: View {
                                          ? Tokens.Palette.accent : Color(hex: 0xE6E6EC))
                         .lineLimit(1)
                     // Marks a song with a note; the note itself is in the
-                    // record's Memories above the list.
+                    // record's Memories below the list.
                     if model.hasMemory(track) {
                         CadenceIcon(PlaylistMenu.Symbol.memory, size: 10)
                             .foregroundStyle(Tokens.Palette.textMuted)
@@ -506,6 +514,8 @@ private struct TrackRow: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+
+            LikeButton(track: track, isRowHovered: isHovering)
 
             Text(track.format.shortDescription)
                 .font(Tokens.Typography.mono(10.5))
@@ -528,9 +538,47 @@ private struct TrackRow: View {
         }
         parts.append(NowPlayingPane.spokenDuration(track.duration))
         parts.append(NowPlayingPane.spokenFormat(track.format))
+        if model.isLiked(track) { parts.append("Liked") }
         if model.hasMemory(track) { parts.append("Has a memory") }
         if isCurrent { parts.append("Now playing") }
         return parts.joined(separator: ", ")
+    }
+}
+
+/// The heart in a track row. A liked track always shows a solid accent heart,
+/// so a glance down an album says which ones you love; an unliked one shows
+/// an outline only while the row is hovered, so a page of empty hearts does
+/// not compete with the titles.
+struct LikeButton: View {
+    @Environment(AppModel.self) private var model
+    var track: Track
+    var isRowHovered: Bool
+    var glyphSize: CGFloat = 11
+
+    static let side: CGFloat = 20
+
+    @State private var isHovering = false
+
+    var body: some View {
+        let liked = model.isLiked(track)
+        Button {
+            Task { await model.toggleLike(track) }
+        } label: {
+            CadenceIcon(liked ? "heart.fill" : "heart", size: glyphSize)
+                .foregroundStyle(liked ? Tokens.Palette.accent
+                                 : (isHovering ? Tokens.Palette.textPrimary
+                                    : Tokens.Palette.textMuted))
+                .frame(width: Self.side, height: Self.side)
+                .contentShape(Rectangle())
+                .opacity(liked || isRowHovered || isHovering ? 1 : 0)
+        }
+        .plainControl()
+        .focusable(false)
+        .onHover { isHovering = $0 }
+        .help(liked ? "Remove from \(AppModel.likedSongsName)"
+                    : "Add to \(AppModel.likedSongsName)")
+        .accessibilityLabel(liked ? "Remove \(track.title) from \(AppModel.likedSongsName)"
+                                  : "Add \(track.title) to \(AppModel.likedSongsName)")
     }
 }
 

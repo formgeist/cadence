@@ -628,6 +628,41 @@ extension SQLiteLibraryStore {
     }
 }
 
+// MARK: - Liked songs
+
+extension SQLiteLibraryStore {
+    /// Newest first; a batch liked in one go shares a timestamp and keeps the
+    /// order it was inserted in.
+    public func likedTrackIDs() async throws -> [Track.ID] {
+        try await pool.read { db in
+            try String.fetchAll(db, sql: """
+                SELECT trackID FROM likedTrack ORDER BY likedAt DESC, rowid ASC
+                """).compactMap { UUID(uuidString: $0) }
+        }
+    }
+
+    /// `INSERT OR IGNORE` keeps an existing like's original date, and the
+    /// `SELECT` from `track` skips ids whose file has left the library, the
+    /// way `addTracks` does.
+    public func setLiked(_ liked: Bool, trackIDs: [Track.ID]) async throws {
+        guard !trackIDs.isEmpty else { return }
+        let now = Date().timeIntervalSince1970
+        try await pool.write { db in
+            for trackID in trackIDs {
+                if liked {
+                    try db.execute(sql: """
+                        INSERT OR IGNORE INTO likedTrack (trackID, likedAt)
+                        SELECT id, ? FROM track WHERE id = ?
+                        """, arguments: [now, trackID.uuidString])
+                } else {
+                    try db.execute(sql: "DELETE FROM likedTrack WHERE trackID = ?",
+                                   arguments: [trackID.uuidString])
+                }
+            }
+        }
+    }
+}
+
 // MARK: - Memories
 
 extension SQLiteLibraryStore: MemoryStore {
