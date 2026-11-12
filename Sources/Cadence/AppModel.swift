@@ -41,6 +41,7 @@ final class AppModel {
         case genres = "Genres"
         case playlists = "Playlists"
         case catalogs = "Catalogs"
+        case memories = "Memories"
 
         var id: String { rawValue }
 
@@ -52,6 +53,7 @@ final class AppModel {
             case .genres: "tag"
             case .playlists: "music.note.list"
             case .catalogs: "books.vertical"
+            case .memories: "text.bubble"
             }
         }
     }
@@ -168,6 +170,8 @@ final class AppModel {
     /// The catalog at the top of the Catalogs grid, and the album at the top
     /// of one catalog's grid layout.
     var catalogGridScrollAnchor: Catalog.ID?
+    /// The memory at the top of the Memories grid.
+    var memoryGridScrollAnchor: Memory.ID?
     var catalogAlbumGridScrollAnchor: Album.Key?
 
     func show(_ screen: Screen) {
@@ -1031,6 +1035,24 @@ final class AppModel {
         return album.tracks.first { subject.matches($0) }
     }
 
+    /// Plays what a note is about: the song, carrying on through the rest of
+    /// its record the way clicking its row on the album page would, or the
+    /// whole record for a note on the record — or for a song no longer on
+    /// it. Nothing, when the record has left the library.
+    func play(_ memory: Memory, on playback: PlaybackController) {
+        guard let album = albumsByKey[memory.subject.albumKey] else { return }
+        if let track = track(for: memory.subject) {
+            playback.play(track, in: album.discs.flatMap(\.tracks))
+        } else {
+            playback.play(album)
+        }
+    }
+
+    /// Whether `play(_:on:)` has anything to play.
+    func canPlay(_ memory: Memory) -> Bool {
+        albumsByKey[memory.subject.albumKey] != nil
+    }
+
     /// `“Anhedonia”` for a song, the record's title for a whole record —
     /// the heading a note is shown under.
     func title(of subject: Memory.Subject) -> String {
@@ -1629,6 +1651,7 @@ final class AppModel {
         case .genres: "\(genres.count) GENRES"
         case .playlists: "\(playlists.count) PLAYLISTS"
         case .catalogs: catalogs.count == 1 ? "1 CATALOG" : "\(catalogs.count) CATALOGS"
+        case .memories: memories.count == 1 ? "1 MEMORY" : "\(memories.count) MEMORIES"
         }
     }
 

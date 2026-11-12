@@ -452,6 +452,8 @@ struct CadenceCommands: Commands {
                 .keyboardShortcut("5", modifiers: .command)
             Button("Catalogs") { container.model.show(.library); container.model.tab = .catalogs }
                 .keyboardShortcut("6", modifiers: .command)
+            Button("Memories") { container.model.show(.library); container.model.tab = .memories }
+                .keyboardShortcut("7", modifiers: .command)
 
             Divider()
 

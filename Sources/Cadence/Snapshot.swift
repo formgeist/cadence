@@ -265,6 +265,11 @@ enum Snapshot {
                  return AnyView(catalog.map { CatalogEditorSheet(editing: .edit($0)) })
              }) { _ in },
 
+        // Every memory, as the Memories tab shows them.
+        Shot(name: "13j-library-memories", size: Tokens.Layout.defaultWindow) { container in
+            container.model.tab = .memories
+        },
+
         // Writing a note against a song — the memory editor, filled in.
         Shot(name: "13i-memory-editor", size: CGSize(width: 520, height: 360),
              makeRoot: { container in

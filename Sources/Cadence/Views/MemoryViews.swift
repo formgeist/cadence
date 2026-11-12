@@ -231,3 +231,168 @@ struct AlbumMemoriesSection: View {
         }
     }
 }
+
+// MARK: - The Memories page
+
+/// Every memory, newest first, as a grid sized like the Playlists one: each
+/// card the record's cover, what the note is about, and the note itself.
+struct MemoryGrid: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        @Bindable var model = model
+
+        CardGrid(items: model.memories,
+                 columnWidth: model.albumColumnWidth,
+                 scrollAnchor: $model.memoryGridScrollAnchor,
+                 typeAheadKey: { model.title(of: $0.subject) },
+                 open: { model.show(.album($0.subject.albumKey)) },
+                 header: { EmptyView() }) { memory, _, isFocused, onSelect in
+            MemoryGridCard(memory: memory, isKeyboardFocused: isFocused, onSelect: onSelect)
+        }
+    }
+}
+
+/// Nothing written yet: what a memory is, and where they are added.
+struct MemoriesEmptyState: View {
+    var body: some View {
+        EmptyState(
+            systemImage: PlaylistMenu.Symbol.memory,
+            title: "No memories yet",
+            message: "Right-click a song or an album and choose Add Memory…\n"
+                + "to keep a note about it — where you were, who it reminds you of."
+        ) {
+            EmptyView()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Tokens.Palette.surface)
+    }
+}
+
+/// One memory in the grid. The top half is a playlist card — square cover,
+/// hover Play in the corner, title and a detail line — so the page reads as
+/// part of the library; the note sits under it, as on the album page.
+///
+/// A tap gesture rather than a `Button`, for the reason `PlaylistCard` gives:
+/// the hover Play button is a button of its own.
+private struct MemoryGridCard: View {
+    @Environment(AppModel.self) private var model
+    @Environment(PlaybackController.self) private var playback
+    var memory: Memory
+    var isKeyboardFocused: Bool = false
+    var onSelect: () -> Void = {}
+
+    @State private var isHovering = false
+    @State private var isHoveringArt = false
+    @State private var isHoveringPlay = false
+
+    private var key: Album.Key { memory.subject.albumKey }
+    /// Nil when the record has left the library: the note stays, its cover
+    /// falls back to the placeholder, and there is nothing to open or play.
+    private var album: Album? { model.album(for: key) }
+
+    /// `Artist · Record` for a song's note, the artist alone for a record's.
+    private var detail: String {
+        memory.subject.trackTitle == nil ? key.albumArtist : "\(key.albumArtist) · \(key.title)"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            artwork
+            VStack(alignment: .leading, spacing: 3) {
+                Text(model.title(of: memory.subject))
+                    .font(Tokens.Typography.cardTitle)
+                    .foregroundStyle(Color(hex: 0xEBEBF0))
+                    .lineLimit(1)
+                Text(detail)
+                    .font(Tokens.Typography.caption)
+                    .foregroundStyle(Tokens.Palette.textTertiary)
+                    .lineLimit(1)
+            }
+            note
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .opacity(isHovering && !isHoveringPlay ? 0.86 : 1)
+        .contentShape(Rectangle())
+        .onHover { isHovering = $0 }
+        .pointingHandCursor()
+        .onTapGesture(perform: open)
+        .cadenceContextMenu { menu }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(spokenLabel)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction(.default, open)
+        .accessibilityAction(named: Text("Play"), play)
+        .accessibilityAction(named: Text("Edit memory"), edit)
+    }
+
+    private var artwork: some View {
+        ArtworkView(artworkID: album?.artworkID, cornerRadius: Tokens.Radius.control,
+                    caption: album == nil ? "NOT IN LIBRARY" : nil, displaySize: 320)
+            .aspectRatio(1, contentMode: .fit)
+            // Only while hovered, as on `PlaylistCard`.
+            .overlay {
+                if isHoveringArt && model.canPlay(memory) {
+                    CoverPlayButton(subject: model.title(of: memory.subject),
+                                    isHovered: $isHoveringPlay, action: play)
+                        .transition(.opacity)
+                }
+            }
+            .animation(.easeOut(duration: 0.12), value: isHoveringArt)
+            .onHover { hovering in
+                isHoveringArt = hovering
+                if !hovering { isHoveringPlay = false }
+            }
+            .keyboardFocusRing(isKeyboardFocused,
+                              in: RoundedRectangle(cornerRadius: Tokens.Radius.control,
+                                                   style: .continuous))
+    }
+
+    /// The note, the album page's card in miniature: bubble, words, date.
+    private var note: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                CadenceIcon(PlaylistMenu.Symbol.memory, size: 10)
+                    .foregroundStyle(Tokens.Palette.accent)
+                    .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 2 }
+                Text(memory.text)
+                    .font(Tokens.Typography.sans(12.5, .medium))
+                    .foregroundStyle(Color(hex: 0xD6D6DD))
+                    .lineSpacing(2)
+                    .lineLimit(4)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Text(memory.dateDescription)
+                .font(Tokens.Typography.captionSmall)
+                .foregroundStyle(Tokens.Palette.textFaint)
+                .padding(.leading, 20)
+        }
+        .padding(.top, 2)
+    }
+
+    private var menu: [MenuItem] {
+        [
+            .action("Play", PlaylistMenu.Symbol.play, enabled: model.canPlay(memory), play),
+            .action("Open Album", "circle.circle", enabled: album != nil, open),
+            .separator,
+            .action("Edit Memory…", PlaylistMenu.Symbol.rename, edit),
+            .action("Delete Memory", PlaylistMenu.Symbol.delete, destructive: true) {
+                Task { await model.deleteMemory(memory) }
+            },
+        ]
+    }
+
+    private func open() {
+        onSelect()
+        guard album != nil else { return }
+        model.show(.album(key))
+    }
+
+    private func play() { model.play(memory, on: playback) }
+    private func edit() { model.editingMemory = .edit(memory) }
+
+    private var spokenLabel: String {
+        "Memory: \(model.title(of: memory.subject)), \(detail). \(memory.text). \(memory.dateDescription)"
+    }
+}

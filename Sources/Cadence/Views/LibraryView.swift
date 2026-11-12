@@ -58,6 +58,14 @@ struct LibraryView: View {
                 } else {
                     CatalogGrid()
                 }
+            case .memories:
+                if model.isInitialLoading {
+                    SkeletonAlbumGrid(label: "Loading memories")
+                } else if model.memories.isEmpty {
+                    MemoriesEmptyState()
+                } else {
+                    MemoryGrid()
+                }
             }
         }
         .background(Tokens.Palette.surface)
@@ -178,9 +186,9 @@ private struct LibraryActionsMenu: View {
         }
     }
 
-    /// Cards in the grid are sized by the zoom, which only Albums and
-    /// Playlists have.
-    private var hasZoom: Bool { model.tab == .albums || model.tab == .playlists }
+    /// Cards in the grid are sized by the zoom, which only the album-sized
+    /// grids have.
+    private var hasZoom: Bool { [.albums, .playlists, .memories].contains(model.tab) }
 
     var body: some View {
         @Bindable var model = model

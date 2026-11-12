@@ -282,17 +282,7 @@ private struct MemoryOfTheDayCard: View {
 
     private var playSubject: String { track?.title ?? key.title }
 
-    /// The song, carrying on into the rest of its record — the way clicking a
-    /// row on the album page plays it. A note on the whole record, or on a
-    /// song no longer on it, plays the record from the top.
-    private func play() {
-        guard let album else { return }
-        if let track {
-            playback.play(track, in: album.discs.flatMap(\.tracks))
-        } else {
-            playback.play(album)
-        }
-    }
+    private func play() { model.play(memory, on: playback) }
 }
 
 // MARK: - Stats

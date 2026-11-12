@@ -329,7 +329,14 @@ song on it: where you were, who gave it to you, why it matters. Add one from
 **Add Memory…** in any track's or album's context menu, or the speech-bubble
 button in an album's header.
 
-They come back in three places:
+They come back in four places:
+
+- **The Memories page** (⌘7, under Catalogs in the sidebar): every note,
+  newest first, in a grid sized like the Playlists one. Each card is the
+  record's cover with a hover Play button, the song or record it is about,
+  and the note. Clicking opens the record; the context menu plays, edits or
+  deletes. A note whose record has left the library stays here, with a
+  placeholder cover and nothing to play.
 
 - **The album page**, under the tracklist: every note on the record and its
   songs, newest first, each one click from editing. A long record can push
