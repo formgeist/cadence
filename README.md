@@ -331,7 +331,8 @@ button in an album's header. Once a song or record has one, its menu offers
 **Read Memory** instead, and **Add Another Memory…** beside it.
 
 **Clicking a note anywhere opens it in full**, in the reader: the cover, what
-it is about, every word, and Play, Open Album and Edit…. Cards elsewhere cut a
+it is about — the title, artist and record are links — with Play beside it,
+then every word, and Edit…. Cards elsewhere cut a
 long note short; the reader is where the rest is. Editing and deleting are in
 the reader and in each card's context menu.
 

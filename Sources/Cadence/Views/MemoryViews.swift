@@ -122,8 +122,9 @@ struct MemoryEditorSheet: View {
 
 /// One memory, in full: the record's cover and what the note is about over
 /// every word of it. Cards elsewhere cut a long note short — clicking any of
-/// them opens this. Play and Open Album act on what the note is about; Edit
-/// hands over to the editor.
+/// them opens this. The title and names are links to the record and artist,
+/// Play beside them plays what the note is about, and Edit hands over to the
+/// editor.
 struct MemoryReaderSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(PlaybackController.self) private var playback
@@ -134,8 +135,10 @@ struct MemoryReaderSheet: View {
     private var key: Album.Key { memory.subject.albumKey }
     private var album: Album? { model.album(for: key) }
 
-    private var detail: String {
-        memory.subject.trackTitle == nil ? key.albumArtist : "\(key.albumArtist) · \(key.title)"
+    /// Leaves the sheet for a page behind it.
+    private func go(to screen: AppModel.Screen) {
+        dismiss()
+        model.show(screen)
     }
 
     /// `12 November 2026`, and when it was last changed if that was later.
@@ -158,15 +161,42 @@ struct MemoryReaderSheet: View {
                         SectionLabel("Memory", color: Tokens.Palette.accent)
                     }
                     .foregroundStyle(Tokens.Palette.accent)
-                    Text(model.title(of: memory.subject))
-                        .font(Tokens.Typography.sans(18, .heavy))
-                        .foregroundStyle(Tokens.Palette.textPrimary)
-                        .lineLimit(2)
-                    Text(detail)
-                        .font(Tokens.Typography.caption)
-                        .foregroundStyle(Tokens.Palette.textTertiary)
-                        .lineLimit(1)
+                    // The song (or record) is the way to its record: a song
+                    // has no page of its own, so both open the album.
+                    InlineLink(text: model.title(of: memory.subject),
+                               font: Tokens.Typography.sans(18, .heavy),
+                               color: Tokens.Palette.textPrimary, lineLimit: 2) {
+                        go(to: .album(key))
+                    }
+                    .disabled(album == nil)
+                    HStack(spacing: 0) {
+                        InlineLink(text: key.albumArtist, font: Tokens.Typography.caption,
+                                   color: Tokens.Palette.textTertiary) {
+                            go(to: .artist(key.albumArtist))
+                        }
+                        .disabled(model.artist(named: key.albumArtist) == nil)
+                        if memory.subject.trackTitle != nil {
+                            Text(" · ")
+                                .font(Tokens.Typography.caption)
+                                .foregroundStyle(Tokens.Palette.textFaint)
+                            InlineLink(text: key.title, font: Tokens.Typography.caption,
+                                       color: Tokens.Palette.textTertiary) {
+                                go(to: .album(key))
+                            }
+                            .disabled(album == nil)
+                        }
+                    }
+                    .lineLimit(1)
                 }
+                Spacer(minLength: Tokens.Space.m)
+                // Play beside what it plays: the song, on through its record,
+                // or the whole record for a record's note.
+                PlayPauseButton(isPlaying: false, size: 44,
+                                subject: model.title(of: memory.subject)) {
+                    model.play(memory, on: playback)
+                }
+                .disabled(!model.canPlay(memory))
+                .padding(.top, 14)
             }
 
             // The whole note, scrolling if it ever outgrows the sheet, and
@@ -191,15 +221,6 @@ struct MemoryReaderSheet: View {
             HStack(spacing: Tokens.Space.s) {
                 CapsuleButton(title: "Edit…") { model.editReadingMemory() }
                 Spacer(minLength: 0)
-                CapsuleButton(title: "Open Album") {
-                    dismiss()
-                    model.show(.album(key))
-                }
-                .disabled(album == nil)
-                CapsuleButton(title: "Play", systemImage: "play.fill", kind: .filled) {
-                    model.play(memory, on: playback)
-                }
-                .disabled(!model.canPlay(memory))
             }
         }
         .padding(Tokens.Space.xxl)
