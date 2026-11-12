@@ -337,8 +337,9 @@ They come back in three places:
   down to them (with no notes yet, the same spot adds the first). Songs with
   a note carry a small bubble beside their title.
 - **Home**: the hero at the top is either the album of the day or one of your
-  memories, decided by a coin toss seeded by the date — the same all day,
-  maybe the other kind tomorrow. A memory hero shows the note with its record's
+  memories, decided by the date — the same all day, and a memory about one
+  day in three (`DailyPick.memoryOdds`), so the album of the day is still the
+  usual guest. A memory hero shows the note with its record's
   cover, **Open** goes to the record, and **Play** plays the song the note is
   about (carrying on through its record) or the whole record. Notes written
   in the last day wait while older ones exist — Home is for coming back to

@@ -104,7 +104,7 @@ struct DailyPickTests {
         #expect(DailyPick.choose(album: nil, memories: [memory], now: base) == .memory(memory))
     }
 
-    @Test("The pick holds all day, and over a month both kinds come up")
+    @Test("The pick holds all day; over a season both come up, mostly albums")
     func stableAndMixed() {
         let album = albumPick()
         let memory = note()
@@ -112,14 +112,17 @@ struct DailyPickTests {
         let evening = DailyPick.choose(album: album, memories: [memory], now: base + 3_600)
         #expect(morning == evening)
 
-        var kinds = Set<String>()
-        for offset in 0..<30 {
+        var albums = 0
+        var memories = 0
+        for offset in 0..<90 {
             switch DailyPick.choose(album: album, memories: [memory], now: base + Double(offset) * day) {
-            case .album: kinds.insert("album")
-            case .memory: kinds.insert("memory")
+            case .album: albums += 1
+            case .memory: memories += 1
             case nil: break
             }
         }
-        #expect(kinds == ["album", "memory"])
+        // Both turn up, and the album has most days.
+        #expect(memories > 0)
+        #expect(albums > memories)
     }
 }
