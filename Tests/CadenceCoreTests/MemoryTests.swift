@@ -79,3 +79,45 @@ struct MemoryTests {
         #expect(Memory.resurfaced(from: [], now: now).isEmpty)
     }
 }
+
+@Suite("Home's daily pick")
+struct DailyPickTests {
+    private let day: TimeInterval = 86_400
+    private let base = Date(timeIntervalSince1970: 1_750_000_000)
+
+    private func albumPick() -> AlbumOfTheDay {
+        AlbumOfTheDay(album: Album(key: slowHours, tracks: [track("Anhedonia")]),
+                      headline: "Pulled from the shelf", detail: "Not played yet")
+    }
+
+    private func note() -> Memory {
+        Memory(subject: .album(other), text: "Late shift.", createdAt: base - 30 * day)
+    }
+
+    @Test("Nothing to show is nil; one kind alone is always chosen")
+    func oneSided() {
+        #expect(DailyPick.choose(album: nil, memories: [], now: base) == nil)
+        #expect(DailyPick.choose(album: albumPick(), memories: [], now: base) == .album(albumPick()))
+        let memory = note()
+        #expect(DailyPick.choose(album: nil, memories: [memory], now: base) == .memory(memory))
+    }
+
+    @Test("The pick holds all day, and over a month both kinds come up")
+    func stableAndMixed() {
+        let album = albumPick()
+        let memory = note()
+        let morning = DailyPick.choose(album: album, memories: [memory], now: base)
+        let evening = DailyPick.choose(album: album, memories: [memory], now: base + 3_600)
+        #expect(morning == evening)
+
+        var kinds = Set<String>()
+        for offset in 0..<30 {
+            switch DailyPick.choose(album: album, memories: [memory], now: base + Double(offset) * day) {
+            case .album: kinds.insert("album")
+            case .memory: kinds.insert("memory")
+            case nil: break
+            }
+        }
+        #expect(kinds == ["album", "memory"])
+    }
+}

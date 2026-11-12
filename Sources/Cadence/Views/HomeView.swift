@@ -1,7 +1,8 @@
 import SwiftUI
 import CadenceCore
 
-/// The landing screen: a suggestion for today, a short row of what was played
+/// The landing screen: a suggestion for today — an album, or one of your own
+/// memories brought back — a short row of what was played
 /// last, and Cadence's own listening numbers. The full recents history is one
 /// "Show all" away.
 struct HomeView: View {
@@ -11,13 +12,16 @@ struct HomeView: View {
     @State private var showAll = false
     @State private var period: StatsPeriod = .week
     @State private var stats: ListeningStats?
-    @State private var albumOfTheDay: AlbumOfTheDay?
+    @State private var dailyPick: DailyPick?
 
     /// What the derived figures depend on.
     private struct InputKey: Hashable {
         var period: StatsPeriod
         var albums: Int
         var plays: Int
+        /// Whole notes, not ids, so an edited note's new text reaches the
+        /// hero the moment it is saved.
+        var memories: [Memory]
     }
 
     var body: some View {
@@ -26,10 +30,11 @@ struct HomeView: View {
             let columns = GridMetrics.columnCount(for: available, minimum: model.albumColumnWidth)
             ScrollView {
                 VStack(alignment: .leading, spacing: Tokens.Space.xxl + Tokens.Space.l) {
-                    if let albumOfTheDay {
-                        AlbumOfTheDayCard(pick: albumOfTheDay)
+                    switch dailyPick {
+                    case .album(let pick): AlbumOfTheDayCard(pick: pick)
+                    case .memory(let memory): MemoryOfTheDayCard(memory: memory)
+                    case nil: EmptyView()
                     }
-                    memories
                     recentlyPlayed(columns: columns)
                     listening
                 }
@@ -38,10 +43,12 @@ struct HomeView: View {
             }
             .scrollContentBackground(.hidden)
         }
-        .task(id: InputKey(period: period, albums: model.albums.count, plays: playLog.plays.count)) {
+        .task(id: InputKey(period: period, albums: model.albums.count, plays: playLog.plays.count,
+                           memories: model.memories)) {
             let now = Date()
             stats = ListeningStats.compute(from: playLog.plays, period: period, now: now)
-            albumOfTheDay = AlbumOfTheDay.pick(from: model.albums, history: playLog.plays, now: now)
+            let album = AlbumOfTheDay.pick(from: model.albums, history: playLog.plays, now: now)
+            dailyPick = DailyPick.choose(album: album, memories: model.showableMemories, now: now)
         }
     }
 
@@ -86,54 +93,6 @@ struct HomeView: View {
                     }
                 }
             }
-        }
-    }
-
-    // MARK: Memories
-
-    /// A few notes brought back for today — the same all day, different
-    /// tomorrow. Each opens the record it is about.
-    @ViewBuilder
-    private var memories: some View {
-        let shown = model.resurfacedMemories()
-        VStack(alignment: .leading, spacing: Tokens.Space.l) {
-            SectionLabel("Memories")
-            if shown.isEmpty {
-                Text("Right-click a song or an album and choose Add Memory… to keep a note about it. They come back here.")
-                    .font(Tokens.Typography.body)
-                    .foregroundStyle(Tokens.Palette.textTertiary)
-            } else {
-                // Equal columns rather than adaptive: three notes side by
-                // side read as one row of postcards, whatever their length.
-                HStack(alignment: .top, spacing: Tokens.Space.l) {
-                    ForEach(shown) { memory in
-                        memoryCard(memory)
-                            .frame(maxWidth: .infinity)
-                    }
-                    // Hold the column width when fewer than three come back,
-                    // so one note is not stretched across the whole page.
-                    ForEach(shown.count..<max(shown.count, 3), id: \.self) { _ in
-                        Color.clear.frame(maxWidth: .infinity, maxHeight: 1)
-                    }
-                }
-                .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-
-    /// One of Home's notes: the record's cover, what it is about, and a
-    /// click through to the record.
-    private func memoryCard(_ memory: Memory) -> MemoryCard {
-        let key = memory.subject.albumKey
-        let detail: String = memory.subject.trackTitle == nil
-            ? key.albumArtist : "\(key.albumArtist) · \(key.title)"
-        return MemoryCard(memory: memory,
-                          heading: model.title(of: memory.subject),
-                          detail: detail,
-                          artworkID: model.album(for: key)?.artworkID,
-                          showsArtwork: true,
-                          actionLabel: "Opens the album") {
-            model.show(.album(key))
         }
     }
 
@@ -236,6 +195,103 @@ private struct AlbumOfTheDayCard: View {
             return "“\(title)” — \(memory.text)"
         }
         return "“\(memory.text)”"
+    }
+}
+
+// MARK: - Memory of the day
+
+/// The hero on a day it brings back one of your own notes instead of an
+/// album: the record's cover, what the note is about, the note itself, and
+/// the same two verbs — open the record, or play the song (or record) the
+/// note is about.
+private struct MemoryOfTheDayCard: View {
+    @Environment(AppModel.self) private var model
+    @Environment(PlaybackController.self) private var playback
+    var memory: Memory
+
+    private var key: Album.Key { memory.subject.albumKey }
+    private var album: Album? { model.album(for: key) }
+    /// The song, when the note is about one that is still on the record.
+    private var track: Track? { model.track(for: memory.subject) }
+
+    var body: some View {
+        HStack(spacing: Tokens.Space.xl) {
+            Button { model.show(.album(key)) } label: {
+                ArtworkView(artworkID: album?.artworkID,
+                            cornerRadius: Tokens.Radius.control,
+                            caption: "COVER ART")
+                    .frame(width: 96, height: 96)
+            }
+            .plainControl()
+            .accessibilityLabel("Open \(key.title)")
+
+            VStack(alignment: .leading, spacing: Tokens.Space.xs) {
+                HStack(spacing: 6) {
+                    CadenceIcon(PlaylistMenu.Symbol.memory, size: 10)
+                    SectionLabel("A memory", color: Tokens.Palette.accent)
+                }
+                .foregroundStyle(Tokens.Palette.accent)
+                Text(model.title(of: memory.subject))
+                    .font(Tokens.Typography.sans(22, .heavy))
+                    .foregroundStyle(Tokens.Palette.textPrimary)
+                    .lineLimit(1)
+                Text(subtitle)
+                    .font(Tokens.Typography.rowTitle)
+                    .foregroundStyle(Tokens.Palette.textSecondary)
+                    .lineLimit(1)
+                // The note is the point of the card; clicking it edits it.
+                Button { model.editingMemory = .edit(memory) } label: {
+                    Text("“\(memory.text)”")
+                        .font(Tokens.Typography.sans(13.5, .medium))
+                        .italic()
+                        .foregroundStyle(Color(hex: 0xD6D6DD))
+                        .lineSpacing(2)
+                        .lineLimit(3)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .plainControl()
+                .padding(.top, Tokens.Space.xs)
+                .accessibilityLabel("Memory: \(memory.text)")
+                .accessibilityHint("Edits this memory")
+                Text("Written \(memory.dateDescription)")
+                    .font(Tokens.Typography.caption)
+                    .foregroundStyle(Tokens.Palette.textTertiary)
+                    .lineLimit(1)
+                    .padding(.top, 2)
+            }
+            Spacer(minLength: Tokens.Space.l)
+
+            HStack(spacing: Tokens.Space.m) {
+                CapsuleButton(title: "Open") { model.show(.album(key)) }
+                CapsuleButton(title: "Play", systemImage: "play.fill", kind: .filled,
+                              accessibilityLabel: "Play \(playSubject)", action: play)
+                    .disabled(album == nil)
+            }
+        }
+        .padding(Tokens.Space.m)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .panelBackground()
+        .accessibilityElement(children: .contain)
+    }
+
+    /// `Artist · Record` for a song's note, the artist alone for a record's.
+    private var subtitle: String {
+        memory.subject.trackTitle == nil ? key.albumArtist : "\(key.albumArtist) · \(key.title)"
+    }
+
+    private var playSubject: String { track?.title ?? key.title }
+
+    /// The song, carrying on into the rest of its record — the way clicking a
+    /// row on the album page plays it. A note on the whole record, or on a
+    /// song no longer on it, plays the record from the top.
+    private func play() {
+        guard let album else { return }
+        if let track {
+            playback.play(track, in: album.discs.flatMap(\.tracks))
+        } else {
+            playback.play(album)
+        }
     }
 }
 

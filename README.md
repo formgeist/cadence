@@ -319,10 +319,13 @@ They come back in three places:
   them out of sight, so the header shows a "2 Memories" button that scrolls
   down to them (with no notes yet, the same spot adds the first). Songs with
   a note carry a small bubble beside their title.
-- **Home**, under the album of the day: up to three notes, picked afresh each
-  day and the same all day, the way the album of the day is. Notes written in
-  the last day wait while older ones exist — Home is for coming back to
-  things. A card opens its record.
+- **Home**: the hero at the top is either the album of the day or one of your
+  memories, decided by a coin toss seeded by the date — the same all day,
+  maybe the other kind tomorrow. A memory hero shows the note with its record's
+  cover, **Open** goes to the record, and **Play** plays the song the note is
+  about (carrying on through its record) or the whole record. Notes written
+  in the last day wait while older ones exist — Home is for coming back to
+  things.
 - **The album of the day** card, which quotes the record's newest note.
 
 Notes live in the `memory` table and are keyed by names — album artist, title

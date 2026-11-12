@@ -1012,12 +1012,18 @@ final class AppModel {
         memories(aboutAlbum: track.albumKey).contains { $0.subject.matches(track) }
     }
 
-    /// What Home brings back today, leaving out notes whose record is no
-    /// longer in the library — a card should open something.
-    func resurfacedMemories(now: Date = Date(), limit: Int = 3) -> [Memory] {
-        Memory.resurfaced(from: memories, now: now, limit: limit) {
-            self.albumsByKey[$0.subject.albumKey] != nil
-        }
+    /// The notes Home can bring back: those whose record is in the library,
+    /// so the hero has something to open and play.
+    var showableMemories: [Memory] {
+        memories.filter { albumsByKey[$0.subject.albumKey] != nil }
+    }
+
+    /// The song a note is about, found on its record by name — or nil for a
+    /// note on the whole record, or a song no longer on it.
+    func track(for subject: Memory.Subject) -> Track? {
+        guard subject.trackTitle != nil,
+              let album = albumsByKey[subject.albumKey] else { return nil }
+        return album.tracks.first { subject.matches($0) }
     }
 
     /// `“Anhedonia”` for a song, the record's title for a whole record —

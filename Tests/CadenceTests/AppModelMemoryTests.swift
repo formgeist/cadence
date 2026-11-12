@@ -119,9 +119,18 @@ struct AppModelMemoryTests {
                           text: "Gone.", createdAt: Date() - 10 * 86_400)
         let model = await makeModel([here, gone])
 
-        #expect(model.resurfacedMemories().map(\.text) == ["Here."])
+        #expect(model.showableMemories.map(\.text) == ["Here."])
         // The note on the missing record is still kept, just not shown.
         #expect(model.memories.count == 2)
+    }
+
+    @Test("A song note finds its track on the record; a record note has none")
+    func trackForSubject() async {
+        let model = await makeModel()
+        #expect(model.track(for: .init(track: anhedonia))?.id == anhedonia.id)
+        #expect(model.track(for: .album(anhedonia.albumKey)) == nil)
+        #expect(model.track(for: .track(title: "Gone", artist: "Vera Lindqvist",
+                                        album: anhedonia.albumKey)) == nil)
     }
 
     @Test("A song note is headed by its title, a record note by the record")
