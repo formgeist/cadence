@@ -89,12 +89,13 @@ enum A11yHarness {
     }
 
     private enum Screen: CaseIterable {
-        case home, artists, artist, album, playlist, likedSongs, settings, immersive
+        case home, artists, memories, artist, album, playlist, likedSongs, settings, immersive
 
         var title: String {
             switch self {
             case .home: "Library — Home"
             case .artists: "Library — Artists"
+            case .memories: "Library — Memories"
             case .artist: "Artist detail"
             case .album: "Album detail"
             case .playlist: "Playlist detail"
@@ -115,6 +116,10 @@ enum A11yHarness {
                 container.model.isImmersive = false
                 container.model.show(.library)
                 container.model.tab = .artists
+            case .memories:
+                container.model.isImmersive = false
+                container.model.show(.library)
+                container.model.tab = .memories
             case .artist:
                 container.model.isImmersive = false
                 container.model.show(.artist("Vera Lindqvist"))

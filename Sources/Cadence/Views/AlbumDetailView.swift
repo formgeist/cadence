@@ -23,16 +23,25 @@ struct AlbumDetailView: View {
         model.albums(byArtist: album.albumArtist).filter { $0.key != album.key }
     }
 
+    /// Where the header's Memories button scrolls to.
+    private static let memoriesAnchor = "album-memories"
+
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                header
-                AlbumTrackList(album: album)
-                    .padding(.horizontal, Tokens.Space.albumInset)
-                    .padding(.top, 22)
-                    .padding(.bottom, otherAlbums.isEmpty ? 44 : 36)
-                MoreFromArtist(artist: album.albumArtist, albums: otherAlbums)
-                SimilarAlbumsSection(album: album.key)
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(spacing: 0) {
+                    header(proxy)
+                    AlbumTrackList(album: album)
+                        .padding(.horizontal, Tokens.Space.albumInset)
+                        .padding(.top, 22)
+                        .padding(.bottom, otherAlbums.isEmpty ? 44 : 36)
+                    // Below the tracklist, where a long record can push them
+                    // out of sight — the header's Memories button jumps here.
+                    AlbumMemoriesSection(album: album)
+                        .id(Self.memoriesAnchor)
+                    MoreFromArtist(artist: album.albumArtist, albums: otherAlbums)
+                    SimilarAlbumsSection(album: album.key)
+                }
             }
         }
         .scrollContentBackground(.hidden)
@@ -41,7 +50,7 @@ struct AlbumDetailView: View {
 
     // MARK: Header
 
-    private var header: some View {
+    private func header(_ proxy: ScrollViewProxy) -> some View {
         HStack(alignment: .top, spacing: 48) {
             ArtworkView(
                 artworkID: album.artworkID,
@@ -83,6 +92,7 @@ struct AlbumDetailView: View {
                         PlaylistMenu.albumAdditions(model: model, playback: playback,
                                                     tracks: orderedTracks)
                     }
+                    memoryButton(proxy)
                 }
                 .padding(.top, 10)
             }
@@ -98,6 +108,31 @@ struct AlbumDetailView: View {
         }
         .overlay(alignment: .bottom) {
             Rectangle().fill(Color(hex: 0x1C1C21)).frame(height: 1)
+        }
+    }
+
+    /// With notes on the record, a labelled button that scrolls down to them
+    /// below the tracklist, where a long record can hide them; adding another
+    /// is the section's own ＋. With none, the bubble adds the first.
+    @ViewBuilder
+    private func memoryButton(_ proxy: ScrollViewProxy) -> some View {
+        let count = model.memories(aboutAlbum: album.key).count
+        if count > 0 {
+            CapsuleButton(title: count == 1 ? "1 Memory" : "\(count) Memories",
+                          systemImage: PlaylistMenu.Symbol.memory,
+                          accessibilityLabel: count == 1
+                              ? "Jump to 1 memory" : "Jump to \(count) memories") {
+                withAnimation(.easeInOut(duration: 0.35)) {
+                    proxy.scrollTo(Self.memoriesAnchor, anchor: .top)
+                }
+            }
+            .help("Jump to memories")
+        } else {
+            CapsuleButton(systemImage: PlaylistMenu.Symbol.memory,
+                          accessibilityLabel: "Add a memory about \(album.title)") {
+                model.editingMemory = .create(.album(album.key))
+            }
+            .help("Add a memory")
         }
     }
 
@@ -330,7 +365,7 @@ struct AlbumTrackList: View {
             Text("#").frame(width: 28, alignment: .leading)
             Text("TITLE").frame(maxWidth: .infinity, alignment: .leading)
             // The heart column has no heading: the glyph is its own label.
-            Color.clear.frame(width: LikeButton.side, height: 1)
+            Color.clear.frame(width: MemoryButton.side + 2 + LikeButton.side, height: 1)
             Text("QUALITY").frame(width: 90, alignment: .leading)
             Text("TIME").frame(width: 56, alignment: .trailing)
         }
@@ -413,6 +448,14 @@ private struct TrackRow: View {
             .accessibilityAction(named: "Go to artist", isAvailable: artistLinkTarget != nil) {
                 if let artistLinkTarget { model.show(.artist(artistLinkTarget)) }
             }
+            // The memory marker is swallowed by `.ignore` too.
+            .accessibilityAction(named: "Read memory",
+                                 isAvailable: model.hasMemory(track)) {
+                model.readingMemory = model.memories(about: track).first
+            }
+            .accessibilityAction(named: "Add memory", isAvailable: !model.hasMemory(track)) {
+                model.editingMemory = .create(Memory.Subject(track: track))
+            }
             // The heart is swallowed by `.ignore` too, and only shows on hover.
             .accessibilityAction(named: model.isLiked(track)
                                  ? "Remove from \(AppModel.likedSongsName)"
@@ -471,7 +514,13 @@ private struct TrackRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            LikeButton(track: track, isRowHovered: isHovering)
+            // The song's marks, side by side and clear of its title: the
+            // memory bubble, then the heart. Both work the same way — solid
+            // and always there once set, a hover-only outline until then.
+            HStack(spacing: 2) {
+                MemoryButton(track: track, isRowHovered: isHovering)
+                LikeButton(track: track, isRowHovered: isHovering)
+            }
 
             Text(track.format.shortDescription)
                 .font(Tokens.Typography.mono(10.5))
@@ -495,6 +544,7 @@ private struct TrackRow: View {
         parts.append(NowPlayingPane.spokenDuration(track.duration))
         parts.append(NowPlayingPane.spokenFormat(track.format))
         if model.isLiked(track) { parts.append("Liked") }
+        if model.hasMemory(track) { parts.append("Has a memory") }
         if isCurrent { parts.append("Now playing") }
         return parts.joined(separator: ", ")
     }

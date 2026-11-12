@@ -265,6 +265,31 @@ enum Snapshot {
                  return AnyView(catalog.map { CatalogEditorSheet(editing: .edit($0)) })
              }) { _ in },
 
+        // Every memory, as the Memories tab shows them.
+        Shot(name: "13j-library-memories", size: Tokens.Layout.defaultWindow) { container in
+            container.model.tab = .memories
+        },
+
+        // The same page narrowed to one #tag's group.
+        Shot(name: "13k-library-memories-tag", size: Tokens.Layout.defaultWindow) { container in
+            container.model.tab = .memories
+            container.model.memoryTagFilter = Memory.tagKey("Ingrid")
+        },
+
+        // One memory, read in full.
+        Shot(name: "13l-memory-reader", size: CGSize(width: 560, height: 460),
+             makeRoot: { container in
+                 let memory = container.model.memories.first { $0.subject.trackTitle == nil }
+                 return AnyView(memory.map { MemoryReaderSheet(memory: $0) })
+             }) { _ in },
+
+        // Writing a note against a song — the memory editor, filled in.
+        Shot(name: "13i-memory-editor", size: CGSize(width: 520, height: 360),
+             makeRoot: { container in
+                 let memory = container.model.memories.first { $0.subject.trackTitle != nil }
+                 return AnyView(memory.map { MemoryEditorSheet(editing: .edit($0)) })
+             }) { _ in },
+
         // Nothing imported yet. The first screen anyone sees.
         Shot(name: "14-empty-library", size: Tokens.Layout.defaultWindow,
              store: { PreviewData.emptyStore() }) { container in

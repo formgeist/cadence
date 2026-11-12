@@ -760,6 +760,37 @@ public enum PreviewData {
         InMemoryLibraryStore(tracks: tracks, playlists: playlists, liked: liked)
     }
 
+    /// A few notes across the preview library — on whole records and on
+    /// single songs, some old enough for Home to bring back — so the album
+    /// page, Home and the album of the day all have one to show.
+    public static func memories(now: Date = Date()) -> [Memory] {
+        let day: TimeInterval = 86_400
+        func ago(_ days: Double) -> Date { now.addingTimeInterval(-days * day) }
+        var notes: [Memory] = [
+            Memory(subject: .album(slowHours[0].albumKey),
+                   text: "Bought this at the shop on #Skånegatan the week it came out. Played it every night that first winter in the new flat with #Ingrid.",
+                   createdAt: ago(240)),
+            Memory(subject: Memory.Subject(track: slowHours[2]),
+                   text: "The song that was on when #Ingrid called to say she got the job.",
+                   createdAt: ago(95)),
+            Memory(subject: .album(compilation[0].albumKey),
+                   text: "Road trip to #Lofoten, 2022. Three of us, one car, this on repeat.",
+                   createdAt: ago(400)),
+            Memory(subject: Memory.Subject(track: ordinary[0]),
+                   text: "First dance at Sam and Noor's wedding.",
+                   createdAt: ago(30)),
+        ]
+        // Every remaining record gets one too, so whichever the album of the
+        // day picks has a note to show in the preview.
+        let noted = Set(notes.map(\.subject.albumKey))
+        for album in Album.grouped(from: tracks) where !noted.contains(album.key) {
+            notes.append(Memory(subject: .album(album.key),
+                                text: "Found this one digging through a friend's shelves.",
+                                createdAt: ago(60)))
+        }
+        return notes
+    }
+
     /// A few catalogs over the preview library, one of which matches nothing.
     public static let catalogs: [Catalog] = [
         Catalog(name: "Hi-Res Shelf", definition: .init(rules: [

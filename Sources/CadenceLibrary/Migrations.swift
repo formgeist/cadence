@@ -259,6 +259,26 @@ public enum Migrations {
             }
         }
 
+        // Memories: short notes against a record or a song on it. Keyed by
+        // names, not ids, like `playLog` — a note has to outlive a rescan, a
+        // moved folder, even the record leaving the library and coming back.
+        // `trackTitle` and `trackArtist` are null for a note on the record.
+        migrator.registerMigration("v14-memories") { db in
+            try db.create(table: "memory") { t in
+                t.primaryKey("id", .text)
+                t.column("albumArtist", .text).notNull()
+                t.column("albumTitle", .text).notNull()
+                t.column("albumYear", .integer)
+                t.column("trackTitle", .text)
+                t.column("trackArtist", .text)
+                t.column("text", .text).notNull()
+                t.column("createdAt", .double).notNull()
+                t.column("updatedAt", .double).notNull()
+            }
+            try db.create(index: "memory_on_album", on: "memory",
+                          columns: ["albumArtist", "albumTitle", "albumYear"])
+        }
+
         return migrator
     }
 }

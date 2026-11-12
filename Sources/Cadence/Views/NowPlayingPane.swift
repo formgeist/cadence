@@ -135,6 +135,13 @@ struct NowPlayingPane: View {
                     .frame(maxWidth: .infinity)
                     .padding(.top, Tokens.Space.s)
             }
+
+            // The song's own memory, if it has one — this is when it means
+            // most. After the controls, so the transport never moves for it,
+            // and before the queue. Nothing at all for a song without one.
+            NowPlayingMemory(track: track)
+                .padding(.horizontal, Tokens.Space.paneInset)
+                .padding(.top, Tokens.Space.l)
         }
         .layoutPriority(1)
 

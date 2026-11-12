@@ -95,6 +95,17 @@ struct RootView: View {
             ArtistImageSheet(artist: artist)
                 .environment(model)
         }
+        .sheet(item: $model.editingMemory) { editing in
+            MemoryEditorSheet(editing: editing)
+                .environment(model)
+        }
+        .sheet(item: $model.readingMemory) { memory in
+            MemoryReaderSheet(memory: memory)
+                .environment(model)
+                .environment(playback)
+        }
+        // `#tag` links in memory text, anywhere in the window.
+        .memoryTagLinks(model)
         .sheet(item: $model.editingCatalog) { editing in
             CatalogEditorSheet(editing: editing)
                 .environment(model)
