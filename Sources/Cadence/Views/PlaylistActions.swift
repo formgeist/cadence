@@ -250,11 +250,22 @@ enum PlaylistMenu {
         ]
     }
 
-    /// "Add Memory…" — a note against a song or a record, for later.
-    static func addMemory(_ subject: Memory.Subject, model: AppModel) -> MenuItem {
-        .action("Add Memory…", Symbol.memory) {
-            model.editingMemory = .create(subject)
+    /// The memory verbs for a song or a record. With nothing written yet,
+    /// "Add Memory…". With a note already there, reading it comes first —
+    /// offering a blank editor for a song that has a memory reads as though
+    /// the memory were lost — and another can still be added beside it.
+    static func memoryItems(_ subject: Memory.Subject, model: AppModel) -> [MenuItem] {
+        guard let newest = model.memories(about: subject).first else {
+            return [.action("Add Memory…", Symbol.memory) {
+                model.editingMemory = .create(subject)
+            }]
         }
+        return [
+            .action("Read Memory", Symbol.memory) { model.readingMemory = newest },
+            .action("Add Another Memory…", Symbol.newPlaylist) {
+                model.editingMemory = .create(subject)
+            },
+        ]
     }
 
     /// "Add to Playlist" wherever tracks are listed. A submenu rather than a
@@ -370,7 +381,7 @@ enum PlaylistMenu {
                       model: AppModel,
                       playback: PlaybackController) -> [MenuItem] {
         let tracks = album.discs.flatMap(\.tracks)
-        return [
+        let start: [MenuItem] = [
             .action("Play", Symbol.play) { playback.play(album) },
             .action("Shuffle", Symbol.shuffle) { playback.shuffle(album) },
             .action("Add to Queue", Symbol.addToQueue) {
@@ -378,7 +389,8 @@ enum PlaylistMenu {
             },
             .separator,
             destinations(model: model, tracks: tracks),
-            addMemory(.album(album.key), model: model),
+        ]
+        return start + memoryItems(.album(album.key), model: model) + [
             .separator,
             .action("Reveal in Finder", Symbol.revealInFinder, enabled: !tracks.isEmpty) {
                 NSWorkspace.shared.activateFileViewerSelecting(tracks.map(\.url))
@@ -408,7 +420,7 @@ enum PlaylistMenu {
         items.append(.separator)
         items.append(like(track, model: model))
         items.append(destinations(model: model, tracks: [track]))
-        items.append(addMemory(Memory.Subject(track: track), model: model))
+        items += memoryItems(Memory.Subject(track: track), model: model)
         items.append(.separator)
         items.append(.action("Reveal in Finder", Symbol.revealInFinder) {
             NSWorkspace.shared.activateFileViewerSelecting([track.url])

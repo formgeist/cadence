@@ -327,22 +327,22 @@ drops its options menu on this tab.
 A memory is a short note — up to 500 characters — kept against a record or a
 song on it: where you were, who gave it to you, why it matters. Add one from
 **Add Memory…** in any track's or album's context menu, or the speech-bubble
-button in an album's header.
+button in an album's header. Once a song or record has one, its menu offers
+**Read Memory** instead, and **Add Another Memory…** beside it.
+
+**Clicking a note anywhere opens it in full**, in the reader: the cover, what
+it is about, every word, and Play, Open Album and Edit…. Cards elsewhere cut a
+long note short; the reader is where the rest is. Editing and deleting are in
+the reader and in each card's context menu.
 
 They come back in five places:
 
-- **The Now Playing pane**, below the playback controls and above the queue:
-  the playing song's newest note, folded to three lines with "Show more" when
-  it runs longer,
-  with "+1 more" when it has several. Song notes only — a note on the whole
-  record would sit there for every track of it.
-
 - **The Memories page** (⌘7, under Catalogs in the sidebar): every note,
-  newest first, in a grid sized like the Playlists one. Each card is the
-  record's cover with a hover Play button, the song or record it is about,
-  and the note. Clicking opens the record; the context menu plays, edits or
-  deletes. A note whose record has left the library stays here, with a
-  placeholder cover and nothing to play.
+  newest first, in a grid sized like the Playlists one. Each card splits in
+  two: the cover (with a hover Play button) and the title open the record and
+  the artist opens the artist, while the note opens the reader. Return on a
+  focused card reads it too. A note whose record has left the library stays
+  here, with a placeholder cover and nothing to play.
 
   A filter field at the top narrows the grid as you type, matching the note
   and the song, record and artist it is about (every word, ignoring case and
@@ -350,22 +350,25 @@ They come back in five places:
   `#Bristol` anywhere in a note and it joins that group. Tags are read from
   the text — case-folded, any script (`#Ærø`), never mid-word (`C#minor`) —
   so there is nothing to manage; edit the word out and the note leaves the
-  group. Tags are picked out in the accent wherever a note is shown. Memory
-  text is deliberately not part of the ⌘K search: that stays about music.
-
+  group. Tags are picked out in the accent wherever a note is shown, and
+  **clicking one opens its group** on this page (Back returns to where you
+  were). Memory text is deliberately not part of the ⌘K search: that stays
+  about music.
+- **The Now Playing pane**, below the playback controls and above the queue:
+  the playing song's newest note, folded to three lines with "Show more" when
+  it runs longer, and "+1 more" when it has several. Song notes only — a note
+  on the whole record would sit there for every track of it.
 - **The album page**, under the tracklist: every note on the record and its
-  songs, newest first, each one click from editing. A long record can push
-  them out of sight, so the header shows a "2 Memories" button that scrolls
-  down to them (with no notes yet, the same spot adds the first). Songs with
-  a note carry a small bubble beside their title.
+  songs, newest first. A long record can push them out of sight, so the header
+  shows a "2 Memories" button that scrolls down to them (with no notes yet,
+  the same spot adds the first). In the tracklist, a song with a note carries a
+  bubble beside its heart — clear of the title — that opens the note.
 - **Home**: the hero at the top is either the album of the day or one of your
   memories, decided by the date — the same all day, and a memory about one
-  day in three (`DailyPick.memoryOdds`), so the album of the day is still the
-  usual guest. A memory hero shows the note with its record's
-  cover, **Open** goes to the record, and **Play** plays the song the note is
-  about (carrying on through its record) or the whole record. Notes written
-  in the last day wait while older ones exist — Home is for coming back to
-  things.
+  day in three (`DailyPick.memoryOdds`). A memory hero shows the note with its
+  record's cover, **Open** goes to the record, and **Play** plays the song the
+  note is about (carrying on through its record) or the whole record. Notes
+  written in the last day wait while older ones exist.
 - **The album of the day** card, which quotes the record's newest note.
 
 Notes live in the `memory` table and are keyed by names — album artist, title

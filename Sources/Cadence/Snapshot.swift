@@ -276,6 +276,13 @@ enum Snapshot {
             container.model.memoryTagFilter = Memory.tagKey("Ingrid")
         },
 
+        // One memory, read in full.
+        Shot(name: "13l-memory-reader", size: CGSize(width: 560, height: 460),
+             makeRoot: { container in
+                 let memory = container.model.memories.first { $0.subject.trackTitle == nil }
+                 return AnyView(memory.map { MemoryReaderSheet(memory: $0) })
+             }) { _ in },
+
         // Writing a note against a song — the memory editor, filled in.
         Shot(name: "13i-memory-editor", size: CGSize(width: 520, height: 360),
              makeRoot: { container in

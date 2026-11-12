@@ -154,7 +154,7 @@ private struct AlbumOfTheDayCard: View {
                 // The newest note on the record, if there is one: the album
                 // of the day is exactly when a memory is worth seeing again.
                 if let memory = model.memories(aboutAlbum: pick.album.key).first {
-                    Button { model.editingMemory = .edit(memory) } label: {
+                    Button { model.readingMemory = memory } label: {
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
                             CadenceIcon("text.bubble", size: 10)
                                 .foregroundStyle(Tokens.Palette.accent)
@@ -171,7 +171,7 @@ private struct AlbumOfTheDayCard: View {
                     .plainControl()
                     .padding(.top, Tokens.Space.xs)
                     .accessibilityLabel("Memory: \(memoryLine(memory)), \(memory.dateDescription)")
-                    .accessibilityHint("Edits this memory")
+                    .accessibilityHint("Reads the whole memory")
                 }
             }
             Spacer(minLength: Tokens.Space.l)
@@ -239,21 +239,25 @@ private struct MemoryOfTheDayCard: View {
                     .font(Tokens.Typography.rowTitle)
                     .foregroundStyle(Tokens.Palette.textSecondary)
                     .lineLimit(1)
-                // The note is the point of the card; clicking it edits it.
-                Button { model.editingMemory = .edit(memory) } label: {
-                    Text(MemoryText.styled("“\(memory.text)”"))
-                        .font(Tokens.Typography.sans(13.5, .medium))
-                        .italic()
-                        .foregroundStyle(Color(hex: 0xD6D6DD))
-                        .lineSpacing(2)
-                        .lineLimit(3)
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .plainControl()
-                .padding(.top, Tokens.Space.xs)
-                .accessibilityLabel("Memory: \(memory.text)")
-                .accessibilityHint("Edits this memory")
+                // The note is the point of the card; clicking it opens the
+                // whole of it. A tap gesture, so its `#tag` links still work.
+                Text(MemoryText.styled("“\(memory.text)”"))
+                    .font(Tokens.Typography.sans(13.5, .medium))
+                    .italic()
+                    .foregroundStyle(Color(hex: 0xD6D6DD))
+                    .tint(Tokens.Palette.accent)
+                    .lineSpacing(2)
+                    .lineLimit(3)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .contentShape(Rectangle())
+                    .pointingHandCursor()
+                    .onTapGesture { model.readingMemory = memory }
+                    .padding(.top, Tokens.Space.xs)
+                    .accessibilityLabel("Memory: \(memory.text)")
+                    .accessibilityHint("Reads the whole memory")
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityAction(.default) { model.readingMemory = memory }
                 Text("Written \(memory.dateDescription)")
                     .font(Tokens.Typography.caption)
                     .foregroundStyle(Tokens.Palette.textTertiary)

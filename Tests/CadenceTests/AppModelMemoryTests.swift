@@ -193,6 +193,57 @@ struct AppModelMemoryTests {
         #expect(!model.isFilteringMemories)
     }
 
+    @Test("Clicking a tag opens the Memories page on that group, field cleared")
+    func showTagGroup() async {
+        let model = await makeModel([
+            Memory(subject: .album(anhedonia.albumKey), text: "Lake with #Axel"),
+            Memory(subject: .init(track: undertow), text: "#Bristol"),
+        ])
+        model.show(.album(anhedonia.albumKey))
+        model.memoryQuery = "something old"
+
+        model.showMemories(taggedWith: Memory.tagKey("Axel"))
+
+        #expect(model.screen == .library)
+        #expect(model.tab == .memories)
+        #expect(model.memoryQuery.isEmpty)
+        #expect(model.filteredMemories.map(\.text) == ["Lake with #Axel"])
+        // Back returns to the record the tag was clicked on.
+        model.goBack()
+        #expect(model.screen == .album(anhedonia.albumKey))
+    }
+
+    @Test("A subject's own notes leave out its songs' and its record's")
+    func notesAboutSubject() async {
+        let onAlbum = Memory(subject: .album(anhedonia.albumKey), text: "The record.")
+        let onSong = Memory(subject: .init(track: anhedonia), text: "The song.")
+        let model = await makeModel([onAlbum, onSong])
+
+        #expect(model.memories(about: .album(anhedonia.albumKey)).map(\.id) == [onAlbum.id])
+        #expect(model.memories(about: anhedonia).map(\.id) == [onSong.id])
+        #expect(model.memories(about: undertow).isEmpty)
+    }
+
+    @Test("Reading follows edits, closes on delete, and hands over to the editor")
+    func reading() async throws {
+        let original = Memory(subject: .album(anhedonia.albumKey), text: "Draft.")
+        let model = await makeModel([original])
+
+        model.readingMemory = original
+        await model.saveMemory(text: "Final.", editing: .edit(original))
+        #expect(model.readingMemory?.text == "Final.")
+
+        model.editReadingMemory()
+        #expect(model.readingMemory == nil)
+        // The editor opens a moment later, once the reader has gone.
+        for _ in 0..<10 where model.editingMemory == nil { await Task.yield() }
+        #expect(model.editingMemory?.id == original.id.uuidString)
+
+        model.readingMemory = try #require(model.memories.first)
+        await model.deleteMemory(original)
+        #expect(model.readingMemory == nil)
+    }
+
     @Test("A picked tag that no note carries any more filters nothing")
     func staleTag() async {
         let model = await makeModel([Memory(subject: .album(anhedonia.albumKey), text: "Rain.")])

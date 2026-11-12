@@ -118,6 +118,129 @@ struct MemoryEditorSheet: View {
     }
 }
 
+// MARK: - Reading one
+
+/// One memory, in full: the record's cover and what the note is about over
+/// every word of it. Cards elsewhere cut a long note short — clicking any of
+/// them opens this. Play and Open Album act on what the note is about; Edit
+/// hands over to the editor.
+struct MemoryReaderSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(PlaybackController.self) private var playback
+    @Environment(\.dismiss) private var dismiss
+
+    var memory: Memory
+
+    private var key: Album.Key { memory.subject.albumKey }
+    private var album: Album? { model.album(for: key) }
+
+    private var detail: String {
+        memory.subject.trackTitle == nil ? key.albumArtist : "\(key.albumArtist) · \(key.title)"
+    }
+
+    /// `12 November 2026`, and when it was last changed if that was later.
+    private var dateLine: String {
+        let edited = memory.updatedAt.timeIntervalSince(memory.createdAt) > 60
+        return edited
+            ? "\(memory.dateDescription) · edited \(memory.updatedAt.formatted(date: .long, time: .omitted))"
+            : memory.dateDescription
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Tokens.Space.xl) {
+            HStack(alignment: .top, spacing: Tokens.Space.l) {
+                ArtworkView(artworkID: album?.artworkID, cornerRadius: Tokens.Radius.control,
+                            caption: album == nil ? "NOT IN LIBRARY" : nil, displaySize: 160)
+                    .frame(width: 72, height: 72)
+                VStack(alignment: .leading, spacing: Tokens.Space.xs) {
+                    HStack(spacing: 6) {
+                        CadenceIcon(PlaylistMenu.Symbol.memory, size: 10)
+                        SectionLabel("Memory", color: Tokens.Palette.accent)
+                    }
+                    .foregroundStyle(Tokens.Palette.accent)
+                    Text(model.title(of: memory.subject))
+                        .font(Tokens.Typography.sans(18, .heavy))
+                        .foregroundStyle(Tokens.Palette.textPrimary)
+                        .lineLimit(2)
+                    Text(detail)
+                        .font(Tokens.Typography.caption)
+                        .foregroundStyle(Tokens.Palette.textTertiary)
+                        .lineLimit(1)
+                }
+            }
+
+            // The whole note, scrolling if it ever outgrows the sheet, and
+            // selectable so a line can be copied out.
+            ScrollView {
+                Text(MemoryText.styled(memory.text))
+                    .font(Tokens.Typography.sans(14.5, .medium))
+                    .foregroundStyle(Color(hex: 0xE2E2E8))
+                    .tint(Tokens.Palette.accent)
+                    .lineSpacing(4)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxHeight: 320)
+            .fixedSize(horizontal: false, vertical: true)
+
+            Text(dateLine)
+                .font(Tokens.Typography.captionSmall)
+                .foregroundStyle(Tokens.Palette.textFaint)
+
+            HStack(spacing: Tokens.Space.s) {
+                CapsuleButton(title: "Edit…") { model.editReadingMemory() }
+                Spacer(minLength: 0)
+                CapsuleButton(title: "Open Album") {
+                    dismiss()
+                    model.show(.album(key))
+                }
+                .disabled(album == nil)
+                CapsuleButton(title: "Play", systemImage: "play.fill", kind: .filled) {
+                    model.play(memory, on: playback)
+                }
+                .disabled(!model.canPlay(memory))
+            }
+        }
+        .padding(Tokens.Space.xxl)
+        .frame(width: 480)
+        .background(Tokens.Palette.popover)
+        // A sheet is its own window: tag links need telling here too, and
+        // the sheet steps aside before the page opens behind it.
+        .memoryTagLinks(model) { dismiss() }
+        .onExitCommand { dismiss() }
+    }
+}
+
+// MARK: - The marker on a track row
+
+/// The bubble beside a song's heart on an album page: there because the song
+/// has a memory, and a way into it — a click opens the newest in the reader.
+struct MemoryMarker: View {
+    @Environment(AppModel.self) private var model
+    var memory: Memory
+
+    /// Matches `LikeButton.side`, so the two marks sit as a pair.
+    static let side: CGFloat = 20
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button { model.readingMemory = memory } label: {
+            CadenceIcon(PlaylistMenu.Symbol.memory, size: 10)
+                .foregroundStyle(isHovering ? Tokens.Palette.accent : Tokens.Palette.textMuted)
+                .frame(width: Self.side, height: Self.side)
+                .contentShape(Rectangle())
+        }
+        .plainControl()
+        .focusable(false)
+        .onHover { isHovering = $0 }
+        .help("Read the memory")
+        // The row reads "Has a memory" and offers "Read memory" itself.
+        .accessibilityHidden(true)
+    }
+}
+
 // MARK: - A note on screen
 
 /// One memory as a card: the note in its own words, then what it is about and
@@ -138,7 +261,9 @@ struct MemoryCard: View {
     @State private var isHovering = false
 
     var body: some View {
-        Button(action: action) {
+        // A tap gesture, not a `Button`: a button swallows the clicks meant
+        // for the `#tag` links inside the note.
+        Group {
             HStack(alignment: .top, spacing: Tokens.Space.m) {
                 if showsArtwork {
                     ArtworkView(artworkID: artworkID, cornerRadius: Tokens.Radius.thumb,
@@ -159,6 +284,7 @@ struct MemoryCard: View {
                     Text(MemoryText.styled(memory.text))
                         .font(Tokens.Typography.sans(13, .medium))
                         .foregroundStyle(Color(hex: 0xD6D6DD))
+                        .tint(Tokens.Palette.accent)
                         .lineSpacing(2)
                         .lineLimit(5)
                         .multilineTextAlignment(.leading)
@@ -179,10 +305,14 @@ struct MemoryCard: View {
                 .strokeBorder(Tokens.Palette.border, lineWidth: 1))
             .contentShape(Rectangle())
         }
-        .plainControl()
+        .pointingHandCursor()
+        .onTapGesture(perform: action)
         .onHover { isHovering = $0 }
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel(spokenLabel)
         .accessibilityHint(actionLabel)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction(.default, action)
     }
 
     private var spokenLabel: String {
@@ -220,8 +350,23 @@ struct AlbumMemoriesSection: View {
                     ForEach(notes) { memory in
                         MemoryCard(memory: memory,
                                    heading: memory.subject.trackTitle.map { "“\($0)”" },
-                                   actionLabel: "Edits this memory") {
-                            model.editingMemory = .edit(memory)
+                                   actionLabel: "Reads the whole memory") {
+                            model.readingMemory = memory
+                        }
+                        .cadenceContextMenu {
+                            [
+                                .action("Read Memory", PlaylistMenu.Symbol.memory) {
+                                    model.readingMemory = memory
+                                },
+                                .action("Edit Memory…", PlaylistMenu.Symbol.rename) {
+                                    model.editingMemory = .edit(memory)
+                                },
+                                .separator,
+                                .action("Delete Memory", PlaylistMenu.Symbol.delete,
+                                        destructive: true) {
+                                    Task { await model.deleteMemory(memory) }
+                                },
+                            ]
                         }
                     }
                 }
@@ -382,7 +527,8 @@ struct MemoryGrid: View {
                  scrollAnchor: $model.memoryGridScrollAnchor,
                  // Off: typing belongs to the filter field above the grid.
                  typeAheadKey: nil,
-                 open: { model.show(.album($0.subject.albumKey)) },
+                 // Return reads the focused memory, as clicking its note does.
+                 open: { model.readingMemory = $0 },
                  header: { EmptyView() }) { memory, _, isFocused, onSelect in
             MemoryGridCard(memory: memory, isKeyboardFocused: isFocused, onSelect: onSelect)
         }
@@ -390,20 +536,53 @@ struct MemoryGrid: View {
 }
 
 /// A note's text with its `#tags` picked out in the accent, so the words that
-/// group it read as such wherever it is shown.
+/// group it read as such wherever it is shown — and each one a link that
+/// opens its group on the Memories page (see `memoryTagLinks()`).
 enum MemoryText {
+    static let tagScheme = "cadence-tag"
+
     static func styled(_ text: String) -> AttributedString {
         var result = AttributedString()
         var cursor = text.startIndex
         for range in Memory.tagRanges(in: text) {
             result += AttributedString(String(text[cursor..<range.lowerBound]))
-            var tag = AttributedString(String(text[range]))
+            let word = String(text[range])
+            var tag = AttributedString(word)
             tag.swiftUI.foregroundColor = Tokens.Palette.accent
+            tag.link = tagURL(Memory.tagKey(word))
             result += tag
             cursor = range.upperBound
         }
         result += AttributedString(String(text[cursor...]))
         return result
+    }
+
+    static func tagURL(_ key: String) -> URL? {
+        let encoded = key.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? key
+        return URL(string: "\(tagScheme):\(encoded)")
+    }
+
+    /// The tag key a link made by `tagURL` carries, or nil for any other URL.
+    static func tagKey(from url: URL) -> String? {
+        guard url.scheme == tagScheme else { return nil }
+        let prefix = "\(tagScheme):"
+        let raw = url.absoluteString
+        guard raw.hasPrefix(prefix) else { return nil }
+        return String(raw.dropFirst(prefix.count)).removingPercentEncoding
+    }
+}
+
+extension View {
+    /// Makes the `#tag` links in memory text open their group on the Memories
+    /// page; `before` runs first — a sheet closing itself, say. Every other
+    /// link goes to the system as usual.
+    func memoryTagLinks(_ model: AppModel, before: @escaping () -> Void = {}) -> some View {
+        environment(\.openURL, OpenURLAction { url in
+            guard let key = MemoryText.tagKey(from: url) else { return .systemAction }
+            before()
+            model.showMemories(taggedWith: key)
+            return .handled
+        })
     }
 }
 
@@ -450,34 +629,58 @@ private struct MemoryGridCard: View {
         memory.subject.trackTitle == nil ? key.albumArtist : "\(key.albumArtist) · \(key.title)"
     }
 
+    /// Two halves with two jobs. The cover and the title are the record's:
+    /// they open it (and the artist link opens the artist). The note is the
+    /// memory's: it opens the reader, with every word of it.
     var body: some View {
         VStack(alignment: .leading, spacing: 11) {
             artwork
+                .contentShape(Rectangle())
+                .pointingHandCursor()
+                .onTapGesture(perform: open)
             VStack(alignment: .leading, spacing: 3) {
-                Text(model.title(of: memory.subject))
-                    .font(Tokens.Typography.cardTitle)
-                    .foregroundStyle(Color(hex: 0xEBEBF0))
-                    .lineLimit(1)
-                Text(detail)
-                    .font(Tokens.Typography.caption)
-                    .foregroundStyle(Tokens.Palette.textTertiary)
-                    .lineLimit(1)
+                InlineLink(text: model.title(of: memory.subject),
+                           font: Tokens.Typography.cardTitle, color: Color(hex: 0xEBEBF0),
+                           action: open)
+                    .disabled(album == nil)
+                subtitle
             }
             note
+                .contentShape(Rectangle())
+                .pointingHandCursor()
+                .onTapGesture(perform: read)
+                .help("Read the whole memory")
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .opacity(isHovering && !isHoveringPlay ? 0.86 : 1)
-        .contentShape(Rectangle())
         .onHover { isHovering = $0 }
-        .pointingHandCursor()
-        .onTapGesture(perform: open)
         .cadenceContextMenu { menu }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(spokenLabel)
         .accessibilityAddTraits(.isButton)
-        .accessibilityAction(.default, open)
+        .accessibilityHint("Reads the whole memory")
+        .accessibilityAction(.default, read)
+        .accessibilityAction(named: Text("Open album"), open)
         .accessibilityAction(named: Text("Play"), play)
         .accessibilityAction(named: Text("Edit memory"), edit)
+    }
+
+    /// The artist, a link to their page, then the record for a song's note.
+    private var subtitle: some View {
+        HStack(spacing: 0) {
+            InlineLink(text: key.albumArtist, font: Tokens.Typography.caption,
+                       color: Tokens.Palette.textTertiary) {
+                model.show(.artist(key.albumArtist))
+            }
+            .disabled(model.artist(named: key.albumArtist) == nil)
+            if memory.subject.trackTitle != nil {
+                Text(" · \(key.title)")
+                    .font(Tokens.Typography.caption)
+                    .foregroundStyle(Tokens.Palette.textTertiary)
+                    .lineLimit(1)
+            }
+        }
+        .lineLimit(1)
     }
 
     private var artwork: some View {
@@ -512,6 +715,7 @@ private struct MemoryGridCard: View {
                 Text(MemoryText.styled(memory.text))
                     .font(Tokens.Typography.sans(12.5, .medium))
                     .foregroundStyle(Color(hex: 0xD6D6DD))
+                    .tint(Tokens.Palette.accent)
                     .lineSpacing(2)
                     .lineLimit(4)
                     .multilineTextAlignment(.leading)
@@ -530,6 +734,7 @@ private struct MemoryGridCard: View {
             .action("Play", PlaylistMenu.Symbol.play, enabled: model.canPlay(memory), play),
             .action("Open Album", "circle.circle", enabled: album != nil, open),
             .separator,
+            .action("Read Memory", PlaylistMenu.Symbol.memory, read),
             .action("Edit Memory…", PlaylistMenu.Symbol.rename, edit),
             .action("Delete Memory", PlaylistMenu.Symbol.delete, destructive: true) {
                 Task { await model.deleteMemory(memory) }
@@ -545,6 +750,10 @@ private struct MemoryGridCard: View {
 
     private func play() { model.play(memory, on: playback) }
     private func edit() { model.editingMemory = .edit(memory) }
+    private func read() {
+        onSelect()
+        model.readingMemory = memory
+    }
 
     private var spokenLabel: String {
         "Memory: \(model.title(of: memory.subject)), \(detail). \(memory.text). \(memory.dateDescription)"
@@ -558,7 +767,8 @@ private struct MemoryGridCard: View {
 /// every track of it, and stop being about this one.
 ///
 /// Collapsed to a few lines so a long note cannot crowd out the queue below;
-/// "Show more" opens the rest when there is more. Clicking the note edits it.
+/// "Show more" opens the rest when there is more. Clicking the note opens it
+/// in the reader.
 struct NowPlayingMemory: View {
     @Environment(AppModel.self) private var model
     var track: Track
@@ -590,11 +800,11 @@ struct NowPlayingMemory: View {
                                              into: $collapsedHeight))
                         .contentShape(Rectangle())
                         .pointingHandCursor()
-                        .onTapGesture { model.editingMemory = .edit(memory) }
+                        .onTapGesture { model.readingMemory = memory }
                         .accessibilityLabel("Memory about \(track.title): \(memory.text)")
-                        .accessibilityHint("Edits this memory")
+                        .accessibilityHint("Reads the whole memory")
                         .accessibilityAddTraits(.isButton)
-                        .accessibilityAction(.default) { model.editingMemory = .edit(memory) }
+                        .accessibilityAction(.default) { model.readingMemory = memory }
                 }
                 HStack(spacing: Tokens.Space.s) {
                     Text(notes.count > 1
@@ -629,6 +839,7 @@ struct NowPlayingMemory: View {
 
     private func noteText(_ text: String) -> some View {
         Text(MemoryText.styled(text))
+            .tint(Tokens.Palette.accent)
             .font(Tokens.Typography.sans(12.5, .medium))
             .italic()
             .foregroundStyle(Color(hex: 0xD6D6DD))
