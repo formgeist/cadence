@@ -76,7 +76,7 @@ private struct NavigationChevron: View {
         }
         .plainControl()
         .disabled(!isEnabled)
-        .onHover { isHovering = $0 }
+        .animatedHover($isHovering)
         .accessibilityLabel(direction == .backward ? "Back" : "Forward")
     }
 }
@@ -172,7 +172,7 @@ private struct PlaySomethingDie: View {
         }
         .plainControl()
         .disabled(!isEnabled)
-        .onHover { isHovering = $0 }
+        .animatedHover($isHovering)
         .onChange(of: model.somethingPlayed) { roll() }
         .accessibilityLabel("Just play something")
         .help("Just play something (⌘J)")
@@ -404,7 +404,7 @@ struct SearchTrigger: View {
             }
         }
         .plainControl()
-        .onHover { isHovering = $0 }
+        .animatedHover($isHovering)
         .accessibilityLabel("Search library")
     }
 }

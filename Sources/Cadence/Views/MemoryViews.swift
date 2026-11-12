@@ -269,7 +269,7 @@ struct MemoryButton: View {
         }
         .plainControl()
         .focusable(false)
-        .onHover { isHovering = $0 }
+        .animatedHover($isHovering)
         .help(newest != nil ? "Read the memory" : "Add a memory")
         // The row says "Has a memory" and offers these as rotor actions.
         .accessibilityHidden(true)
@@ -342,7 +342,7 @@ struct MemoryCard: View {
         }
         .pointingHandCursor()
         .onTapGesture(perform: action)
-        .onHover { isHovering = $0 }
+        .animatedHover($isHovering)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(spokenLabel)
         .accessibilityHint(actionLabel)
@@ -543,7 +543,7 @@ private struct TagChip: View {
             }
         }
         .plainControl()
-        .onHover { isHovering = $0 }
+        .animatedHover($isHovering)
         .accessibilityLabel("\(title), \(count == 1 ? "1 memory" : "\(count) memories")")
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
@@ -687,8 +687,7 @@ private struct MemoryGridCard: View {
                 .help("Read the whole memory")
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .opacity(isHovering && !isHoveringPlay ? 0.86 : 1)
-        .onHover { isHovering = $0 }
+        .animatedHover($isHovering)
         .cadenceContextMenu { menu }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(spokenLabel)
@@ -727,10 +726,11 @@ private struct MemoryGridCard: View {
                 if isHoveringArt && model.canPlay(memory) {
                     CoverPlayButton(subject: model.title(of: memory.subject),
                                     isHovered: $isHoveringPlay, action: play)
-                        .transition(.opacity)
+                        .transition(.coverButton)
                 }
             }
-            .animation(.easeOut(duration: 0.12), value: isHoveringArt)
+            .animation(Tokens.Motion.lift, value: isHoveringArt)
+            .coverLift(isHoveringArt)
             .onHover { hovering in
                 isHoveringArt = hovering
                 if !hovering { isHoveringPlay = false }
@@ -865,7 +865,7 @@ struct NowPlayingMemory: View {
                         in: RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous)
                 .strokeBorder(Tokens.Palette.border, lineWidth: 1))
-            .onHover { isHovering = $0 }
+            .animatedHover($isHovering)
             .accessibilityElement(children: .contain)
             // A new song starts folded, whatever the last one was left at.
             .onChange(of: track.id) { _, _ in isExpanded = false }

@@ -58,7 +58,7 @@ struct LikedSongsView: View {
 
                 HStack(spacing: 10) {
                     PlayPauseButton(isPlaying: isLoaded(tracks) && playback.isPlaying,
-                                    subject: AppModel.likedSongsName) {
+                                    subject: AppModel.likedSongsName, showsTitle: true) {
                         if isLoaded(tracks) {
                             playback.togglePlayPause()
                         } else if let first = tracks.first {
@@ -67,7 +67,8 @@ struct LikedSongsView: View {
                     }
                     .disabled(tracks.isEmpty)
 
-                    CapsuleButton(title: "Shuffle") { playback.shuffle(tracks) }
+                    CapsuleButton(systemImage: "shuffle", accessibilityLabel: "Shuffle") { playback.shuffle(tracks) }
+                    .help("Shuffle")
                         .disabled(tracks.isEmpty)
 
                     CapsuleButton(systemImage: "plus",
@@ -161,6 +162,8 @@ private struct LikedSongsListItem: View {
             .accessibilityAction(named: Text("Remove from \(AppModel.likedSongsName)"), unlike)
             .accessibilityAction(named: Text("Go to artist"), goToArtist)
             .accessibilityAction(named: Text("Go to album"), goToAlbum)
+            // Unliking already has its own action above.
+            .trackMarkActions(track, model: model, includeLike: false)
     }
 
     private var row: some View {
@@ -266,7 +269,7 @@ private struct LikedTrackRow: View {
             }
             .frame(width: 160, alignment: .leading)
 
-            LikeButton(track: track, isRowHovered: isHovering)
+            TrackMarks(track: track, isRowHovered: isHovering)
 
             Text(DurationFormat.clock(track.duration))
                 .font(Tokens.Typography.mono(11.5))
@@ -276,6 +279,6 @@ private struct LikedTrackRow: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
         .hoverHighlight(isActive: isCurrent || isSelected)
-        .onHover { isHovering = $0 }
+        .animatedHover($isHovering)
     }
 }

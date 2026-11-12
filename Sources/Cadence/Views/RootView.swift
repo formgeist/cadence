@@ -388,7 +388,7 @@ private struct Banner: View {
         .shadow(color: .black.opacity(0.5), radius: 20, y: 8)
         .padding(.bottom, 28)
         .transition(.move(edge: .bottom).combined(with: .opacity))
-        .onHover { isHovering = $0 }
+        .animatedHover($isHovering)
         // Keyed on `text`: a new message rebuilds the task and the countdown
         // restarts from empty.
         .task(id: text) {

@@ -59,6 +59,22 @@ struct PlaylistFolderStoreTests {
         }
     }
 
+    @Test("Playlist order is written and survives a relaunch")
+    func playlistOrderPersists() async throws {
+        try await withDatabaseURL { url in
+            let store = try SQLiteLibraryStore(url: url)
+            let a = try await store.createPlaylist(named: "A")
+            let b = try await store.createPlaylist(named: "B")
+            let c = try await store.createPlaylist(named: "C")
+
+            try await store.setPlaylistOrder([c.id, a.id])
+            #expect(try await store.playlists().map(\.id) == [c.id, a.id, b.id])
+
+            let reopened = try SQLiteLibraryStore(url: url)
+            #expect(try await reopened.playlists().map(\.id) == [c.id, a.id, b.id])
+        }
+    }
+
     @Test("Moving into a folder that does not exist is refused, not orphaned")
     func moveToMissingFolderThrows() async throws {
         try await withDatabaseURL { url in

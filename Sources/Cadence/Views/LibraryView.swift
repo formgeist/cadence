@@ -367,6 +367,7 @@ private struct ArtistCard: View {
                             isCircular: true,
                             displaySize: 200)
                     .aspectRatio(1, contentMode: .fit)
+                    .coverLift(isHovering, cornerRadius: 1_000)
                     .keyboardFocusRing(isKeyboardFocused, in: Circle())
 
                 VStack(spacing: 3) {
@@ -384,11 +385,10 @@ private struct ArtistCard: View {
                 }
                 .frame(maxWidth: .infinity)
             }
-            .opacity(isHovering ? 0.86 : 1)
         }
         .plainControl()
         .focusable(false)
-        .onHover { isHovering = $0 }
+        .animatedHover($isHovering)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(artist.name), \(artist.summary)")
         .accessibilityAddTraits(.isButton)
@@ -600,15 +600,15 @@ struct AlbumCard: View, Equatable {
                         caption: album.artworkID == nil ? "NO COVER ART" : "COVER ART",
                         displaySize: 320)
                 .aspectRatio(1, contentMode: .fit)
-                // Built only while hovered. An idle, transparent scrim on
-                // every card measurably added long frames scrolling 2,500
-                // albums; this matched having no overlay at all.
+                // The button is built only while hovered, or on the album
+                // that is playing. An idle, transparent scrim on every card
+                // measurably added long frames scrolling 2,500 albums; an
+                // overlay that draws nothing matched having none at all.
                 .overlay {
-                    if isHoveringArt {
-                        playOverlay.transition(.opacity)
-                    }
+                    AlbumCoverPlayOverlay(album: album, isHoveringArt: isHoveringArt,
+                                          isHoveringPlay: $isHoveringPlay)
                 }
-                .animation(.easeOut(duration: 0.12), value: isHoveringArt)
+                .coverLift(isHoveringArt)
                 .onHover { hovering in
                     isHoveringArt = hovering
                     // The button leaves with the hover, often before its
@@ -634,9 +634,8 @@ struct AlbumCard: View, Equatable {
                     .lineLimit(1)
             }
         }
-        .opacity(isHovering && !isHoveringPlay ? 0.86 : 1)
         .contentShape(Rectangle())
-        .onHover { isHovering = $0 }
+        .animatedHover($isHovering)
         .pointingHandCursor()
         .background {
             GeometryReader { geometry in
@@ -668,14 +667,6 @@ struct AlbumCard: View, Equatable {
         // The hover Play button is hidden from VoiceOver along with the rest of the
         // card's children, so the same action is offered here instead.
         .accessibilityAction(named: "Play") { playback.play(album) }
-    }
-
-    /// Appears over the cover on hover: the accent Play button in the corner,
-    /// which starts the album from the top without opening it.
-    private var playOverlay: some View {
-        CoverPlayButton(subject: album.title, isHovered: $isHoveringPlay) {
-            playback.play(album)
-        }
     }
 
     /// Everything but `onSelect`, which no closure can be compared on — see
@@ -778,7 +769,7 @@ private struct GenreCard: View {
         }
         .plainControl()
         .focusable(false)
-        .onHover { isHovering = $0 }
+        .animatedHover($isHovering)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(genre.name), \(genre.summary)")
         .accessibilityAddTraits(.isButton)
@@ -868,10 +859,11 @@ private struct PlaylistCard: View {
                 // playlist has nothing to play, so it gets no Play button.
                 .overlay {
                     if isHoveringArt && !playlist.trackIDs.isEmpty {
-                        playOverlay.transition(.opacity)
+                        playOverlay.transition(.coverButton)
                     }
                 }
-                .animation(.easeOut(duration: 0.12), value: isHoveringArt)
+                .animation(Tokens.Motion.lift, value: isHoveringArt)
+                .coverLift(isHoveringArt)
                 .onHover { hovering in
                     isHoveringArt = hovering
                     // The button leaves with the hover, often before its
@@ -903,9 +895,8 @@ private struct PlaylistCard: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .opacity(isHovering && !isTargeted && !isHoveringPlay ? 0.86 : 1)
         .contentShape(Rectangle())
-        .onHover { isHovering = $0 }
+        .animatedHover($isHovering)
         .pointingHandCursor()
         // Opening it is what clicking a playlist has to do; that it did
         // nothing here was half of issue #1.
@@ -963,13 +954,18 @@ struct RecentCard: View {
             VStack(alignment: .leading, spacing: 11) {
                 artwork
                     .aspectRatio(1, contentMode: .fit)
-                    // Built only while hovered — see `AlbumCard`.
+                    // Built only while hovered, or for the album playing —
+                    // see `AlbumCard`.
                     .overlay {
-                        if isHoveringArt, canPlay {
-                            playOverlay.transition(.opacity)
+                        if case .album(let album) = item {
+                            AlbumCoverPlayOverlay(album: album, isHoveringArt: isHoveringArt,
+                                                  isHoveringPlay: $isHoveringPlay)
+                        } else if isHoveringArt, canPlay {
+                            playOverlay.transition(.coverButton)
                         }
                     }
-                    .animation(.easeOut(duration: 0.12), value: isHoveringArt)
+                    .animation(Tokens.Motion.lift, value: isHoveringArt)
+                    .coverLift(isHoveringArt)
                     .onHover { hovering in
                     isHoveringArt = hovering
                     // The button leaves with the hover, often before its
@@ -993,11 +989,10 @@ struct RecentCard: View {
                         .lineLimit(1)
                 }
             }
-            .opacity(isHovering && !isHoveringPlay ? 0.86 : 1)
         }
         .plainControl()
         .focusable(false)
-        .onHover { isHovering = $0 }
+        .animatedHover($isHovering)
         .cadenceContextMenu { contextMenuItems }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(spokenLabel)

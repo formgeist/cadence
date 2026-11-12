@@ -191,7 +191,7 @@ private struct SimilarArtistCard: View {
         }
         .plainControl()
         .focusable(false)
-        .onHover { isHovering = $0 }
+        .animatedHover($isHovering)
         .help(similar.reason.text)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(similar.name), \(similar.reason.text)")

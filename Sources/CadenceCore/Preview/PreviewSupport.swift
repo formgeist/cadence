@@ -411,6 +411,17 @@ public actor InMemoryLibraryStore: LibraryStore {
         storedPlaylists[index].folderID = folderID
     }
 
+    public func setPlaylistOrder(_ ids: [Playlist.ID]) async throws {
+        let rank = Dictionary(uniqueKeysWithValues: ids.enumerated().map { ($1, $0) })
+        let original = Dictionary(uniqueKeysWithValues:
+            storedPlaylists.enumerated().map { ($1.id, $0) })
+        storedPlaylists.sort {
+            let a = rank[$0.id].map { (0, $0) } ?? (1, original[$0.id] ?? 0)
+            let b = rank[$1.id].map { (0, $0) } ?? (1, original[$1.id] ?? 0)
+            return a < b
+        }
+    }
+
     /// Rewrites one playlist's contents and the duration that follows from
     /// them. The real store recomputes the total with a `SUM`; here it has to
     /// be kept in step by hand, or the sidebar would go on quoting the length

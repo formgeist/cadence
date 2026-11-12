@@ -287,6 +287,18 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
         }
     }
 
+    public func setPlaylistOrder(_ ids: [Playlist.ID]) async throws {
+        try await pool.write { db in
+            let named = ids.map(\.uuidString)
+            let rest = try String.fetchAll(db, sql: "SELECT id FROM playlist ORDER BY position, name")
+                .filter { !named.contains($0) }
+            for (position, id) in (named + rest).enumerated() {
+                try db.execute(sql: "UPDATE playlist SET position = ? WHERE id = ?",
+                               arguments: [position, id])
+            }
+        }
+    }
+
     public func librarySize() async throws -> Int64 {
         try await pool.read { db in
             try Int64.fetchOne(db, sql: "SELECT IFNULL(SUM(fileSize), 0) FROM track") ?? 0

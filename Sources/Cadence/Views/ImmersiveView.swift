@@ -24,12 +24,12 @@ struct ImmersiveView: View {
                 topBar
                 stage
                     .contentShape(Rectangle())
-                    .onHover { isHovering = $0 }
+                    .animatedHover($isHovering)
             }
 
             band
                 .contentShape(Rectangle())
-                .onHover { isHovering = $0 }
+                .animatedHover($isHovering)
 
             bottomScrim
         }
@@ -160,12 +160,11 @@ struct ImmersiveView: View {
     private func trackCaption(_ track: Track) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             SectionLabel("Playing now", size: 10, color: Tokens.Palette.accent)
-            Text(track.title)
-                .font(Tokens.Typography.immersiveTitle)
-                .tracking(-1.1)
-                .foregroundStyle(Color(hex: 0xF5F5F9))
-                .lineLimit(3)
-                .fixedSize(horizontal: false, vertical: true)
+            InlineLink(text: track.title, font: Tokens.Typography.immersiveTitle,
+                       color: Color(hex: 0xF5F5F9), lineLimit: 3, tracking: -1.1) {
+                model.show(.album(track.albumKey))
+            }
+            .fixedSize(horizontal: false, vertical: true)
             InlineLink(text: track.artist, font: Tokens.Typography.sans(15.5, .semibold),
                        color: Color(hex: 0xB9B9C2)) {
                 model.show(.artist(track.artist))

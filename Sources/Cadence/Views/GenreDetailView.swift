@@ -69,7 +69,7 @@ struct GenreDetailView: View {
                     .foregroundStyle(Color(hex: 0x82828D))
 
                 HStack(spacing: 10) {
-                    PlayPauseButton(isPlaying: isGenrePlaying, subject: genre.name) {
+                    PlayPauseButton(isPlaying: isGenrePlaying, subject: genre.name, showsTitle: true) {
                         if isGenreLoaded {
                             playback.togglePlayPause()
                         } else if let first = orderedTracks.first {
@@ -77,9 +77,10 @@ struct GenreDetailView: View {
                         }
                     }
                     .disabled(orderedTracks.isEmpty)
-                    CapsuleButton(title: "Shuffle") {
+                    CapsuleButton(systemImage: "shuffle", accessibilityLabel: "Shuffle") {
                         playback.shuffle(orderedTracks)
                     }
+                    .help("Shuffle")
                 }
                 .padding(.top, 6)
             }

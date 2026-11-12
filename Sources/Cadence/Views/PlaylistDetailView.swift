@@ -119,7 +119,7 @@ struct PlaylistDetailView: View {
             .frame(width: Tokens.Layout.artistHeaderArt, height: Tokens.Layout.artistHeaderArt)
             .overlay { editCoverOverlay }
             .shadow(color: .black.opacity(0.55), radius: 25, y: 12)
-            .onHover { isHoveringArt = $0 }
+            .animatedHover($isHoveringArt)
 
             VStack(alignment: .leading, spacing: 12) {
                 Text(playlist.name)
@@ -134,7 +134,7 @@ struct PlaylistDetailView: View {
                     .foregroundStyle(Color(hex: 0x82828D))
 
                 HStack(spacing: 10) {
-                    PlayPauseButton(isPlaying: isPlaylistPlaying, subject: playlist.name) {
+                    PlayPauseButton(isPlaying: isPlaylistPlaying, subject: playlist.name, showsTitle: true) {
                         // Mid-playlist, the button drives the transport; it
                         // only starts over when something else is loaded.
                         if isPlaylistLoaded(tracks) {
@@ -145,9 +145,10 @@ struct PlaylistDetailView: View {
                     }
                     .disabled(tracks.isEmpty)
 
-                    CapsuleButton(title: "Shuffle") {
+                    CapsuleButton(systemImage: "shuffle", accessibilityLabel: "Shuffle") {
                         playback.shuffle(tracks, from: playlist.id)
                     }
+                    .help("Shuffle")
                     .disabled(tracks.isEmpty)
 
                     CapsuleButton(systemImage: "plus",
@@ -261,6 +262,7 @@ struct PlaylistDetailView: View {
                     .accessibilityAction(named: "Go to album") {
                         model.show(.album(entry.track.albumKey))
                     }
+                    .trackMarkActions(entry.track, model: model)
                 }
 
                 // The only way to drop after the last row: every other row
@@ -349,6 +351,8 @@ struct PlaylistDetailView: View {
     private func spokenLabel(for entry: AppModel.PlaylistEntry) -> String {
         var parts = ["\(entry.position + 1)", entry.track.title, entry.track.artist]
         parts.append(NowPlayingPane.spokenDuration(entry.track.duration))
+        if model.isLiked(entry.track) { parts.append("Liked") }
+        if model.hasMemory(entry.track) { parts.append("Has a memory") }
         if playback.currentTrack?.id == entry.track.id { parts.append("Now playing") }
         return parts.joined(separator: ", ")
     }
@@ -421,6 +425,8 @@ private struct PlaylistTrackRow: View {
             }
             .frame(width: 160, alignment: .leading)
 
+            TrackMarks(track: track, isRowHovered: isHovering)
+
             Text(DurationFormat.clock(track.duration))
                 .font(Tokens.Typography.mono(11.5))
                 .foregroundStyle(Color(hex: 0x7A7A84))
@@ -429,6 +435,6 @@ private struct PlaylistTrackRow: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
         .hoverHighlight(isActive: isCurrent || isSelected)
-        .onHover { isHovering = $0 }
+        .animatedHover($isHovering)
     }
 }

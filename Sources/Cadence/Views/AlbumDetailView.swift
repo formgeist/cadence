@@ -78,12 +78,13 @@ struct AlbumDetailView: View {
                 badges
 
                 HStack(spacing: 10) {
-                    PlayPauseButton(isPlaying: isAlbumPlaying, subject: album.title) {
+                    PlayPauseButton(isPlaying: isAlbumPlaying, subject: album.title, showsTitle: true) {
                         // Mid-album, the button drives the transport; it only
                         // starts the record over when something else is loaded.
                         if isAlbumLoaded { playback.togglePlayPause() } else { playback.play(album) }
                     }
-                    CapsuleButton(title: "Shuffle") { playback.shuffle(album) }
+                    CapsuleButton(systemImage: "shuffle", accessibilityLabel: "Shuffle") { playback.shuffle(album) }
+                    .help("Shuffle")
                     // A menu, not a button: the queue was the only thing an
                     // album could be added to, and a playlist is the other
                     // obvious answer to the same plus.
@@ -182,15 +183,65 @@ struct AlbumDetailView: View {
         return parts
     }
 
+    /// Format first, then a chip per catalog the record sits in — the way in
+    /// to that catalog, the same as its card on the Catalogs page.
+    ///
+    /// Wraps rather than squeezes: in a narrow window an album in several
+    /// catalogs would otherwise break the bit depth over two lines and cut
+    /// the catalog names short.
     private var badges: some View {
-        HStack(spacing: Tokens.Space.s) {
+        FlowLayout(spacing: Tokens.Space.s) {
             if let format = album.dominantFormat {
                 QualityBadge(text: format.codec.name, emphasis: .accent)
+                    .fixedSize()
                 QualityBadge(text: format.longDescription,
                              spokenText: NowPlayingPane.spokenFormat(format))
+                    .fixedSize()
+            }
+            ForEach(model.catalogs(containing: album.key)) { catalog in
+                CatalogChip(catalog: catalog) { model.show(.catalog(catalog.id)) }
+                    .fixedSize()
             }
         }
         .padding(.top, 2)
+    }
+}
+
+/// A catalog an album belongs to, as a chip beside its quality badges: the
+/// same height and outline, in the sans face because it is a name, not a
+/// spec. A link — it opens the catalog.
+private struct CatalogChip: View {
+    var catalog: Catalog
+    var action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                CadenceIcon("books.vertical", size: 9.5)
+                Text(catalog.name)
+                    .font(Tokens.Typography.sans(11, .semibold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(isHovering ? Tokens.Palette.textPrimary : Color(hex: 0x8D8D98))
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4)
+            .background {
+                RoundedRectangle(cornerRadius: Tokens.Radius.thumb, style: .continuous)
+                    .fill(isHovering ? Tokens.Palette.navHover : .clear)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: Tokens.Radius.thumb, style: .continuous)
+                    .strokeBorder(Tokens.Palette.borderStrong, lineWidth: 1)
+            }
+            .contentShape(Rectangle())
+        }
+        .plainControl()
+        .animatedHover($isHovering)
+        .help("Open the \(catalog.name) catalog")
+        .accessibilityLabel("In catalog: \(catalog.name)")
+        .accessibilityHint("Opens the catalog")
     }
 }
 
@@ -431,7 +482,7 @@ private struct TrackRow: View {
             }
             .onTapGesture(count: 2, perform: onPlay)
             .onTapGesture(perform: onSelect)
-            .onHover { isHovering = $0 }
+            .animatedHover($isHovering)
             .pointingHandCursor()
             // One stop per track, reading as a sentence, instead of four stops
             // reading "01", a title, "16/44.1", "4:12".
@@ -517,10 +568,7 @@ private struct TrackRow: View {
             // The song's marks, side by side and clear of its title: the
             // memory bubble, then the heart. Both work the same way — solid
             // and always there once set, a hover-only outline until then.
-            HStack(spacing: 2) {
-                MemoryButton(track: track, isRowHovered: isHovering)
-                LikeButton(track: track, isRowHovered: isHovering)
-            }
+            TrackMarks(track: track, isRowHovered: isHovering)
 
             Text(track.format.shortDescription)
                 .font(Tokens.Typography.mono(10.5))
@@ -547,6 +595,41 @@ private struct TrackRow: View {
         if model.hasMemory(track) { parts.append("Has a memory") }
         if isCurrent { parts.append("Now playing") }
         return parts.joined(separator: ", ")
+    }
+}
+
+/// The memory bubble and the heart, side by side — the song's own marks, the
+/// same on every track list. Both are solid and always there once set, a
+/// hover-only outline until then.
+struct TrackMarks: View {
+    var track: Track
+    var isRowHovered: Bool
+
+    var body: some View {
+        HStack(spacing: 2) {
+            MemoryButton(track: track, isRowHovered: isRowHovered)
+            LikeButton(track: track, isRowHovered: isRowHovered)
+        }
+    }
+}
+
+extension View {
+    /// What `TrackMarks` does, for VoiceOver, on a row whose children
+    /// `.accessibilityElement(children: .ignore)` has swallowed.
+    func trackMarkActions(_ track: Track, model: AppModel, includeLike: Bool = true) -> some View {
+        self
+            .accessibilityAction(named: "Read memory", isAvailable: model.hasMemory(track)) {
+                model.readingMemory = model.memories(about: track).first
+            }
+            .accessibilityAction(named: "Add memory", isAvailable: !model.hasMemory(track)) {
+                model.editingMemory = .create(Memory.Subject(track: track))
+            }
+            .accessibilityAction(named: model.isLiked(track)
+                                 ? "Remove from \(AppModel.likedSongsName)"
+                                 : "Add to \(AppModel.likedSongsName)",
+                                 isAvailable: includeLike) {
+                Task { await model.toggleLike(track) }
+            }
     }
 }
 
@@ -579,7 +662,7 @@ struct LikeButton: View {
         }
         .plainControl()
         .focusable(false)
-        .onHover { isHovering = $0 }
+        .animatedHover($isHovering)
         .help(liked ? "Remove from \(AppModel.likedSongsName)"
                     : "Add to \(AppModel.likedSongsName)")
         .accessibilityLabel(liked ? "Remove \(track.title) from \(AppModel.likedSongsName)"

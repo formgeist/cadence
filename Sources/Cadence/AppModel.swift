@@ -824,6 +824,12 @@ final class AppModel {
         albumsByCatalog[id] ?? []
     }
 
+    /// The catalogs whose rules pick out this album, A–Z like the Catalogs
+    /// page — for the chips in the album header.
+    func catalogs(containing key: Album.Key) -> [Catalog] {
+        catalogs.filter { albumsByCatalog[$0.id]?.contains { $0.key == key } ?? false }
+    }
+
     func coverIDs(forCatalog catalog: Catalog) -> [Artwork.ID] {
         Catalog.covers(of: albums(inCatalog: catalog.id))
     }
@@ -1551,6 +1557,26 @@ final class AppModel {
         }
     }
 
+    /// Files a playlist in `sibling`'s folder (or the top level) and puts it
+    /// directly before or after `sibling`. Nothing is written when it is
+    /// already there.
+    func placePlaylist(
+        _ playlistID: Playlist.ID, _ placement: PlaylistPlacement, _ sibling: Playlist
+    ) async {
+        guard playlistID != sibling.id, let moving = playlist(id: playlistID) else { return }
+        let current = playlists.map(\.id)
+        var order = current.filter { $0 != playlistID }
+        guard let index = order.firstIndex(of: sibling.id) else { return }
+        order.insert(playlistID, at: placement == .before ? index : index + 1)
+        let folderID = sibling.folderID
+        let changesFolder = moving.folderID != folderID
+        guard changesFolder || order != current else { return }
+        await edit(moving, failing: "move") {
+            if changesFolder { try await store.movePlaylist(playlistID, toFolder: folderID) }
+            try await store.setPlaylistOrder(order)
+        }
+    }
+
     // MARK: Sidebar drops
 
     /// What can land on the sidebar: tracks from a list, or a playlist
@@ -1560,9 +1586,14 @@ final class AppModel {
         case playlist(Playlist.ID)
     }
 
+    /// Which side of a playlist row a dragged playlist lands on.
+    enum PlaylistPlacement { case before, after }
+
     /// Where in the sidebar it landed.
     enum SidebarDropTarget {
-        case playlist(Playlist)
+        /// For a dragged playlist, `placement` says which side of this row it
+        /// goes; tracks ignore it.
+        case playlist(Playlist, placement: PlaylistPlacement = .before)
         case folder(PlaylistFolder.ID)
         /// The Playlists heading and the empty space below the list.
         case topLevel
@@ -1572,9 +1603,9 @@ final class AppModel {
     /// the rules live in one place and can be tested without a drag.
     ///
     /// A playlist dropped on another playlist lands in that playlist's
-    /// folder, or at the top level if it has none: the row stands for the
-    /// place it sits, not for itself. That is also one way back out of a
-    /// folder. Returns whether the drop is taken, for SwiftUI's drop handler,
+    /// folder, or at the top level if it has none, just above or below it:
+    /// the row stands for the place it sits, not for itself. That is how
+    /// playlists are reordered, and also one way back out of a folder. Returns whether the drop is taken, for SwiftUI's drop handler,
     /// which has to answer before the write is done.
     @discardableResult
     func handleDrop(_ drop: SidebarDrop, on target: SidebarDropTarget) -> Bool {
@@ -1589,7 +1620,7 @@ final class AppModel {
         switch (drop, target) {
         case (.tracks(let ids), .playlist): !ids.isEmpty
         case (.tracks, _): false
-        case (.playlist(let id), .playlist(let sibling)): id != sibling.id
+        case (.playlist(let id), .playlist(let sibling, _)): id != sibling.id
         case (.playlist, .folder), (.playlist, .topLevel): true
         }
     }
@@ -1597,12 +1628,12 @@ final class AppModel {
     /// The write behind an accepted drop.
     func performDrop(_ drop: SidebarDrop, on target: SidebarDropTarget) async {
         switch (drop, target) {
-        case (.tracks(let ids), .playlist(let playlist)):
+        case (.tracks(let ids), .playlist(let playlist, _)):
             await addTracks(ids, to: playlist.id)
         case (.tracks, _):
             break
-        case (.playlist(let id), .playlist(let sibling)):
-            await movePlaylist(id, toFolder: sibling.folderID)
+        case (.playlist(let id), .playlist(let sibling, let placement)):
+            await placePlaylist(id, placement, sibling)
         case (.playlist(let id), .folder(let folderID)):
             await movePlaylist(id, toFolder: folderID)
         case (.playlist(let id), .topLevel):

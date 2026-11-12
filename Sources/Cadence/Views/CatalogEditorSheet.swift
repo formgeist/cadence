@@ -556,7 +556,7 @@ private struct DropdownField: View {
                 .contentShape(Rectangle())
             }
             .plainControl()
-            .onHover { isHovering = $0 }
+            .animatedHover($isHovering)
             .accessibilityLabel(accessibilityLabel)
             .accessibilityValue(title)
         }

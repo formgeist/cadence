@@ -69,6 +69,9 @@ private struct SlowStore: LibraryStore {
     func movePlaylist(_ id: Playlist.ID, toFolder folderID: PlaylistFolder.ID?) async throws {
         try await wrapped.movePlaylist(id, toFolder: folderID)
     }
+    func setPlaylistOrder(_ ids: [Playlist.ID]) async throws {
+        try await wrapped.setPlaylistOrder(ids)
+    }
     func tracks(matching query: String) async throws -> [Track] {
         try await wrapped.tracks(matching: query)
     }
