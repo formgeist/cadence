@@ -193,8 +193,8 @@ struct MemoryCard: View {
 
 // MARK: - On the album page
 
-/// The record's memories, between its header and its tracklist: notes on the
-/// whole record and on songs from it, newest first. Each opens the editor.
+/// The record's memories, under its tracklist: notes on the whole record and
+/// on songs from it, newest first. Each opens the editor.
 struct AlbumMemoriesSection: View {
     @Environment(AppModel.self) private var model
     var album: Album
@@ -227,7 +227,7 @@ struct AlbumMemoriesSection: View {
                 }
             }
             .padding(.horizontal, Tokens.Space.albumInset)
-            .padding(.top, 22)
+            .padding(.bottom, 44)
         }
     }
 }

@@ -314,8 +314,10 @@ button in an album's header.
 
 They come back in three places:
 
-- **The album page**, between the header and the tracklist: every note on the
-  record and its songs, newest first, each one click from editing. Songs with
+- **The album page**, under the tracklist: every note on the record and its
+  songs, newest first, each one click from editing. A long record can push
+  them out of sight, so the header shows a "2 Memories" button that scrolls
+  down to them (with no notes yet, the same spot adds the first). Songs with
   a note carry a small bubble beside their title.
 - **Home**, under the album of the day: up to three notes, picked afresh each
   day and the same all day, the way the album of the day is. Notes written in
