@@ -25,7 +25,7 @@ test: $(CREDENTIALS)
 	swift test $(TEST_FLAGS)
 
 run: $(CREDENTIALS)
-	swift run Cadence
+	./Scripts/run-dev.sh
 
 ## Assemble a real, signed, sandboxed Cadence.app — no Xcode required.
 ##   make app            sandboxed, ad-hoc signed
@@ -46,27 +46,27 @@ audio-check: app
 
 ## Print the accessibility tree for each screen, flagging silent controls.
 a11y: $(CREDENTIALS)
-	@swift run Cadence --a11y
+	@./Scripts/run-dev.sh --a11y
 
 ## Measure the store and scrolling against a synthetic library.
 ##   make bench [TRACKS=30000]
 bench: $(CREDENTIALS)
-	@swift run -c release Cadence --bench --tracks $(or $(TRACKS),30000) --with-artwork
+	@./Scripts/run-dev.sh --release --bench --tracks $(or $(TRACKS),30000) --with-artwork
 
 ## Render every screen against PreviewData for design review.
 shots: $(CREDENTIALS)
-	swift run Cadence --snapshot $(SNAPSHOT_DIR)
+	./Scripts/run-dev.sh --snapshot $(SNAPSHOT_DIR)
 
 ## Scan a folder and print the resulting library, without opening a window.
 ##   make scan FOLDER=~/Music/FLAC [LIBRARY=/tmp/scratch.sqlite]
 scan: $(CREDENTIALS)
-	swift run Cadence --scan $(FOLDER) $(if $(LIBRARY),--library $(LIBRARY),) $(if $(TRACKS),--tracks,)
+	./Scripts/run-dev.sh --scan $(FOLDER) $(if $(LIBRARY),--library $(LIBRARY),) $(if $(TRACKS),--tracks,)
 
 ## Run the library server on 127.0.0.1, for curl. Debug builds only. Needs an
 ## API key in CADENCE_DEV_API_KEY — see docs/library-server.md.
 ##   make serve [LIBRARY=/tmp/scratch.sqlite]
 serve: $(CREDENTIALS)
-	swift run Cadence --serve $(if $(LIBRARY),--library $(LIBRARY),)
+	./Scripts/run-dev.sh --serve $(if $(LIBRARY),--library $(LIBRARY),)
 
 clean:
 	swift package clean

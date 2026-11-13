@@ -45,9 +45,12 @@ curl "http://127.0.0.1:PORT/rest/ping?apiKey=$CADENCE_DEV_API_KEY"
 By default it serves the app's real library. `make serve LIBRARY=/path/to.sqlite`
 serves another, such as one written by `make scan … LIBRARY=…`.
 
-Like the other harnesses, `--serve` launches the app binary, so a freshly
-rebuilt, ad-hoc signed build can stop at a keychain prompt before it prints
-anything. CONTRIBUTING.md, "A stable signature for local builds", is the fix.
+Like the other harnesses, `--serve` launches the app binary, which reads the
+keychain at launch. `make serve` signs the binary with the local signing
+certificate when you have one, so that read does not stop at a prompt after
+every rebuild. Without the certificate it can: the server then prints nothing
+and appears to hang. CONTRIBUTING.md, "A stable signature for local builds",
+says how to make the certificate.
 
 ## Shape
 
