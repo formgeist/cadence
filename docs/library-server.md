@@ -10,12 +10,13 @@ from the app yet.
 
 | Built | Not built yet |
 |---|---|
-| HTTP request parser | Playlists and starred |
-| OpenSubsonic response envelope and error codes | A way to start the server from the app |
+| HTTP request parser | A way to start the server from the app |
+| OpenSubsonic response envelope and error codes | `make bench` timings |
 | API-key check against a fixed key | Pairing, per-device keys, TLS, Bonjour (Phase 3) |
 | `ping`, `getOpenSubsonicExtensions` | A "Share library" switch in the app (Phase 3) |
 | `getMusicFolders`, `getArtists`, `getArtist`, `getAlbum`, `getAlbumList2`, `getSong`, `search3` | |
 | `stream`, `download`, `getCoverArt` | |
+| `getPlaylists`, `getPlaylist`, `getStarred2` | |
 | Debug-only loopback listener | |
 
 ## Shape
@@ -94,6 +95,7 @@ to the wrong endpoint fails to parse instead of finding something else.
 | Song | `tr-` and a lowercase UUID | The track's stored id |
 | Album | `al-` and 32 hex characters | `StableID`, a digest of artist, title and year |
 | Artist | `ar-` and 32 hex characters | `StableID`, a digest of the album-artist name |
+| Playlist | `pl-` and a lowercase UUID | The playlist's stored id |
 | Cover art | 64 hex characters | The artwork's content address |
 
 An id that is malformed, of the wrong kind, never issued or no longer in the
@@ -130,6 +132,22 @@ query alone. Albums and artists match when every word of the query appears in
 the name, ignoring case and accents. An empty query returns the whole library
 a page at a time, as the protocol defines, which is how a client can mirror
 the library's metadata. A non-empty query returns at most 100 songs in total.
+
+**Playlists.** `getPlaylists` lists every playlist in the Mac's sidebar
+order. Sidebar folders have no counterpart in the protocol, so the list is
+flat. `getPlaylist` returns the songs in playlist order, with a song repeated
+where the playlist repeats it. The Mac records when a playlist last changed
+and not when it was made, so `created` and `changed` both carry that date, and
+both are left out for a playlist older than the record. A playlist with no
+cover of its own borrows the first one among its songs.
+
+**Liked Songs are `getStarred2`.** Songs come back most recently liked first,
+each with the moment it was liked in `starred`. The Mac likes songs only, so
+the starred artist and album lists are always empty. A song carries `starred`
+only in this answer; `getSong`, `getAlbum` and the rest do not report it.
+
+Both are read-only, like everything else: there is no endpoint to create or
+change a playlist, or to like a song.
 
 **Cost.** Album lists are built from one grouped query over the track table
 and never load tracks. `getAlbum` and `getArtist` read only the rows they

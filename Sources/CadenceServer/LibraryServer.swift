@@ -50,6 +50,9 @@ public struct LibraryServer: Sendable {
         case stream
         case download
         case getCoverArt
+        case getPlaylists
+        case getPlaylist
+        case getStarred2
 
         /// The one endpoint a client may call before it has a key: it is how
         /// a client learns which ways of signing in the server offers.
@@ -92,6 +95,12 @@ public struct LibraryServer: Sendable {
                 return ok("song", try await endpoints.song(request))
             case .search3:
                 return ok("searchResult3", try await endpoints.search(request))
+            case .getPlaylists:
+                return ok("playlists", try await endpoints.playlists())
+            case .getPlaylist:
+                return ok("playlist", try await endpoints.playlist(request))
+            case .getStarred2:
+                return ok("starred2", try await endpoints.starred())
             // These answer with the bytes themselves. A failure is still an
             // envelope, which a client tells apart by its content type.
             case .stream, .download:
