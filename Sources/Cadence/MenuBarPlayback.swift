@@ -1,4 +1,5 @@
 import SwiftUI
+import CadenceDesign
 import CadenceCore
 
 /// The status item's permanent face — cover art plus who's playing, so a

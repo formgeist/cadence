@@ -1,4 +1,5 @@
 import SwiftUI
+import CadenceDesign
 import CadenceCore
 
 /// The command-palette search surface — Spotify/Claude's own pattern rather

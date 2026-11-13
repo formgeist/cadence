@@ -1,4 +1,5 @@
 import SwiftUI
+import CadenceDesign
 import CadenceCore
 
 /// The window's own chrome. The mock paints three traffic-light circles; a
