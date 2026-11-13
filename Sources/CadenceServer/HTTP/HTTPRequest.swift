@@ -7,6 +7,10 @@ public struct HTTPRequest: Sendable, Equatable {
     public enum Method: String, Sendable {
         case get = "GET"
         case head = "HEAD"
+        /// Accepted by the parser for one route only, pairing. The router
+        /// refuses it everywhere else, so no library endpoint can be reached
+        /// with a method that carries a body.
+        case post = "POST"
     }
 
     public var method: Method
@@ -18,14 +22,17 @@ public struct HTTPRequest: Sendable, Equatable {
     public var query: [(name: String, value: String)]
     /// Header names lowercased. A repeated header keeps its first value.
     public var headers: [String: String]
+    /// Empty for `GET` and `HEAD`, which may not carry one.
+    public var body: Data
 
     public init(method: Method, path: String,
                 query: [(name: String, value: String)] = [],
-                headers: [String: String] = [:]) {
+                headers: [String: String] = [:], body: Data = Data()) {
         self.method = method
         self.path = path
         self.query = query
         self.headers = headers
+        self.body = body
     }
 
     /// The first value sent for `name`, or nil.
@@ -35,6 +42,7 @@ public struct HTTPRequest: Sendable, Equatable {
 
     public static func == (a: HTTPRequest, b: HTTPRequest) -> Bool {
         a.method == b.method && a.path == b.path && a.headers == b.headers
+            && a.body == b.body
             && a.query.map(\.name) == b.query.map(\.name)
             && a.query.map(\.value) == b.query.map(\.value)
     }
@@ -46,8 +54,9 @@ public struct HTTPRequest: Sendable, Equatable {
 /// This is the first code that touches input from the network, on what may be
 /// a hostile Wi-Fi network, so it is written to refuse rather than to cope:
 ///
-/// - It accepts exactly what the server answers: `GET` and `HEAD`, HTTP/1.0
-///   and 1.1, no request body. There is no write endpoint to carry one.
+/// - It accepts exactly what the server answers: `GET` and `HEAD` with no
+///   body, and `POST` with a small one of declared length, which only the
+///   pairing route takes. HTTP/1.0 and 1.1.
 /// - Every size is bounded before anything is allocated for it.
 /// - Anything it does not recognise is an error, not a guess. Lenient parsing
 ///   is where two parties come to disagree about what a request says.
@@ -62,6 +71,9 @@ public enum HTTPRequestParser {
         public var targetBytes = 8 * 1024
         public var headerCount = 64
         public var parameterCount = 64
+        /// The most a `POST` may carry. A pairing request is a six-digit code
+        /// and a device name.
+        public var bodyBytes = 1024
 
         public init() {}
     }
@@ -120,15 +132,29 @@ public enum HTTPRequestParser {
             if headers[key] == nil { headers[key] = value }
         }
 
-        // No endpoint takes a body. Refusing one outright means there is no
-        // body-length arithmetic here to get wrong.
+        // A body is only ever a declared number of bytes. Chunked encoding
+        // is refused, so the only arithmetic here is one bounded length.
         if headers["transfer-encoding"] != nil { return .failure(.badRequest) }
+        var bodyLength = 0
         if let length = headers["content-length"] {
-            guard !length.isEmpty, length.utf8.allSatisfy({ $0 >= 48 && $0 <= 57 }) else {
-                return .failure(.badRequest)
-            }
-            guard length.allSatisfy({ $0 == "0" }) else { return .failure(.contentTooLarge) }
+            // Few digits, so the value cannot overflow before it is checked.
+            guard !length.isEmpty, length.utf8.count <= 9,
+                  length.utf8.allSatisfy({ $0 >= 48 && $0 <= 57 }),
+                  let value = Int(length) else { return .failure(.badRequest) }
+            bodyLength = value
+        } else if method == .post {
+            return .failure(.lengthRequired)
         }
+        guard bodyLength <= (method == .post ? limits.bodyBytes : 0) else {
+            return .failure(.contentTooLarge)
+        }
+        let bodyStart = headEnd + 4
+        // The head is complete but the body is still arriving.
+        guard data.count >= bodyStart + bodyLength else { return .incomplete }
+        // One request per connection: bytes after it are not a second
+        // request, they are something trying to be one.
+        guard data.count == bodyStart + bodyLength else { return .failure(.badRequest) }
+        let body = Data(data.dropFirst(bodyStart).prefix(bodyLength))
 
         let (rawPath, rawQuery) = cut(target, at: "?")
         guard !rawPath.contains("#"), let path = percentDecode(rawPath, plusIsSpace: false) else {
@@ -148,7 +174,8 @@ public enum HTTPRequestParser {
             }
         }
 
-        return .request(HTTPRequest(method: method, path: path, query: query, headers: headers))
+        return .request(HTTPRequest(method: method, path: path, query: query,
+                                    headers: headers, body: body))
     }
 
     // MARK: - Pieces

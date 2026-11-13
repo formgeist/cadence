@@ -11,9 +11,9 @@ a release build can start it yet.
 
 | Built | Not built yet |
 |---|---|
-| HTTP request parser | Pairing: one-time codes that add a device (Phase 3) |
-| OpenSubsonic response envelope and error codes | TLS and Bonjour (Phase 3) |
-| Per-device API keys, stored hashed, revocable | A "Share library" switch in the app (Phase 3) |
+| HTTP request parser | TLS, without which pairing must not ship (Phase 3) |
+| OpenSubsonic response envelope and error codes | Bonjour (Phase 3) |
+| Per-device API keys, stored hashed, revocable; pairing by one-time code | A "Share library" switch in the app (Phase 3) |
 | `ping`, `getOpenSubsonicExtensions` | |
 | `getMusicFolders`, `getArtists`, `getArtist`, `getAlbum`, `getAlbumList2`, `getSong`, `search3` | |
 | `stream`, `download`, `getCoverArt` | |
@@ -67,10 +67,12 @@ nothing about sockets, so every endpoint is tested by calling it directly.
 **No dependency.** The listener is Network.framework, and the HTTP parser is
 ours. The reasoning is in [server-ios-recon.md](server-ios-recon.md), section 4.
 
-**Read-only by construction, at three levels.** The parser accepts `GET` and
-`HEAD` only and refuses any request body. The route table holds no endpoint
-that changes anything. A test asserts that the Subsonic API's write endpoints
-are not routed.
+**The library is read-only by construction, at three levels.** Everything
+under `/rest/` is reached with `GET` or `HEAD` only; the router refuses `POST`
+there. The route table holds no endpoint that changes anything. A test asserts
+that the Subsonic API's write endpoints are not routed. The one request that
+changes anything is `POST /pair`, described under Pairing, which can add a
+paired device and nothing else.
 
 **One request per connection.** Every response carries `Connection: close`.
 This removes pipelining and any question of where one request ends and the
@@ -107,9 +109,9 @@ the key.
 ## Paired devices
 
 `PairedDeviceStore` holds the devices that may read the library and is the
-only place a key is checked. Nothing calls it from the app yet: pairing, which
-is what will add devices to it, is the next piece of Phase 3. The debug
-harness still uses one fixed key.
+only place a key is checked. Pairing, below, is what adds a device to it.
+Nothing in the app opens pairing yet, and the debug harness still uses one
+fixed key.
 
 **One key per device.** Pairing mints 256 random bits from the system
 generator, as 43 characters of URL-safe base64. The key is returned once, to
@@ -156,6 +158,66 @@ to a directory. Files will be reached only through library ids.
 is `HTTPListener.loopback`, which binds to 127.0.0.1 and is compiled in debug
 builds only. A release build of `CadenceServer` contains no code that can
 start a listener; Phase 3 adds the TLS one.
+
+## Pairing
+
+A new device gets its key by pairing. The Mac shows a six-digit code; the
+device sends it back and is given a key.
+
+```
+POST /pair
+Content-Type: application/json
+
+{"code": "482915", "name": "Casper's iPhone"}
+```
+
+On success, 200 with the key. This is the only time the key is sent:
+
+```
+{"apiKey": "…", "deviceId": "…", "serverVersion": "…", "cadenceProtocolVersion": 1}
+```
+
+On any failure, 403 with `{"error": "pairing_failed"}`.
+
+`/pair` is not part of the OpenSubsonic API and sits outside `/rest/` to say
+so. It is the one request a device may make without a key, since getting a
+key is its purpose, and the one request that changes anything.
+
+**What makes six digits safe.** A person has to type the code, so it is
+short. Everything around it does the work:
+
+| Rule | Value |
+|---|---|
+| Pairing is open only while the user has a code on screen | Otherwise every request is refused |
+| A code works once | Including when requests arrive with it together: one pairs, the rest are refused |
+| A code expires | After 5 minutes |
+| A code allows a few attempts | 5; the fifth wrong one cancels it |
+| Every refusal is the same | Wrong, expired, used and "not open" are one identical response |
+
+A stranger on the network therefore has five chances in a million per code
+the user chooses to show. The cost of the attempt limit is that the same
+stranger can spoil a code by guessing five times; the user asks for another.
+
+**The request must be exactly JSON.** Any other content type is 415. A web
+page cannot send `application/json` to another origin without the browser
+asking the server first, and this server never agrees, so a page the user
+happens to have open cannot pair on their behalf. A body that is not a valid
+pairing request is 400 and is not counted as an attempt.
+
+**The device's name is cleaned** before it is kept, as described under
+Paired devices.
+
+**Pairing must not ship before TLS.** Over plain HTTP the code and the key
+both cross the network in the clear. That is acceptable only on the debug
+loopback listener, which is the only listener that exists today.
+
+**Open question for the TLS slice: typed codes and the certificate.** A device
+that scans the QR code learns the Mac's certificate fingerprint from it, and
+can refuse an impostor. A device whose user types the code has no fingerprint
+to check. On a hostile network, something answering in the Mac's place could
+take the typed code and pair itself. The six digits need to be bound to the
+certificate, or typed-code pairing needs a second confirmation on the Mac.
+This must be settled before typed-code pairing is offered.
 
 ## The library on the wire
 
@@ -299,7 +361,8 @@ Set in `HTTPRequestParser.Limits` and `HTTPListener.Limits`.
 | Request target | 8 KB | 414 |
 | Headers | 64 | 431 |
 | Query parameters | 64 | 414 |
-| Request body | 0 bytes | 413 |
+| Request body, `GET` and `HEAD` | 0 bytes | 413 |
+| Request body, `POST` | 1 KB, length declared | 413, or 411 with no length |
 | Open connections | 32 | Closed unanswered |
 | Time to send the request head | 10 s | 408 |
 
