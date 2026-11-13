@@ -20,14 +20,14 @@ private struct Fixture {
     let library: TestLibrary
     let server: LibraryServer
 
-    init(pairingEnabled: Bool = true) async throws {
+    init(pairingEnabled: Bool = true, typedCodes: Bool = true) async throws {
         directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("cadence-pairing-\(UUID().uuidString)")
         let clock = clock
         devices = try PairedDeviceStore(
             fileURL: directory.appendingPathComponent("paired-devices.json"),
             now: { clock.now })
-        pairing = PairingSession(devices: devices, now: { clock.now })
+        pairing = PairingSession(devices: devices, allowsTypedCode: typedCodes, now: { clock.now })
         library = try await TestLibrary()
         server = LibraryServer(
             configuration: .init(serverVersion: "9.8.7"), authenticator: devices,
@@ -231,6 +231,100 @@ struct PairingSessionTests {
         let code = await fixture.pairing.begin()
         #expect(await fixture.pairing.redeem(code: code.digits, deviceName: "Extra") == nil)
         #expect(await fixture.devices.all().count == PairedDeviceStore.maximumDevices)
+    }
+}
+
+@Suite("Pairing by QR token")
+struct PairingTokenTests {
+
+    @Test("The token from the QR code pairs a device, once")
+    func token() async throws {
+        let fixture = try await Fixture(typedCodes: false)
+        defer { fixture.cleanUp() }
+        let code = await fixture.pairing.begin()
+        #expect(code.token.count == 43)
+        #expect(code.token != code.digits)
+
+        let response = await fixture.post(#"{"token":"\#(code.token)","name":"iPhone"}"#)
+        #expect(response.status == .ok)
+        let key = try #require(json(response)["apiKey"] as? String)
+        #expect(await fixture.ping(key).isOK)
+
+        #expect(await fixture.post(#"{"token":"\#(code.token)","name":"Again"}"#).status == .forbidden)
+        #expect(await fixture.devices.all().count == 1)
+    }
+
+    /// The default. The digits on their own must not pair anything until
+    /// typed-code pairing has its confirmation step.
+    @Test("With typed codes off, the right digits are refused and cost nothing")
+    func typedCodesOffByDefault() async throws {
+        let fixture = try await Fixture(typedCodes: false)
+        defer { fixture.cleanUp() }
+        let code = await fixture.pairing.begin()
+
+        for _ in 0..<10 {
+            #expect(await fixture.pair(code: code.digits).status == .forbidden)
+        }
+        #expect(await fixture.devices.all().isEmpty)
+        // Ten refusals later the QR token still works: none was an attempt.
+        #expect(await fixture.post(#"{"token":"\#(code.token)","name":"iPhone"}"#).status == .ok)
+    }
+
+    @Test("A session made with no options does not accept typed codes")
+    func defaultIsOff() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.cleanUp() }
+        let session = PairingSession(devices: fixture.devices)
+        let code = await session.begin()
+        #expect(await session.redeem(code: code.digits, deviceName: "x") == nil)
+        #expect(await session.redeem(token: code.token, deviceName: "x") != nil)
+    }
+
+    @Test("The digits are not a token and the token is not a code")
+    func notInterchangeable() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.cleanUp() }
+        let code = await fixture.pairing.begin()
+        #expect(await fixture.post(#"{"token":"\#(code.digits)","name":"x"}"#).status == .forbidden)
+        #expect(await fixture.post(#"{"code":"\#(code.token)","name":"x"}"#).status == .forbidden)
+        #expect(await fixture.devices.all().isEmpty)
+    }
+
+    @Test("Wrong tokens spend the same attempts, and the token expires with the code")
+    func limits() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.cleanUp() }
+        var code = await fixture.pairing.begin()
+        for _ in 0..<5 {
+            #expect(await fixture.post(#"{"token":"wrong","name":"x"}"#).status == .forbidden)
+        }
+        #expect(await fixture.post(#"{"token":"\#(code.token)","name":"x"}"#).status == .forbidden)
+
+        code = await fixture.pairing.begin()
+        fixture.clock.advance(300)
+        #expect(await fixture.post(#"{"token":"\#(code.token)","name":"x"}"#).status == .forbidden)
+        #expect(await fixture.devices.all().isEmpty)
+    }
+
+    @Test("A request must carry a token or a code, not both and not neither", arguments: [
+        #"{"name":"x"}"#, #"{"token":"a","code":"123456","name":"x"}"#,
+        #"{"token":null,"code":null,"name":"x"}"#,
+    ])
+    func oneSecret(body: String) async throws {
+        let fixture = try await Fixture()
+        defer { fixture.cleanUp() }
+        let code = await fixture.pairing.begin()
+        #expect(await fixture.post(body).status == .badRequest)
+        #expect(await fixture.pairing.current() == code)
+    }
+
+    @Test("Each code has its own token")
+    func freshTokens() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.cleanUp() }
+        var tokens: Set<String> = []
+        for _ in 0..<50 { tokens.insert(await fixture.pairing.begin().token) }
+        #expect(tokens.count == 50)
     }
 }
 

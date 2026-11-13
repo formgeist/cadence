@@ -12,8 +12,8 @@ a release build can start it yet.
 | Built | Not built yet |
 |---|---|
 | HTTP request parser | Starting the TLS listener from the app |
-| OpenSubsonic response envelope and error codes | Confirmation on the Mac for typed-code pairing; Bonjour |
-| Per-device API keys, stored hashed, revocable; pairing by one-time code | A "Share library" switch in the app (Phase 3) |
+| OpenSubsonic response envelope and error codes | Bonjour |
+| Per-device API keys, stored hashed, revocable; pairing by QR token | A "Share library" switch in the app (Phase 3) |
 | Self-signed certificate, keychain identity, TLS 1.3 listener | |
 | `ping`, `getOpenSubsonicExtensions` | |
 | `getMusicFolders`, `getArtists`, `getArtist`, `getAlbum`, `getAlbumList2`, `getSong`, `search3` | |
@@ -212,19 +212,56 @@ Paired devices.
 both cross the network in the clear. That is acceptable only on the debug
 loopback listener, which is the only listener that exists today.
 
-**Typed codes need a confirmation on the Mac. Decided, not built yet.** A
-device that scans the QR code learns the Mac's certificate fingerprint from it
-and can refuse an impostor. A device whose user types the code has no
-fingerprint to check, so on a hostile network something answering in the Mac's
-place could take the typed code and pair itself.
+**Two secrets, for two ways of pairing.** Opening pairing makes both, with
+one lifetime and one shared attempt limit:
 
-The decision (2026-11-13): after a typed code is accepted, both screens show
-the same short number, and the Mac asks "Pair with this device?". The user
-compares the numbers and confirms on the Mac. An impostor in the middle
-produces different numbers on the two screens. The key is not issued until
-the Mac confirms. QR pairing needs no confirmation, since the fingerprint in
-the QR code already does this job. Until the confirmation exists, typed-code
-pairing must not be offered.
+| Secret | Form | Who sends it | Sent as |
+|---|---|---|---|
+| Token | 256 random bits, 43 characters | A device that scanned the QR code | `{"token": "…", "name": "…"}` |
+| Code | Six digits | A device whose user typed it | `{"code": "…", "name": "…"}` |
+
+A request carries exactly one of the two.
+
+**Pairing by QR code is safe as it stands.** The QR code holds a
+`PairingPayload` (in CadenceCore, shared with the iOS app):
+
+```
+cadence://pair?v=1&host=studio-mac.local&port=4533&fp=<fingerprint>&token=<token>&name=Studio%20Mac
+```
+
+The phone connects to `host`, checks that the server's certificate has the
+fingerprint `fp`, and only then sends the token. Something answering in the
+Mac's place cannot present that certificate, so it never sees the token. The
+payload parser is strict, because a QR code is outside input: every field
+once, known fields only, and a host that can only be a host. A code from a
+newer version is reported as such, apart from every other error, so the app
+can say "update needed". An IPv6 host is written bare; a client must add the
+brackets when it builds a URL from it.
+
+**Typed codes are switched off, and must stay off for now.** A device whose
+user types six digits has no fingerprint to check the server against. On a
+hostile network, something answering in the Mac's place could collect the
+digits and pair itself with the real Mac. So `PairingSession` refuses the
+digits unless it is created with `allowsTypedCode: true`, which nothing in the
+app does. With it off, the right digits are refused and do not count as an
+attempt.
+
+The token and the digits are deliberately different secrets. If the QR code
+carried the digits, the server could not tell a device that had verified the
+certificate from one that had been tricked into revealing the digits.
+
+**The first release pairs by QR code only. Decided 2026-11-13.** Typed codes
+stay switched off, and the iOS design's "Enter code" screen goes unused. The
+phone needs camera permission to pair.
+
+The earlier decision was a confirmation on the Mac: both screens show the
+same short number and the user confirms. Designing it showed that a number
+the Mac simply sends is not enough, because whatever sits in the middle can
+alter it in transit and search for a value that makes the two screens agree.
+Doing it soundly takes a commit-and-reveal exchange, three requests in place
+of one, in which each side fixes its random value before seeing the other's.
+That is a small cryptographic protocol of our own. It can be added later
+without changing QR pairing, as a project of its own with a review.
 
 ## The certificate
 

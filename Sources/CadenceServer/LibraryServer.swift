@@ -132,8 +132,10 @@ public struct LibraryServer: Sendable {
 
     // MARK: - Pairing
 
+    /// Exactly one of `token` (from the QR code) and `code` (typed).
     private struct PairingRequest: Decodable {
-        var code: String
+        var token: String?
+        var code: String?
         var name: String
     }
 
@@ -164,7 +166,16 @@ public struct LibraryServer: Sendable {
             return .empty(.badRequest)
         }
 
-        guard let paired = await pairing.redeem(code: body.code, deviceName: body.name) else {
+        let paired: (device: PairedDevice, apiKey: String)?
+        switch (body.token, body.code) {
+        case (let token?, nil):
+            paired = await pairing.redeem(token: token, deviceName: body.name)
+        case (nil, let code?):
+            paired = await pairing.redeem(code: code, deviceName: body.name)
+        default:
+            return .empty(.badRequest)
+        }
+        guard let paired else {
             // One answer for wrong, expired, used up and not open.
             return Self.json(.forbidden, ["error": "pairing_failed"])
         }
