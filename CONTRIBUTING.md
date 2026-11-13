@@ -45,6 +45,15 @@ A self-signed code-signing certificate gives every build the same identity, so
 keychain — the build's first line says which identity it used. Pass
 `SIGN_IDENTITY=-` to force an ad-hoc build.
 
+The `make` targets that run the unbundled binary — `run`, `scan`, `serve`,
+`a11y`, `shots` and `bench` — sign it with the same certificate, through
+[`Scripts/run-dev.sh`](Scripts/run-dev.sh). That matters more than it sounds:
+the app reads the keychain at launch, so an ad-hoc build of a harness does not
+show a prompt you can answer, it stops at one. `make scan` in a script simply
+hangs with no output. A bare `swift run Cadence …` is still signed ad-hoc and
+can still do that; to pass other arguments, use `Scripts/run-dev.sh …` in its
+place.
+
 The first launch after switching prompts once more; choose "Always Allow".
 Leave `TEAM_ID` unset — a self-signed certificate has no team, and the
 team-prefixed keychain access group would stop the app launching. A build
