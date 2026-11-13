@@ -452,6 +452,41 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
         }
     }
 
+    /// The tracks behind these ids, keyed by id. Ids with no track are left
+    /// out; the caller, which knows the order it wants, puts them back in it.
+    public func tracks(withIDs ids: [Track.ID]) async throws -> [Track.ID: Track] {
+        guard !ids.isEmpty else { return [:] }
+        let strings = Array(Set(ids.map(\.uuidString)))
+        return try await pool.read { db in
+            var found: [Track.ID: Track] = [:]
+            for start in stride(from: 0, to: strings.count, by: 500) {
+                let chunk = Array(strings[start..<min(start + 500, strings.count)])
+                let records = try TrackRecord.fetchAll(
+                    db,
+                    sql: "SELECT * FROM track WHERE id IN (\(Self.placeholders(chunk.count)))",
+                    arguments: StatementArguments(chunk))
+                for record in records {
+                    let track = record.track
+                    found[track.id] = track
+                }
+            }
+            return found
+        }
+    }
+
+    /// Liked Songs with the moment each was liked, most recent first: the
+    /// same order as `likedTrackIDs`.
+    public func likedTracks() async throws -> [(id: Track.ID, likedAt: Date)] {
+        try await pool.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT trackID, likedAt FROM likedTrack ORDER BY likedAt DESC, rowid ASC
+                """).compactMap { row -> (id: Track.ID, likedAt: Date)? in
+                guard let id = UUID(uuidString: row["trackID"] as String) else { return nil }
+                return (id, Date(timeIntervalSince1970: row["likedAt"]))
+            }
+        }
+    }
+
     /// A window onto every track, in a fixed order, for a client that reads
     /// the whole library a page at a time.
     public func tracks(offset: Int, limit: Int) async throws -> [Track] {

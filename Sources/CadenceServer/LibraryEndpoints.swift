@@ -214,7 +214,38 @@ struct LibraryEndpoints: Sendable {
         return SearchResult(
             artist: Self.page(artists, offset: artistOffset, count: artistCount),
             album: Self.page(albums, offset: albumOffset, count: albumCount).map(AlbumItem.init),
-            song: songs.map(SongItem.init))
+            song: songs.map { SongItem($0) })
+    }
+
+    // MARK: - getPlaylists, getPlaylist
+
+    /// Every playlist, in the Mac's sidebar order. Sidebar folders have no
+    /// counterpart in the protocol, so the list is flat.
+    func playlists() async throws -> Playlists {
+        Playlists(playlist: try await library.playlists().map { PlaylistItem($0) })
+    }
+
+    func playlist(_ request: HTTPRequest) async throws -> PlaylistItem {
+        let id = try Self.required("id", in: request)
+        guard let playlistID = WireID.playlist(from: id),
+              let playlist = try await library.playlists().first(where: { $0.id == playlistID })
+        else { throw EndpointFailure.notFound }
+        // In playlist order, the same song twice where the playlist has it
+        // twice.
+        let tracks = try await library.tracks(withIDs: playlist.trackIDs)
+        return PlaylistItem(playlist, songs: playlist.trackIDs.compactMap { tracks[$0] })
+    }
+
+    // MARK: - getStarred2
+
+    /// Liked Songs, most recently liked first. The Mac likes songs only, so
+    /// the protocol's starred artists and albums are always empty.
+    func starred() async throws -> Starred {
+        let likes = try await library.likedTracks()
+        let tracks = try await library.tracks(withIDs: likes.map(\.id))
+        return Starred(artist: [], album: [], song: likes.compactMap { like in
+            tracks[like.id].map { SongItem($0, starred: like.likedAt) }
+        })
     }
 
     // MARK: - Parameters
