@@ -6,12 +6,15 @@ import CadenceServer
 /// A store on a temporary database, removed when the value goes away.
 final class TestLibrary: Sendable {
     let store: SQLiteLibraryStore
-    private let directory: URL
+    let artwork: DiskArtworkStore
+    /// A folder for the test's own files, removed with the library.
+    let directory: URL
 
     init(_ tracks: [Track] = []) async throws {
         directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("cadence-server-\(UUID().uuidString)")
         store = try SQLiteLibraryStore(url: directory.appendingPathComponent("library.sqlite"))
+        artwork = try DiskArtworkStore(root: directory.appendingPathComponent("art"))
         try await store.upsert(tracks)
     }
 
@@ -24,7 +27,7 @@ final class TestLibrary: Sendable {
         TestServer(library: self, server: LibraryServer(
             configuration: .init(serverVersion: version),
             authenticator: FixedKeyAuthenticator(key: Self.key),
-            library: store))
+            library: store, artwork: artwork))
     }
 }
 
@@ -44,12 +47,12 @@ struct TestServer: Sendable {
 extension TestServer {
     /// A GET with the test key attached.
     func get(_ endpoint: String, _ query: [(String, String)] = [],
-             authenticated: Bool = true) async -> HTTPResponse {
+             authenticated: Bool = true, headers: [String: String] = [:]) async -> HTTPResponse {
         var parameters = query.map { (name: $0.0, value: $0.1) }
         if authenticated { parameters.append((name: "apiKey", value: TestLibrary.key)) }
         return await respond(to: HTTPRequest(
             method: .get, path: endpoint.hasPrefix("/") ? endpoint : "/rest/\(endpoint)",
-            query: parameters))
+            query: parameters, headers: headers))
     }
 }
 

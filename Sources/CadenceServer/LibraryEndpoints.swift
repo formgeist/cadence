@@ -29,6 +29,8 @@ struct EndpointFailure: Error {
 
 struct LibraryEndpoints: Sendable {
     let library: SQLiteLibraryStore
+    /// Nil where there is no artwork to serve; `getCoverArt` then finds nothing.
+    let artwork: DiskArtworkStore?
 
     /// The most a single response lists, whatever the client asks for.
     static let maximumPageSize = 500

@@ -187,8 +187,77 @@ public final class HTTPListener: @unchecked Sendable {
         private func send(_ response: HTTPResponse, includingBody: Bool) {
             guard !isClosed else { return }
             isAnswering = true
-            raw.send(content: response.serialized(includingBody: includingBody),
-                     completion: .contentProcessed { [weak self] _ in self?.close() })
+            guard let file = response.file, includingBody else {
+                raw.send(content: response.serialized(includingBody: includingBody),
+                         completion: .contentProcessed { [weak self] _ in self?.close() })
+                return
+            }
+
+            // Open before promising anything. If the file has gone, or is no
+            // longer the size the response was built for, the client gets an
+            // honest error instead of a head followed by a short body.
+            guard let opened = FileSource.open(file.url),
+                  opened.size >= file.offset + file.length,
+                  (try? opened.handle.seek(toOffset: file.offset)) != nil else {
+                raw.send(content: HTTPResponse.empty(.internalServerError).serialized(),
+                         completion: .contentProcessed { [weak self] _ in self?.close() })
+                return
+            }
+            let source = OpenFile(opened.handle)
+            raw.send(content: response.serializedHead(),
+                     completion: .contentProcessed { [weak self] error in
+                guard let self, error == nil else {
+                    source.close()
+                    self?.close()
+                    return
+                }
+                self.pump(source, remaining: file.length)
+            })
+        }
+
+        /// Sends the file a piece at a time. Each piece is read only once the
+        /// one before it has been handed to the network, so a slow client
+        /// holds one piece in memory, not the file.
+        private func pump(_ source: OpenFile, remaining: UInt64) {
+            guard !isClosed, remaining > 0 else {
+                source.close()
+                close()
+                return
+            }
+            let count = Int(min(remaining, UInt64(Self.chunkSize)))
+            // Reading can block on a sleeping disk. It happens off the
+            // listener's queue so other connections keep moving.
+            Self.files.async { [queue] in
+                let chunk = source.read(count)
+                queue.async {
+                    guard let chunk, !chunk.isEmpty, !self.isClosed else {
+                        source.close()
+                        self.close()
+                        return
+                    }
+                    self.raw.send(content: chunk, completion: .contentProcessed { error in
+                        if error != nil {
+                            source.close()
+                            self.close()
+                        } else {
+                            self.pump(source, remaining: remaining - UInt64(chunk.count))
+                        }
+                    })
+                }
+            }
+        }
+
+        private static let chunkSize = 64 * 1024
+        private static let files = DispatchQueue(
+            label: "cadence.server.files", qos: .userInitiated, attributes: .concurrent)
+
+        /// A file being sent. One reader at a time, by construction: the next
+        /// read is requested only from the completion of the previous send.
+        private final class OpenFile: @unchecked Sendable {
+            private let handle: FileHandle
+            init(_ handle: FileHandle) { self.handle = handle }
+            func read(_ count: Int) -> Data? { try? handle.read(upToCount: count) }
+            func close() { try? handle.close() }
         }
 
         func close() {
