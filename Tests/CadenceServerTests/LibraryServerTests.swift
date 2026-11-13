@@ -1,27 +1,23 @@
 import Testing
 import Foundation
 import CadenceServer
+import CadenceLibrary
 
-/// A key made for this test run. No key is written down anywhere.
-private let key = UUID().uuidString + UUID().uuidString
+private let key = TestLibrary.key
 
-private let server = LibraryServer(
-    configuration: .init(serverVersion: "9.8.7"),
-    authenticator: FixedKeyAuthenticator(key: key))
-
+/// These tests are about routing and authentication, so the library is empty.
 private func get(_ path: String, _ query: [(String, String)] = []) async -> HTTPResponse {
-    await server.respond(to: HTTPRequest(
-        method: .get, path: path, query: query.map { (name: $0.0, value: $0.1) }))
+    // A fresh store per call keeps the helper synchronous to write against.
+    guard let library = try? await TestLibrary() else { return .empty(.internalServerError) }
+    return await library.server().get(path, query, authenticated: false)
 }
 
-/// The `subsonic-response` object of a response.
 private func envelope(_ response: HTTPResponse) throws -> [String: Any] {
-    let json = try JSONSerialization.jsonObject(with: response.body) as? [String: Any]
-    return try #require(json?["subsonic-response"] as? [String: Any])
+    try #require(response.envelope.isEmpty ? nil : response.envelope)
 }
 
 private func errorCode(_ response: HTTPResponse) throws -> Int? {
-    (try envelope(response)["error"] as? [String: Any])?["code"] as? Int
+    response.errorCode
 }
 
 @Suite("Library server")
