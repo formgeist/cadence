@@ -10,7 +10,7 @@ SNAPSHOT_DIR ?= Snapshots
 # so `make …` generates an empty stub before SwiftPM compiles the app target.
 CREDENTIALS := Sources/Cadence/LastFMCredentials.swift Sources/Cadence/SpotifyCredentials.swift
 
-.PHONY: build test run app dmg shots scan audio-check a11y bench clean
+.PHONY: build test run app dmg shots scan serve audio-check a11y bench clean
 
 Sources/Cadence/LastFMCredentials.swift:
 	@./Scripts/gen-lastfm-credentials.sh
@@ -61,6 +61,12 @@ shots: $(CREDENTIALS)
 ##   make scan FOLDER=~/Music/FLAC [LIBRARY=/tmp/scratch.sqlite]
 scan: $(CREDENTIALS)
 	swift run Cadence --scan $(FOLDER) $(if $(LIBRARY),--library $(LIBRARY),) $(if $(TRACKS),--tracks,)
+
+## Run the library server on 127.0.0.1, for curl. Debug builds only. Needs an
+## API key in CADENCE_DEV_API_KEY — see docs/library-server.md.
+##   make serve [LIBRARY=/tmp/scratch.sqlite]
+serve: $(CREDENTIALS)
+	swift run Cadence --serve $(if $(LIBRARY),--library $(LIBRARY),)
 
 clean:
 	swift package clean

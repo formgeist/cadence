@@ -5,6 +5,7 @@ import QuartzCore
 import Foundation
 import CadenceCore
 import CadenceLibrary
+import CadenceServer
 
 /// `Cadence --bench [--tracks N]` — answers PLAN.md §3's last open question.
 ///
@@ -87,6 +88,8 @@ enum BenchHarness {
         print("\n\(formatted(all.count)) tracks · \(formatted(albums.count)) albums "
             + "· \(formatted(artists.count)) artists")
 
+        await measureServer(store: store, artwork: artworkStore, albums: albums)
+
         let model = AppModel(store: store)
         try await time("AppModel.load()") { await model.load() }
 
@@ -113,6 +116,45 @@ enum BenchHarness {
     }
 
     // MARK: - Scrolling
+
+    /// The library server's answers, timed end to end: authentication, the
+    /// store reads and the JSON encoding, without a socket. These are what a
+    /// client waits on when it opens the library, and nothing is cached
+    /// between requests, so each number is the cost of every call.
+    private static func measureServer(
+        store: SQLiteLibraryStore, artwork: DiskArtworkStore, albums: [Album]
+    ) async {
+        // A key for this run alone.
+        let key = UUID().uuidString + UUID().uuidString
+        let server = LibraryServer(
+            configuration: .init(serverVersion: "bench"),
+            authenticator: FixedKeyAuthenticator(key: key),
+            library: store, artwork: artwork)
+
+        func get(_ endpoint: String, _ query: [(String, String)] = []) async -> Int {
+            let parameters = (query + [("apiKey", key)]).map { (name: $0.0, value: $0.1) }
+            return await server.respond(to: HTTPRequest(
+                method: .get, path: "/rest/\(endpoint)", query: parameters)).body.count
+        }
+
+        print("\nLibrary server (per request, no cache)")
+        _ = await time("getArtists") { await get("getArtists") }
+        _ = await time("getAlbumList2 newest") {
+            await get("getAlbumList2", [("type", "newest"), ("size", "500")])
+        }
+        _ = await time("getAlbumList2 a-z") {
+            await get("getAlbumList2", [("type", "alphabeticalByName"), ("size", "500")])
+        }
+        if let album = albums.first {
+            _ = await time("getAlbum") { await get("getAlbum", [("id", album.stableID)]) }
+        }
+        _ = await time("search3 \"slow\"") { await get("search3", [("query", "slow")]) }
+        _ = await time("search3 \"a\" (broad)") { await get("search3", [("query", "a")]) }
+        _ = await time("search3 all, 500") {
+            await get("search3", [("query", ""), ("artistCount", "500"),
+                                  ("albumCount", "500"), ("songCount", "500")])
+        }
+    }
 
     private static func measureScrolling(
         model: AppModel, tab: AppModel.Tab?, label: String, loader: ArtworkLoader,

@@ -5,19 +5,49 @@ Cadence client browse and stream this Mac's library. It speaks the
 [OpenSubsonic](https://opensubsonic.netlify.app) API. This note records the
 decisions behind it; the code comments carry the detail.
 
-Status: Phase 2 of the build plan, in progress. The server is not reachable
-from the app yet.
+Status: Phase 2 of the build plan. Every endpoint the plan lists is built.
+The server runs from a debug build on the loopback interface only; nothing in
+a release build can start it yet.
 
 | Built | Not built yet |
 |---|---|
-| HTTP request parser | A way to start the server from the app |
-| OpenSubsonic response envelope and error codes | `make bench` timings |
-| API-key check against a fixed key | Pairing, per-device keys, TLS, Bonjour (Phase 3) |
-| `ping`, `getOpenSubsonicExtensions` | A "Share library" switch in the app (Phase 3) |
+| HTTP request parser | Pairing and per-device keys (Phase 3) |
+| OpenSubsonic response envelope and error codes | TLS and Bonjour (Phase 3) |
+| API-key check against a fixed key | A "Share library" switch in the app (Phase 3) |
+| `ping`, `getOpenSubsonicExtensions` | |
 | `getMusicFolders`, `getArtists`, `getArtist`, `getAlbum`, `getAlbumList2`, `getSong`, `search3` | |
 | `stream`, `download`, `getCoverArt` | |
 | `getPlaylists`, `getPlaylist`, `getStarred2` | |
-| Debug-only loopback listener | |
+| Debug-only loopback listener, `make serve` | |
+
+## Running it
+
+`make serve` starts the server on 127.0.0.1, on a port the system picks, and
+prints the address. It exists in debug builds only.
+
+The API key is read from the environment variable `CADENCE_DEV_API_KEY` and
+must be at least 32 characters. It is never printed. Set one for the shell
+session, start the server, and call it from a second terminal that has the
+same variable:
+
+```bash
+export CADENCE_DEV_API_KEY="$(uuidgen)$(uuidgen)"
+```
+
+```bash
+make serve
+```
+
+```bash
+curl "http://127.0.0.1:PORT/rest/ping?apiKey=$CADENCE_DEV_API_KEY"
+```
+
+By default it serves the app's real library. `make serve LIBRARY=/path/to.sqlite`
+serves another, such as one written by `make scan … LIBRARY=…`.
+
+Like the other harnesses, `--serve` launches the app binary, so a freshly
+rebuilt, ad-hoc signed build can stop at a keychain prompt before it prints
+anything. CONTRIBUTING.md, "A stable signature for local builds", is the fix.
 
 ## Shape
 
@@ -151,8 +181,26 @@ change a playlist, or to like a song.
 
 **Cost.** Album lists are built from one grouped query over the track table
 and never load tracks. `getAlbum` and `getArtist` read only the rows they
-need. Nothing is cached between requests yet; `make bench` timings come with
-the debug harness later in this phase.
+need. Nothing is cached between requests.
+
+`make bench` times the server end to end, without a socket: authentication,
+the store reads and the JSON encoding. On the 30,000-track synthetic library
+(2,500 albums, 250 artists), one release-build run on an Apple silicon Mac:
+
+| Request | Time |
+|---|---|
+| `getArtists` | 37 ms |
+| `getAlbumList2`, newest, 500 albums | 40 ms |
+| `getAlbumList2`, by name, 500 albums | 43 ms |
+| `getAlbum` | 1 ms |
+| `search3` "slow" | 78 ms |
+| `search3` "a" (broad) | 119 ms |
+| `search3`, empty query, 500 of each | 114 ms |
+
+These are single runs, not averages. They are low enough that a cache is not
+worth its invalidation yet. Search is the slowest because it reads the artist
+and album lists on every call as well as the full-text index; that is the
+place to look first if it ever matters.
 
 ## Audio and cover art
 
