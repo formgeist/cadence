@@ -11,9 +11,10 @@ a release build can start it yet.
 
 | Built | Not built yet |
 |---|---|
-| HTTP request parser | TLS, without which pairing must not ship (Phase 3) |
-| OpenSubsonic response envelope and error codes | Bonjour (Phase 3) |
+| HTTP request parser | TLS listener and keychain identity, without which pairing must not ship |
+| OpenSubsonic response envelope and error codes | Confirmation on the Mac for typed-code pairing; Bonjour |
 | Per-device API keys, stored hashed, revocable; pairing by one-time code | A "Share library" switch in the app (Phase 3) |
+| Self-signed certificate generation | |
 | `ping`, `getOpenSubsonicExtensions` | |
 | `getMusicFolders`, `getArtists`, `getArtist`, `getAlbum`, `getAlbumList2`, `getSong`, `search3` | |
 | `stream`, `download`, `getCoverArt` | |
@@ -211,13 +212,54 @@ Paired devices.
 both cross the network in the clear. That is acceptable only on the debug
 loopback listener, which is the only listener that exists today.
 
-**Open question for the TLS slice: typed codes and the certificate.** A device
-that scans the QR code learns the Mac's certificate fingerprint from it, and
-can refuse an impostor. A device whose user types the code has no fingerprint
-to check. On a hostile network, something answering in the Mac's place could
-take the typed code and pair itself. The six digits need to be bound to the
-certificate, or typed-code pairing needs a second confirmation on the Mac.
-This must be settled before typed-code pairing is offered.
+**Typed codes need a confirmation on the Mac. Decided, not built yet.** A
+device that scans the QR code learns the Mac's certificate fingerprint from it
+and can refuse an impostor. A device whose user types the code has no
+fingerprint to check, so on a hostile network something answering in the Mac's
+place could take the typed code and pair itself.
+
+The decision (2026-11-13): after a typed code is accepted, both screens show
+the same short number, and the Mac asks "Pair with this device?". The user
+compares the numbers and confirms on the Mac. An impostor in the middle
+produces different numbers on the two screens. The key is not issued until
+the Mac confirms. QR pairing needs no confirmation, since the fingerprint in
+the QR code already does this job. Until the confirmation exists, typed-code
+pairing must not be offered.
+
+## The certificate
+
+The server will present a certificate the Mac makes for itself, and a paired
+device trusts it by pinning: it learns the certificate's SHA-256 fingerprint
+at pairing and from then on accepts that exact certificate and no other.
+`SelfSignedCertificate` builds it. Nothing uses it yet: storing the key in the
+keychain and the TLS listener are the next piece.
+
+**Why make our own.** No certificate authority vouches for a name like
+`studio-mac.local`, and the plan rules out anything that needs one. Apple's
+frameworks can generate a key and sign with it but have no public way to build
+a certificate, so this is a small DER encoder for one shape of certificate:
+X.509 version 3, a P-256 key, ECDSA with SHA-256. It only encodes, and only
+values it constructs itself; it never reads bytes from the network.
+
+**What is in it.** A random 16-byte serial, a common name for people to read,
+the public key, and three extensions: not a certificate authority, usable for
+digital signatures, usable as a TLS server. Nothing private goes in the name.
+
+**It lasts ten years, deliberately.** A pinned certificate is trusted for
+being the one that was shown, not for being in date. One that expired would
+silently unpair every device.
+
+Ten years is more than the 825 days Apple's TLS server policy allows, so the
+system's default evaluation rejects it, for that reason alone. Tests pin this
+down both ways: with an 800-day lifetime the certificate passes Apple's
+strict TLS server evaluation in full, and at ten years the lifetime is the
+only objection. This is expected. A Cadence client never asks the system
+whether to trust the server; it compares the fingerprint. The consequence for
+Phase 4: the client must make that comparison in its trust handler and must
+not fall back to default evaluation.
+
+**The fingerprint** is the SHA-256 of the certificate's DER bytes, in
+lowercase hex.
 
 ## The library on the wire
 
