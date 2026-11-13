@@ -267,9 +267,20 @@ lowercase hex.
 listener yet; that comes with the "Share library" switch.
 
 **The private key lives in the keychain and nowhere else.** It is generated
-there, marked not extractable, and found by a tag of its own. Nothing in
-Cadence reads its bytes: the TLS stack asks the keychain to sign with it. A
-test asserts the key cannot be exported.
+there and found by a tag of its own. Nothing in Cadence reads its bytes: the
+TLS stack asks the keychain to sign with it.
+
+**"Not exportable" holds on macOS 26, and not before.** The key is created
+with the not-extractable attribute. macOS 26 enforces it. macOS 15, which CI
+runs, ignores it for a key made this way in the login keychain: the app that
+made the key can read it back out. This was found by CI, not by reasoning.
+What still holds on every system: the key is never in a file, and the
+keychain asks the user before letting any other program use it. What is lost
+before macOS 26 is one layer of defence: a Cadence that had itself been taken
+over could export the key, where on macOS 26 it could only sign with it. A
+test records both behaviours, and fails if either changes. Closing the gap on
+older systems would mean the data-protection keychain or the Secure Enclave,
+both of which need a signing team that community builds do not have.
 
 **The certificate lives in a file**, `server-certificate.der` in Application
 Support. It is public: the server hands it to anyone who connects. It is kept

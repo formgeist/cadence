@@ -16,10 +16,11 @@ public struct ServerIdentity: @unchecked Sendable {
 ///
 /// The two halves are kept in two places, each where it belongs:
 ///
-/// - **The private key is in the keychain**, generated there, not
-///   exportable, found by a tag of its own. Nothing in Cadence reads its
-///   bytes: the TLS stack asks the keychain to sign with it. A copy of the
-///   app's files contains no part of it.
+/// - **The private key is in the keychain**, generated there and found by a
+///   tag of its own. Nothing in Cadence reads its bytes: the TLS stack asks
+///   the keychain to sign with it. A copy of the app's files contains no
+///   part of it. It is created as not exportable, which macOS 26 enforces
+///   and earlier systems do not; see `create`.
 /// - **The certificate is in a file.** It is public: the server hands it to
 ///   anyone who connects. Keeping it in a file, and not beside the key in the
 ///   keychain, means it is found by path and not by a keychain search, which
@@ -143,12 +144,15 @@ public struct ServerIdentityStore: Sendable {
             kSecAttrKeySizeInBits: 256,
             // Stored, and not something that can be copied out again.
             //
-            // "Not extractable" is said twice and backed by "sensitive",
-            // because where it is honoured has varied: set only inside the
-            // private-key attributes it was ignored on one system, and set
-            // only at the top it was ignored on another (the CI runner). A
-            // test tries to export the key, so a system that honours neither
-            // fails loudly instead of quietly keeping an exportable key.
+            // "Not extractable" is asked for in both places it can be said,
+            // and backed by "sensitive". macOS 26 honours it. macOS 15 does
+            // not, for a key made this way in the login keychain: there the
+            // app that made the key can still read it back out. The key is
+            // still only in the keychain, never in a file, and the keychain
+            // still asks the user before letting any other program use it.
+            // What is lost on those systems is one layer: a Cadence that had
+            // itself been taken over could export the key instead of only
+            // signing with it. A test records which systems behave which way.
             kSecAttrIsPermanent: true,
             kSecAttrIsExtractable: false,
             kSecPrivateKeyAttrs: [
