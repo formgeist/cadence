@@ -562,6 +562,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        #if DEBUG
+        if let options = ServeHarness.parse(CommandLine.arguments) {
+            NSApp.setActivationPolicy(.prohibited)
+            Task { @MainActor in
+                do {
+                    exit(try await ServeHarness.run(options))
+                } catch {
+                    FileHandle.standardError.write(Data("Serve failed: \(error)\n".utf8))
+                    exit(1)
+                }
+            }
+            return
+        }
+        #endif
+
         if let options = ScanHarness.parse(CommandLine.arguments) {
             NSApp.setActivationPolicy(.prohibited)
             Task { @MainActor in
