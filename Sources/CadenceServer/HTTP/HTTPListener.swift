@@ -41,6 +41,39 @@ public final class HTTPListener: @unchecked Sendable {
         self.limits = limits
     }
 
+    /// HTTPS, presenting `identity`. This is the listener a release build
+    /// uses, and the only one it has.
+    ///
+    /// TLS 1.3 only. Both ends are Cadence, on current systems, so there is
+    /// no older client to accommodate and no older protocol to leave open.
+    ///
+    /// - Parameters:
+    ///   - port: Nil lets the system choose one.
+    ///   - loopbackOnly: Binds to 127.0.0.1 alone, for tests. The real server
+    ///     listens on the local network.
+    public static func tls(
+        identity: ServerIdentity, port: UInt16? = nil, loopbackOnly: Bool = false,
+        limits: Limits = Limits(), handler: @escaping Handler
+    ) throws -> HTTPListener {
+        let options = NWProtocolTLS.Options()
+        guard let secIdentity = sec_identity_create(identity.identity) else {
+            throw ListenerError.failed("identity")
+        }
+        sec_protocol_options_set_local_identity(options.securityProtocolOptions, secIdentity)
+        sec_protocol_options_set_min_tls_protocol_version(
+            options.securityProtocolOptions, .TLSv13)
+
+        let parameters = NWParameters(tls: options)
+        let endpointPort = port.flatMap(NWEndpoint.Port.init(rawValue:)) ?? .any
+        if loopbackOnly {
+            parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: endpointPort)
+            parameters.acceptLocalOnly = true
+        } else if port != nil {
+            parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.any), port: endpointPort)
+        }
+        return try HTTPListener(parameters: parameters, limits: limits, handler: handler)
+    }
+
     #if DEBUG
     /// Plain HTTP on the loopback interface, on a port the system picks. For
     /// `curl` and tests while the server is being built. Nothing off this
