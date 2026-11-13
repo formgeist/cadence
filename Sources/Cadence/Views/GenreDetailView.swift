@@ -1,4 +1,5 @@
 import SwiftUI
+import CadenceDesign
 import CadenceCore
 
 /// Every album in one genre, laid out the way an artist's page lays out theirs:

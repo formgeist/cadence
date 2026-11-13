@@ -1,4 +1,5 @@
 import SwiftUI
+import CadenceDesign
 import CadenceCore
 
 /// What a fresh install shows. Not a shrug — the one thing to do here is name

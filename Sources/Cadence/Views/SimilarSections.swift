@@ -1,4 +1,5 @@
 import SwiftUI
+import CadenceDesign
 import CadenceCore
 
 /// "Similar artists" at the foot of an artist page: library artists most like

@@ -16,6 +16,8 @@ public actor LibraryScanner {
         public var skipped: Int
         public var failed: Int
         public var removed: Int
+        /// Files recognised as moved so far — see `Summary.moved`.
+        public var moved: Int
         public var currentFile: String?
 
         public var fraction: Double {
@@ -24,13 +26,14 @@ public actor LibraryScanner {
 
         public init(found: Int = 0, processed: Int = 0, imported: Int = 0,
                     skipped: Int = 0, failed: Int = 0, removed: Int = 0,
-                    currentFile: String? = nil) {
+                    moved: Int = 0, currentFile: String? = nil) {
             self.found = found
             self.processed = processed
             self.imported = imported
             self.skipped = skipped
             self.failed = failed
             self.removed = removed
+            self.moved = moved
             self.currentFile = currentFile
         }
     }
@@ -40,14 +43,18 @@ public actor LibraryScanner {
         public var skipped: Int
         public var failed: Int
         public var removed: Int
+        /// Files found at a new path and recognised as ones the library
+        /// already had. Counted in `imported` too, and not in `removed`.
+        public var moved: Int
         public var failures: [ScanFailure]
 
         public init(imported: Int = 0, skipped: Int = 0, failed: Int = 0,
-                    removed: Int = 0, failures: [ScanFailure] = []) {
+                    removed: Int = 0, moved: Int = 0, failures: [ScanFailure] = []) {
             self.imported = imported
             self.skipped = skipped
             self.failed = failed
             self.removed = removed
+            self.moved = moved
             self.failures = failures
         }
     }
@@ -133,6 +140,21 @@ public actor LibraryScanner {
 
         let known = try await store.fingerprints()
         var failures: [ScanFailure] = []
+
+        // Files the library knows under this folder that are no longer there.
+        // Worked out before anything is read, because some of them have not
+        // left: they moved, and a file found at a new path further down may be
+        // one of these. Only forget files under the folder just scanned —
+        // another watched folder being offline must not empty the library.
+        var gone: Set<URL> = []
+        if removingMissing {
+            let onDisk = Set(files)
+            gone = Set(known.keys.filter {
+                Self.isDescendant($0, of: root) && !onDisk.contains($0)
+            })
+        }
+        var moves = try await MoveMatcher(gone: gone, known: known, store: store)
+        var pendingMoves: [(from: URL, to: URL)] = []
         var batch: [(track: Track, fileSize: Int64)] = []
 
         var index = 0
@@ -180,12 +202,24 @@ public actor LibraryScanner {
                     if let cover, let artwork {
                         track.artworkID = try? await artwork.store(cover)
                     }
+                    // A file the library has not seen at this path, that is
+                    // byte-for-byte one it has just lost from another: the
+                    // same file, moved. Re-point the row instead of adding a
+                    // new one, so the track keeps its id.
+                    if known[result.url] == nil, let from = moves.claim(for: track) {
+                        pendingMoves.append((from, result.url))
+                        progress.moved += 1
+                    }
                     batch.append((track, size))
                     progress.imported += 1
                 }
             }
 
             if batch.count >= batchSize {
+                // Moves first: the upsert finds a row by path, so the row has
+                // to be at the new path before it runs.
+                try await store.relocate(pendingMoves)
+                pendingMoves.removeAll()
                 try await store.upsert(batch)
                 batch.removeAll(keepingCapacity: true)
             }
@@ -193,20 +227,16 @@ public actor LibraryScanner {
         }
 
         if !batch.isEmpty {
+            try await store.relocate(pendingMoves)
             try await store.upsert(batch)
         }
 
-        if removingMissing {
-            let onDisk = Set(files)
-            let gone = known.keys.filter { url in
-                // Only forget files under the folder just scanned — another
-                // watched folder being offline must not empty the library.
-                Self.isDescendant(url, of: root) && !onDisk.contains(url)
-            }
-            if !gone.isEmpty {
-                try await store.remove(urls: Array(gone))
-                progress.removed = gone.count
-            }
+        // What is left of `gone` once the moved files have been claimed really
+        // has left.
+        let removed = gone.subtracting(moves.claimed)
+        if !removed.isEmpty {
+            try await store.remove(urls: Array(removed))
+            progress.removed = removed.count
         }
 
         progress.currentFile = nil
@@ -217,6 +247,7 @@ public actor LibraryScanner {
             skipped: progress.skipped,
             failed: progress.failed,
             removed: progress.removed,
+            moved: progress.moved,
             failures: failures)
     }
 
@@ -239,6 +270,56 @@ public actor LibraryScanner {
         let data = LocalArtworkFinder.artwork(in: folder)
         localArtworkCache[folder] = data
         return data
+    }
+
+    // MARK: - Moved files
+
+    /// Pairs a file found at a new path with the row of a file that has gone
+    /// missing, when they are the same file.
+    ///
+    /// Without this a moved or renamed folder is a delete and an add: every
+    /// track gets a new id, and the delete cascades through `playlistItem` and
+    /// `likedTrack`, so reorganising a music folder silently empties playlists
+    /// and Liked Songs. A paired client holding track ids loses them too.
+    ///
+    /// "The same file" is deliberately strict. The fingerprint (size and
+    /// modification time, both of which a move within a volume preserves) has
+    /// to match, and then so do the tags that say which track it is. A wrong
+    /// match would put one track's likes and playlist places on another, which
+    /// is worse than losing them, so anything short of all of it is treated as
+    /// a new file.
+    private struct MoveMatcher {
+        private var candidates: [String: [Track]] = [:]
+        private(set) var claimed: Set<URL> = []
+
+        init(gone: Set<URL>, known: [URL: String], store: SQLiteLibraryStore) async throws {
+            guard !gone.isEmpty else { return }
+            for track in try await store.tracks(at: Array(gone)) {
+                guard let fingerprint = known[track.url] else { continue }
+                candidates[fingerprint, default: []].append(track)
+            }
+        }
+
+        /// The old path of `track`, if it is a missing file turning up
+        /// somewhere new. Each missing file can be claimed once.
+        mutating func claim(for track: Track) -> URL? {
+            guard let fingerprint = track.fingerprint,
+                  let match = candidates[fingerprint]?.first(where: {
+                      !claimed.contains($0.url) && Self.isSameRecording($0, track)
+                  }) else { return nil }
+            claimed.insert(match.url)
+            return match.url
+        }
+
+        private static func isSameRecording(_ a: Track, _ b: Track) -> Bool {
+            a.title == b.title
+                && a.artist == b.artist
+                && a.albumArtist == b.albumArtist
+                && a.albumTitle == b.albumTitle
+                && a.trackNumber == b.trackNumber
+                && a.discNumber == b.discNumber
+                && abs(a.duration - b.duration) < 0.01
+        }
     }
 
     // MARK: - Per-file work

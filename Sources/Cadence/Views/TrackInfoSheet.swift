@@ -1,4 +1,5 @@
 import SwiftUI
+import CadenceDesign
 import CadenceCore
 
 /// Read-only. Everything shown here is already sitting in the database —

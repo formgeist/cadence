@@ -1,4 +1,5 @@
 import SwiftUI
+import CadenceDesign
 import CadenceCore
 
 /// What every main page shows before its first load finishes, instead of a

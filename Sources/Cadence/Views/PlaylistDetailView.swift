@@ -1,4 +1,5 @@
 import SwiftUI
+import CadenceDesign
 import CadenceCore
 
 /// One playlist, open. The header is `ArtistDetailView`'s shape — a cover over

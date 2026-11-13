@@ -1,4 +1,5 @@
 import SwiftUI
+import CadenceDesign
 import CadenceCore
 
 /// The landing screen: a suggestion for today — an album, or one of your own

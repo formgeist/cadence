@@ -3,11 +3,16 @@ import PackageDescription
 
 let package = Package(
     name: "Cadence",
-    platforms: [.macOS(.v14)],
+    // iOS is here for the library products cadence-ios depends on:
+    // CadenceCore and CadenceDesign. The app, CadenceLibrary and CadenceAudio
+    // are macOS-only and are never built for iOS, because no iOS product
+    // reaches them. The string form is because `.v26` needs tools 6.2.
+    platforms: [.macOS(.v14), .iOS("26.0")],
     products: [
         .library(name: "CadenceCore", targets: ["CadenceCore"]),
         .library(name: "CadenceLibrary", targets: ["CadenceLibrary"]),
         .library(name: "CadenceAudio", targets: ["CadenceAudio"]),
+        .library(name: "CadenceDesign", targets: ["CadenceDesign"]),
         .executable(name: "Cadence", targets: ["Cadence"]),
     ],
     dependencies: [
@@ -24,6 +29,15 @@ let package = Package(
         // No third-party dependencies. Safe to import anywhere, including
         // previews and design prototypes.
         .target(name: "CadenceCore"),
+
+        // Design tokens and the bundled faces: palette, spacing, radii, type
+        // and motion. SwiftUI only, no third-party code, and no AppKit beyond
+        // a conditional font lookup, so the iOS app imports the same values
+        // the Mac draws with.
+        .target(
+            name: "CadenceDesign",
+            resources: [.process("Resources")]
+        ),
 
         // Decode, gapless, and metadata for every format SFB handles.
         .target(
@@ -46,14 +60,21 @@ let package = Package(
 
         .executableTarget(
             name: "Cadence",
-            dependencies: ["CadenceCore", "CadenceLibrary", "CadenceAudio"],
-            resources: [.process("Resources")]
+            dependencies: ["CadenceCore", "CadenceLibrary", "CadenceAudio", "CadenceDesign"]
         ),
 
         .testTarget(
             name: "CadenceCoreTests",
             dependencies: [
                 "CadenceCore",
+                .product(name: "Testing", package: "swift-testing"),
+            ]
+        ),
+
+        .testTarget(
+            name: "CadenceDesignTests",
+            dependencies: [
+                "CadenceDesign",
                 .product(name: "Testing", package: "swift-testing"),
             ]
         ),

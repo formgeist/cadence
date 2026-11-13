@@ -1,4 +1,5 @@
 import SwiftUI
+import CadenceDesign
 import CadenceCore
 
 /// Full-window artwork with the transport hidden until the pointer moves into

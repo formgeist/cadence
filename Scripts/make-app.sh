@@ -77,7 +77,7 @@ cp Licences/*.txt Licences/README.md "$APP/Contents/Resources/Licences/"
 
 # The font licences live beside the fonts they cover, not in Licences/, so they
 # stay next to what they license in the source tree. They join the rest here.
-cp Sources/Cadence/Resources/OFL-*.txt "$APP/Contents/Resources/Licences/"
+cp Sources/CadenceDesign/Resources/OFL-*.txt "$APP/Contents/Resources/Licences/"
 
 # The icon. An asset catalog would need actool, which is Xcode's; .icns is the
 # format that predates it and iconutil ships with Command Line Tools, so the

@@ -1,4 +1,5 @@
 import SwiftUI
+import CadenceDesign
 import CadenceCore
 
 /// Paste a Spotify playlist link, get a Cadence playlist of the songs the

@@ -431,7 +431,7 @@ them into the video (`scripts/hero-video/` there).
 The design canvas the interface was built from is
 [Cadence.dc.html](https://claude.ai/design/p/af59472b-17be-4420-b17e-19a438189905?file=Cadence.dc.html).
 Its values live in
-[`Tokens.swift`](Sources/Cadence/DesignSystem/Tokens.swift); views reference
+[`Tokens.swift`](Sources/CadenceDesign/Tokens.swift); views reference
 tokens, never literals.
 
 ### Where the app departs from the canvas
@@ -448,7 +448,7 @@ tokens, never literals.
 ## Fonts
 
 The design specifies **Manrope** and **IBM Plex Mono**, both OFL. Drop the
-`.ttf` files into `Sources/Cadence/Resources/` and they are registered at
+`.ttf` files into `Sources/CadenceDesign/Resources/` and they are registered at
 launch; until then every call falls back to the system face at the same size
 and weight, and the app logs one line saying so.
 
@@ -590,8 +590,8 @@ The texts and the full component table, split by how each one is linked, live
 in [Licences/](Licences/README.md).
 
 Bundled fonts are licensed separately under the SIL Open Font License —
-[Manrope](Sources/Cadence/Resources/OFL-Manrope.txt) and
-[IBM Plex Mono](Sources/Cadence/Resources/OFL-IBMPlexMono.txt). OFL permits
+[Manrope](Sources/CadenceDesign/Resources/OFL-Manrope.txt) and
+[IBM Plex Mono](Sources/CadenceDesign/Resources/OFL-IBMPlexMono.txt). OFL permits
 bundling in a commercial or MIT-licensed application; it only requires that the
 fonts themselves stay under OFL and are not sold on their own. Both texts ship
 in the bundle with the rest.

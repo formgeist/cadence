@@ -1,4 +1,5 @@
 import SwiftUI
+import CadenceDesign
 import CadenceCore
 
 /// Artists, Albums and Playlists behind a shared header. The design's header is

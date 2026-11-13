@@ -1,4 +1,5 @@
 import SwiftUI
+import CadenceDesign
 import CadenceCore
 
 /// Everything one artist has. Reaching an artist used to open whichever of

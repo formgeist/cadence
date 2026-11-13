@@ -1,4 +1,5 @@
 import SwiftUI
+import CadenceDesign
 import AppKit
 import UniformTypeIdentifiers
 import CadenceCore

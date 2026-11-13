@@ -1,4 +1,5 @@
 import SwiftUI
+import CadenceDesign
 import CadenceCore
 
 /// Makes a catalog, or changes one: a name, whether albums must pass all of

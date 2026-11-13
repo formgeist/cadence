@@ -364,6 +364,7 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
     public func upsert(_ entries: [(track: Track, fileSize: Int64)]) async throws {
         guard !entries.isEmpty else { return }
         try await pool.write { db in
+            var recorded: Set<Album.Key> = []
             for entry in entries {
                 let record = TrackRecord(entry.track, fileSize: entry.fileSize)
 
@@ -388,6 +389,73 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
                     rowID = db.lastInsertedRowID
                 }
                 try Self.indexTrack(toSave, rowID: rowID, in: db, isNew: existing == nil)
+                // Once per album per batch, not once per track: an import
+                // hands over an album's tracks together.
+                let key = entry.track.albumKey
+                if recorded.insert(key).inserted {
+                    try Migrations.recordIdentity(of: key, in: db)
+                }
+            }
+        }
+    }
+
+    // MARK: - Stable ids
+
+    /// The album a `StableID.album` id names, or nil for an id this library
+    /// never issued. The key may match no tracks any more; `album(for:)`
+    /// answers that.
+    public func albumKey(forStableID id: String) async throws -> Album.Key? {
+        try await pool.read { db in
+            try Row.fetchOne(db, sql: """
+                SELECT albumArtist, albumTitle, year FROM albumIdentity WHERE id = ?
+                """, arguments: [id]).map {
+                Album.Key(albumArtist: $0["albumArtist"], title: $0["albumTitle"],
+                          year: $0["year"])
+            }
+        }
+    }
+
+    /// The album-artist name a `StableID.artist` id names, or nil for an id
+    /// this library never issued.
+    public func artistName(forStableID id: String) async throws -> String? {
+        try await pool.read { db in
+            try String.fetchOne(
+                db, sql: "SELECT name FROM artistIdentity WHERE id = ?", arguments: [id])
+        }
+    }
+
+    /// The tracks stored at these paths. Paths with no row are left out.
+    public func tracks(at urls: [URL]) async throws -> [Track] {
+        guard !urls.isEmpty else { return [] }
+        let strings = urls.map(\.absoluteString)
+        return try await pool.read { db in
+            // In chunks: a moved library is tens of thousands of paths, and
+            // one statement takes only so many arguments.
+            var found: [Track] = []
+            for start in stride(from: 0, to: strings.count, by: 500) {
+                let chunk = Array(strings[start..<min(start + 500, strings.count)])
+                found += try TrackRecord.fetchAll(
+                    db,
+                    sql: "SELECT * FROM track WHERE url IN (\(Self.placeholders(chunk.count)))",
+                    arguments: StatementArguments(chunk)).map(\.track)
+            }
+            return found
+        }
+    }
+
+    /// Re-points rows at files that have moved, keeping each row's id and with
+    /// it every playlist entry and like that refers to it. The search index is
+    /// keyed by rowid and holds no path, so it needs no change.
+    ///
+    /// A destination that already has a row is skipped rather than failing the
+    /// batch: `url` is unique, and that file is a track in its own right.
+    public func relocate(_ moves: [(from: URL, to: URL)]) async throws {
+        guard !moves.isEmpty else { return }
+        try await pool.write { db in
+            for move in moves {
+                try db.execute(sql: """
+                    UPDATE OR IGNORE track SET url = ? WHERE url = ?
+                    """, arguments: [move.to.absoluteString, move.from.absoluteString])
             }
         }
     }

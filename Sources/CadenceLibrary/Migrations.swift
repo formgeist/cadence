@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import CadenceCore
 
 /// Schema, search index, and the connection pragmas.
 ///
@@ -279,6 +280,49 @@ public enum Migrations {
                           columns: ["albumArtist", "albumTitle", "albumYear"])
         }
 
+        // Opaque ids for albums and artists, which are aggregates with no row
+        // of their own — see `StableID`. The id is a digest of the identity,
+        // so it cannot be turned back into one; these tables are that way
+        // back, for a server handed an id by a client.
+        //
+        // Rows are added on upsert and never removed: an id whose album has
+        // left the library resolves to a key that matches no tracks, which
+        // reads as "not found", and it resolves again if the album returns.
+        migrator.registerMigration("v15-stable-ids") { db in
+            try db.create(table: "albumIdentity") { t in
+                t.primaryKey("id", .text)
+                t.column("albumArtist", .text).notNull()
+                t.column("albumTitle", .text).notNull()
+                t.column("year", .integer)
+            }
+            try db.create(table: "artistIdentity") { t in
+                t.primaryKey("id", .text)
+                t.column("name", .text).notNull()
+            }
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT DISTINCT albumArtist, albumTitle, year FROM track
+                """)
+            for row in rows {
+                try recordIdentity(
+                    of: Album.Key(albumArtist: row["albumArtist"],
+                                  title: row["albumTitle"],
+                                  year: row["year"]),
+                    in: db)
+            }
+        }
+
         return migrator
+    }
+
+    /// Files the ids of one album and its artist. `INSERT OR IGNORE`, because
+    /// every track of an album arrives with the same key.
+    static func recordIdentity(of key: Album.Key, in db: Database) throws {
+        try db.execute(sql: """
+            INSERT OR IGNORE INTO albumIdentity (id, albumArtist, albumTitle, year)
+            VALUES (?, ?, ?, ?)
+            """, arguments: [StableID.album(key), key.albumArtist, key.title, key.year])
+        try db.execute(sql: """
+            INSERT OR IGNORE INTO artistIdentity (id, name) VALUES (?, ?)
+            """, arguments: [StableID.artist(named: key.albumArtist), key.albumArtist])
     }
 }
