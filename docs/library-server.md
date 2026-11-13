@@ -11,10 +11,10 @@ a release build can start it yet.
 
 | Built | Not built yet |
 |---|---|
-| HTTP request parser | TLS listener and keychain identity, without which pairing must not ship |
+| HTTP request parser | Starting the TLS listener from the app |
 | OpenSubsonic response envelope and error codes | Confirmation on the Mac for typed-code pairing; Bonjour |
 | Per-device API keys, stored hashed, revocable; pairing by one-time code | A "Share library" switch in the app (Phase 3) |
-| Self-signed certificate generation | |
+| Self-signed certificate, keychain identity, TLS 1.3 listener | |
 | `ping`, `getOpenSubsonicExtensions` | |
 | `getMusicFolders`, `getArtists`, `getArtist`, `getAlbum`, `getAlbumList2`, `getSong`, `search3` | |
 | `stream`, `download`, `getCoverArt` | |
@@ -231,8 +231,7 @@ pairing must not be offered.
 The server will present a certificate the Mac makes for itself, and a paired
 device trusts it by pinning: it learns the certificate's SHA-256 fingerprint
 at pairing and from then on accepts that exact certificate and no other.
-`SelfSignedCertificate` builds it. Nothing uses it yet: storing the key in the
-keychain and the TLS listener are the next piece.
+`SelfSignedCertificate` builds it.
 
 **Why make our own.** No certificate authority vouches for a name like
 `studio-mac.local`, and the plan rules out anything that needs one. Apple's
@@ -260,6 +259,54 @@ not fall back to default evaluation.
 
 **The fingerprint** is the SHA-256 of the certificate's DER bytes, in
 lowercase hex.
+
+## The identity and the TLS listener
+
+`ServerIdentityStore` keeps the key and the certificate, and
+`HTTPListener.tls` serves with them. Nothing in the app starts the TLS
+listener yet; that comes with the "Share library" switch.
+
+**The private key lives in the keychain and nowhere else.** It is generated
+there, marked not extractable, and found by a tag of its own. Nothing in
+Cadence reads its bytes: the TLS stack asks the keychain to sign with it. A
+test asserts the key cannot be exported.
+
+**The certificate lives in a file**, `server-certificate.der` in Application
+Support. It is public: the server hands it to anyone who connects. It is kept
+in a file and not beside the key because a keychain search matches
+certificates and identities by label loosely. The first version of this
+looked the identity up by label and was handed a different identity
+altogether; a path cannot do that.
+
+**The identity is made once.** Every paired device has pinned it, and a new
+one unpairs them all. `loadOrCreate` creates only when there is no complete
+identity to load. A certificate whose key is missing, or a file that is not a
+certificate, counts as none and is replaced. `reset` removes both halves and
+goes with unpairing every device.
+
+**TLS 1.3 only.** Both ends are Cadence on current systems, so there is no
+older client to allow for. A test reads the negotiated version.
+
+**A release build has this listener and no other.** The plain-HTTP loopback
+listener is still compiled into debug builds only.
+
+**What a client must do** is shown by the tests, which connect with
+`URLSession` the way the iOS app will:
+
+| Client | Result |
+|---|---|
+| Pins the server's fingerprint | Connects |
+| Pins a different fingerprint | Refuses the server |
+| Does not pin, and relies on default evaluation | Refuses the server |
+| Speaks plain HTTP to the TLS port | Gets nothing |
+
+The third row is the ten-year lifetime at work: a client that forgets to pin
+fails to connect, loudly, and cannot be fooled quietly.
+
+**Known limits.** Keychain access is serialised inside the store, because two
+identities being made at the same moment made key generation fail. The tests
+make real keys in the user's login keychain, under tags of their own, and
+delete them; an interrupted test run can leave one behind.
 
 ## The library on the wire
 
