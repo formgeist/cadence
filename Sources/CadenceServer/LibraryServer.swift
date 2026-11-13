@@ -140,7 +140,7 @@ public struct LibraryServer: Sendable {
             return failure(.conflictingAuthentication,
                            "Send an API key alone, without a user name.")
         }
-        guard await authenticator.isValid(apiKey: key) else {
+        guard await authenticator.device(forAPIKey: key) != nil else {
             return failure(.invalidAPIKey, "Invalid API key.")
         }
         return nil

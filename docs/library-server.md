@@ -11,9 +11,9 @@ a release build can start it yet.
 
 | Built | Not built yet |
 |---|---|
-| HTTP request parser | Pairing and per-device keys (Phase 3) |
+| HTTP request parser | Pairing: one-time codes that add a device (Phase 3) |
 | OpenSubsonic response envelope and error codes | TLS and Bonjour (Phase 3) |
-| API-key check against a fixed key | A "Share library" switch in the app (Phase 3) |
+| Per-device API keys, stored hashed, revocable | A "Share library" switch in the app (Phase 3) |
 | `ping`, `getOpenSubsonicExtensions` | |
 | `getMusicFolders`, `getArtists`, `getArtist`, `getAlbum`, `getAlbumList2`, `getSong`, `search3` | |
 | `stream`, `download`, `getCoverArt` | |
@@ -102,7 +102,46 @@ that needs no key, as the extension requires: it is how a client learns which
 mechanisms exist.
 
 **Keys are compared by digest.** The server holds a SHA-256 of each key, never
-the key, and compares digests in constant time.
+the key.
+
+## Paired devices
+
+`PairedDeviceStore` holds the devices that may read the library and is the
+only place a key is checked. Nothing calls it from the app yet: pairing, which
+is what will add devices to it, is the next piece of Phase 3. The debug
+harness still uses one fixed key.
+
+**One key per device.** Pairing mints 256 random bits from the system
+generator, as 43 characters of URL-safe base64. The key is returned once, to
+be handed to the device, and is not kept on the Mac.
+
+**Stored hashed.** For each device the store keeps an id, a name, the date it
+was paired, when it was last seen, and the SHA-256 of its key. A plain SHA-256
+is enough, where it would not be for a password, because the key is random:
+there is nothing to guess faster than trying keys.
+
+**Revoking is immediate.** Every request asks the store, which answers from
+memory, and a revoked device is gone from that memory before `revoke` returns.
+There is no cache of earlier answers for a revoked key to survive in.
+
+**One file, owner-readable only.** `paired-devices.json` in the app's
+Application Support folder, mode 0600, written to a new file and moved into
+place so it is never half-written. It is kept apart from the library database:
+resetting a library should not unpair every phone.
+
+**Limits.** At most 32 devices. A device's name comes from the network, so it
+is cut to 64 characters and stripped of control characters before it is kept.
+
+**A file the app cannot read is refused, not replaced.** The store fails to
+open and leaves the file as it is. No device is accepted in that state.
+
+**"Last seen" is written at most once a minute.** It is exact in memory and
+approximate on disk.
+
+Known gap: if the file cannot be rewritten when a device is revoked, the
+device is refused for the rest of that run but is still in the file, and would
+be accepted again after a relaunch. `revoke` reports the failure so the app
+can say so.
 
 **A Cadence protocol version rides in every response.** Beside the Subsonic
 API `version`, the envelope carries `cadenceProtocolVersion` (currently 1) and
