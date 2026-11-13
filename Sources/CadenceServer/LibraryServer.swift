@@ -1,4 +1,5 @@
 import Foundation
+import CadenceLibrary
 
 /// The read-only library server: takes a parsed request, returns a response.
 ///
@@ -23,10 +24,15 @@ public struct LibraryServer: Sendable {
 
     private let configuration: Configuration
     private let authenticator: any Authenticator
+    private let endpoints: LibraryEndpoints
 
-    public init(configuration: Configuration, authenticator: any Authenticator) {
+    /// The server reads `library` and never writes to it: it calls no method
+    /// of the store that changes anything.
+    public init(configuration: Configuration, authenticator: any Authenticator,
+                library: SQLiteLibraryStore) {
         self.configuration = configuration
         self.authenticator = authenticator
+        endpoints = LibraryEndpoints(library: library)
     }
 
     // MARK: - Routing
@@ -34,6 +40,13 @@ public struct LibraryServer: Sendable {
     private enum Endpoint: String, CaseIterable {
         case ping
         case getOpenSubsonicExtensions
+        case getMusicFolders
+        case getArtists
+        case getArtist
+        case getAlbum
+        case getAlbumList2
+        case getSong
+        case search3
 
         /// The one endpoint a client may call before it has a key: it is how
         /// a client learns which ways of signing in the server offers.
@@ -54,15 +67,40 @@ public struct LibraryServer: Sendable {
             return refusal
         }
 
-        switch endpoint {
-        case .ping:
-            return SubsonicResponse.ok(serverVersion: configuration.serverVersion).httpResponse()
-        case .getOpenSubsonicExtensions:
-            return SubsonicResponse.ok(
-                "openSubsonicExtensions",
-                [Extension(name: "apiKeyAuthentication", versions: [1])],
-                serverVersion: configuration.serverVersion).httpResponse()
+        do {
+            switch endpoint {
+            case .ping:
+                return SubsonicResponse.ok(serverVersion: configuration.serverVersion)
+                    .httpResponse()
+            case .getOpenSubsonicExtensions:
+                return ok("openSubsonicExtensions",
+                          [Extension(name: "apiKeyAuthentication", versions: [1])])
+            case .getMusicFolders:
+                return ok("musicFolders", endpoints.musicFolders())
+            case .getArtists:
+                return ok("artists", try await endpoints.artists())
+            case .getArtist:
+                return ok("artist", try await endpoints.artist(request))
+            case .getAlbum:
+                return ok("album", try await endpoints.album(request))
+            case .getAlbumList2:
+                return ok("albumList2", try await endpoints.albumList(request))
+            case .getSong:
+                return ok("song", try await endpoints.song(request))
+            case .search3:
+                return ok("searchResult3", try await endpoints.search(request))
+            }
+        } catch let refusal as EndpointFailure {
+            return failure(refusal.code, refusal.message)
+        } catch {
+            // Whatever the store said stays here. An error's description can
+            // hold a path or a query, and a client is owed neither.
+            return failure(.generic, "The library could not be read.")
         }
+    }
+
+    private func ok(_ key: String, _ value: some Encodable & Sendable) -> HTTPResponse {
+        SubsonicResponse.ok(key, value, serverVersion: configuration.serverVersion).httpResponse()
     }
 
     // MARK: - Authentication

@@ -7,16 +7,15 @@ import CadenceServer
 @Suite("HTTP listener", .serialized)
 struct HTTPListenerTests {
 
-    private static let key = UUID().uuidString + UUID().uuidString
+    private static let key = TestLibrary.key
 
     /// Starts a loopback listener for the length of `body`.
     private func withListener<T>(
         limits: HTTPListener.Limits = .init(),
         _ body: (_ baseURL: URL) async throws -> T
     ) async throws -> T {
-        let server = LibraryServer(
-            configuration: .init(serverVersion: "0.0.0-test"),
-            authenticator: FixedKeyAuthenticator(key: Self.key))
+        let library = try await TestLibrary()
+        let server = library.server(version: "0.0.0-test")
         let listener = try HTTPListener.loopback(limits: limits) { await server.respond(to: $0) }
         let port = try await listener.start()
         defer { listener.stop() }

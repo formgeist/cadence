@@ -6,15 +6,16 @@ Cadence client browse and stream this Mac's library. It speaks the
 decisions behind it; the code comments carry the detail.
 
 Status: Phase 2 of the build plan, in progress. The server is not reachable
-from the app yet and has no library endpoints.
+from the app yet.
 
 | Built | Not built yet |
 |---|---|
-| HTTP request parser | Library endpoints (artists, albums, songs, search) |
-| OpenSubsonic response envelope and error codes | `stream`, `download`, `getCoverArt` |
-| API-key check against a fixed key | Playlists and starred |
-| `ping`, `getOpenSubsonicExtensions` | Pairing, per-device keys, TLS, Bonjour (Phase 3) |
-| Debug-only loopback listener | A "Share library" switch in the app (Phase 3) |
+| HTTP request parser | `stream`, `download`, `getCoverArt` |
+| OpenSubsonic response envelope and error codes | Playlists and starred |
+| API-key check against a fixed key | Pairing, per-device keys, TLS, Bonjour (Phase 3) |
+| `ping`, `getOpenSubsonicExtensions` | A "Share library" switch in the app (Phase 3) |
+| `getMusicFolders`, `getArtists`, `getArtist`, `getAlbum`, `getAlbumList2`, `getSong`, `search3` | |
+| Debug-only loopback listener | |
 
 ## Shape
 
@@ -82,6 +83,58 @@ is `HTTPListener.loopback`, which binds to 127.0.0.1 and is compiled in debug
 builds only. A release build of `CadenceServer` contains no code that can
 start a listener; Phase 3 adds the TLS one.
 
+## The library on the wire
+
+**Ids.** Every id a client sees is opaque and prefixed by kind, so an id sent
+to the wrong endpoint fails to parse instead of finding something else.
+
+| Kind | Form | Source |
+|---|---|---|
+| Song | `tr-` and a lowercase UUID | The track's stored id |
+| Album | `al-` and 32 hex characters | `StableID`, a digest of artist, title and year |
+| Artist | `ar-` and 32 hex characters | `StableID`, a digest of the album-artist name |
+| Cover art | 64 hex characters | The artwork's content address |
+
+An id that is malformed, of the wrong kind, never issued or no longer in the
+library gets one answer: error 70, "Not found."
+
+**Artists are album artists.** `getArtists` lists the names albums are filed
+under, the same list the Mac app's Artists screen shows. A song's `artistId`
+is therefore its album artist's id, which is the artist a client can open,
+while its `artist` is the track artist as tagged.
+
+**No paths.** The protocol's optional `path` field is never sent. A song
+reports its extension and content type and nothing else about its file. The
+library is presented as one music folder named "Library".
+
+**`getAlbumList2` types.**
+
+| Type | Behaviour |
+|---|---|
+| `alphabeticalByName`, `alphabeticalByArtist`, `newest`, `random` | Supported |
+| `byYear` | Needs `fromYear` and `toYear`; a reversed range lists newest first |
+| `byGenre` | Needs `genre`; matches ignoring case and accents |
+| `recent`, `frequent`, `highest`, `starred` | Answered with an empty list |
+
+The last row is deliberate. The protocol defines those lists over play counts
+and ratings kept per album id, which this library does not keep in that form.
+An empty list is a valid answer and does not hand a client an error.
+
+`size` defaults to 10 and is capped at 500. A value over the cap is brought
+down to it; a value that is not a plain non-negative integer is error 10.
+
+**`search3`.** Songs come from the store's full-text index, the same search
+the Mac app uses, which builds its pattern from the letters and digits of the
+query alone. Albums and artists match when every word of the query appears in
+the name, ignoring case and accents. An empty query returns the whole library
+a page at a time, as the protocol defines, which is how a client can mirror
+the library's metadata. A non-empty query returns at most 100 songs in total.
+
+**Cost.** Album lists are built from one grouped query over the track table
+and never load tracks. `getAlbum` and `getArtist` read only the rows they
+need. Nothing is cached between requests yet; `make bench` timings come with
+the debug harness later in this phase.
+
 ## Limits
 
 Set in `HTTPRequestParser.Limits` and `HTTPListener.Limits`.
@@ -104,8 +157,10 @@ authentication belong to Phase 3, with pairing.
 - **Parser**: accepted and refused inputs case by case, plus two seeded fuzz
   tests (random bytes, and mutations of a valid request) that assert it never
   crashes.
-- **Endpoints**: called directly on `LibraryServer`, with a key generated for
-  the test run.
+- **Endpoints**: called directly on `LibraryServer`, against a real SQLite
+  store in a temporary folder, with a key generated for the test run. They
+  include hostile ids and queries, and a check that no response contains a
+  path.
 - **Socket**: a loopback listener driven by `URLSession`, and by raw streams
   for the cases `URLSession` cannot produce (silence, garbage).
 

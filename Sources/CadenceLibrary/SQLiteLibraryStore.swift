@@ -399,6 +399,69 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
         }
     }
 
+    // MARK: - Reads for the library server
+
+    /// One album, described without loading its tracks. A library of thirty
+    /// thousand tracks is a few thousand of these, which is what makes it
+    /// cheap to sort and page a whole album list per request.
+    public struct AlbumSummary: Sendable, Hashable {
+        public var key: Album.Key
+        public var trackCount: Int
+        public var duration: TimeInterval
+        /// When the most recently added track entered the library, matching
+        /// `Album.dateAdded`.
+        public var dateAdded: Date
+        public var artworkID: Artwork.ID?
+        /// Every distinct genre tag on the album's tracks, as written.
+        public var genres: [String]
+    }
+
+    /// Every album, or one artist's, in no particular order.
+    public func albumSummaries(byArtist name: String? = nil) async throws -> [AlbumSummary] {
+        try await pool.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT albumArtist, albumTitle, year,
+                       COUNT(*) AS trackCount,
+                       SUM(duration) AS duration,
+                       MAX(dateAdded) AS dateAdded,
+                       MIN(artworkID) AS artworkID,
+                       GROUP_CONCAT(DISTINCT genre) AS genres
+                FROM track
+                WHERE ?1 IS NULL OR albumArtist = ?1
+                GROUP BY albumArtist, albumTitle, year
+                """, arguments: [name]).map { row in
+                AlbumSummary(
+                    key: Album.Key(albumArtist: row["albumArtist"], title: row["albumTitle"],
+                                   year: row["year"]),
+                    trackCount: row["trackCount"],
+                    duration: row["duration"] ?? 0,
+                    dateAdded: row["dateAdded"] ?? .distantPast,
+                    artworkID: row["artworkID"],
+                    // A genre tag holding a comma splits in two here. That
+                    // costs a filter a rare miss, and nothing else reads it.
+                    genres: ((row["genres"] as String?) ?? "")
+                        .split(separator: ",").map(String.init).sorted())
+            }
+        }
+    }
+
+    public func track(withID id: Track.ID) async throws -> Track? {
+        try await pool.read { db in
+            try TrackRecord.fetchOne(
+                db, sql: "SELECT * FROM track WHERE id = ?", arguments: [id.uuidString])?.track
+        }
+    }
+
+    /// A window onto every track, in a fixed order, for a client that reads
+    /// the whole library a page at a time.
+    public func tracks(offset: Int, limit: Int) async throws -> [Track] {
+        try await pool.read { db in
+            try TrackRecord.fetchAll(db, sql: """
+                SELECT * FROM track ORDER BY rowid LIMIT ? OFFSET ?
+                """, arguments: [max(0, limit), max(0, offset)]).map(\.track)
+        }
+    }
+
     // MARK: - Stable ids
 
     /// The album a `StableID.album` id names, or nil for an id this library
