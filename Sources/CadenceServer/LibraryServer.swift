@@ -7,9 +7,10 @@ import CadenceLibrary
 /// app; tests call `respond(to:)` directly. That split is what lets every
 /// endpoint be tested without opening a port.
 ///
-/// **There is no write path.** The only methods a request can arrive with are
-/// `GET` and `HEAD`, no endpoint in the table changes anything, and a request
-/// body is refused by the parser before it reaches here.
+/// **The library has no write path.** Everything under `/rest/` is reached
+/// with `GET` or `HEAD` only, and no endpoint in the table changes anything.
+/// The one request that does change something is `POST /pair`, which can add
+/// a paired device and nothing else.
 public struct LibraryServer: Sendable {
 
     public struct Configuration: Sendable {
@@ -25,13 +26,16 @@ public struct LibraryServer: Sendable {
     private let configuration: Configuration
     private let authenticator: any Authenticator
     private let endpoints: LibraryEndpoints
+    private let pairing: PairingSession?
 
     /// The server reads `library` and never writes to it: it calls no method
     /// of the store that changes anything.
     public init(configuration: Configuration, authenticator: any Authenticator,
-                library: SQLiteLibraryStore, artwork: DiskArtworkStore? = nil) {
+                library: SQLiteLibraryStore, artwork: DiskArtworkStore? = nil,
+                pairing: PairingSession? = nil) {
         self.configuration = configuration
         self.authenticator = authenticator
+        self.pairing = pairing
         endpoints = LibraryEndpoints(library: library, artwork: artwork)
     }
 
@@ -60,6 +64,11 @@ public struct LibraryServer: Sendable {
     }
 
     public func respond(to request: HTTPRequest) async -> HTTPResponse {
+        if request.path == "/pair" { return await pair(request) }
+        // Everything else is the library, which is read with `GET` and
+        // `HEAD` and nothing more.
+        guard request.method != .post else { return .empty(.methodNotAllowed) }
+
         // `/rest/<name>`, or `/rest/<name>.view` as older clients spell it.
         // An exact match against the table: the path is never interpreted.
         guard request.path.hasPrefix("/rest/") else { return .empty(.notFound) }
@@ -119,6 +128,58 @@ public struct LibraryServer: Sendable {
 
     private func ok(_ key: String, _ value: some Encodable & Sendable) -> HTTPResponse {
         SubsonicResponse.ok(key, value, serverVersion: configuration.serverVersion).httpResponse()
+    }
+
+    // MARK: - Pairing
+
+    private struct PairingRequest: Decodable {
+        var code: String
+        var name: String
+    }
+
+    private struct PairingResponse: Encodable {
+        var apiKey: String
+        var deviceId: String
+        var serverVersion: String
+        var cadenceProtocolVersion: Int
+    }
+
+    /// `POST /pair` — the one request that changes anything, and the one a
+    /// device can make without a key, since getting a key is its purpose.
+    ///
+    /// It is not part of the library API and sits outside `/rest/` to say so.
+    /// It can add a paired device and do nothing else. It only works while
+    /// the user has a pairing code on screen; `PairingSession` holds the
+    /// rules that make a six-digit code safe to accept.
+    private func pair(_ request: HTTPRequest) async -> HTTPResponse {
+        guard let pairing else { return .empty(.notFound) }
+        guard request.method == .post else { return .empty(.methodNotAllowed) }
+        // Exactly JSON. A browser cannot send this content type across
+        // origins without asking first, which keeps a web page the user
+        // happens to have open from making this request for them.
+        let contentType = request.headers["content-type"]?
+            .split(separator: ";").first?.trimmingCharacters(in: .whitespaces).lowercased()
+        guard contentType == "application/json" else { return .empty(.unsupportedMediaType) }
+        guard let body = try? JSONDecoder().decode(PairingRequest.self, from: request.body) else {
+            return .empty(.badRequest)
+        }
+
+        guard let paired = await pairing.redeem(code: body.code, deviceName: body.name) else {
+            // One answer for wrong, expired, used up and not open.
+            return Self.json(.forbidden, ["error": "pairing_failed"])
+        }
+        return Self.json(.ok, PairingResponse(
+            apiKey: paired.apiKey,
+            deviceId: paired.device.id.uuidString.lowercased(),
+            serverVersion: configuration.serverVersion,
+            cadenceProtocolVersion: SubsonicResponse.cadenceProtocolVersion))
+    }
+
+    private static func json(_ status: HTTPStatus, _ value: some Encodable) -> HTTPResponse {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return HTTPResponse(status: status, contentType: "application/json; charset=utf-8",
+                            body: (try? encoder.encode(value)) ?? Data("{}".utf8))
     }
 
     // MARK: - Authentication

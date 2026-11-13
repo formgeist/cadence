@@ -64,7 +64,7 @@ struct HTTPRequestParserTests {
     // MARK: What it refuses
 
     @Test("Any method that could change something is refused",
-          arguments: ["POST", "PUT", "DELETE", "PATCH", "OPTIONS", "CONNECT", "TRACE", "get"])
+          arguments: ["PUT", "DELETE", "PATCH", "OPTIONS", "CONNECT", "TRACE", "get", "post"])
     func otherMethods(method: String) {
         #expect(parse("\(method) /rest/ping HTTP/1.1\r\n\r\n") == .failure(.methodNotAllowed))
     }
@@ -127,6 +127,52 @@ struct HTTPRequestParserTests {
         #expect(parse("GET /rest/ping HTTP/1.1\r\n\(line)\r\n\r\n") == .failure(.badRequest))
     }
 
+    // MARK: POST
+
+    @Test("A POST with a declared body parses once the whole body has arrived")
+    func post() throws {
+        let head = "POST /pair HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: 12\r\n\r\n"
+        #expect(parse(head) == .incomplete)
+        #expect(parse(head + "{\"code\":") == .incomplete)
+        let parsed = try #require(request(head + "{\"code\":\"1\"}"))
+        #expect(parsed.method == .post)
+        #expect(parsed.path == "/pair")
+        #expect(parsed.body == Data("{\"code\":\"1\"}".utf8))
+    }
+
+    @Test("A POST must say how long its body is, and keep it small")
+    func postLimits() {
+        #expect(parse("POST /pair HTTP/1.1\r\n\r\n") == .failure(.lengthRequired))
+        #expect(parse("POST /pair HTTP/1.1\r\nContent-Length: 1025\r\n\r\n")
+                == .failure(.contentTooLarge))
+        #expect(parse("POST /pair HTTP/1.1\r\nContent-Length: 99999999999\r\n\r\n")
+                == .failure(.badRequest))
+        #expect(parse("POST /pair HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n")
+                == .failure(.badRequest))
+        // The size is refused from the header, before any of the body is read.
+        #expect(parse("POST /pair HTTP/1.1\r\nContent-Length: 5000\r\n\r\nab")
+                == .failure(.contentTooLarge))
+    }
+
+    @Test("Bytes after the declared body are not a second request")
+    func trailingBytes() {
+        #expect(parse("POST /pair HTTP/1.1\r\nContent-Length: 2\r\n\r\n{}GET /rest/ping HTTP/1.1\r\n\r\n")
+                == .failure(.badRequest))
+        #expect(parse("GET /rest/ping HTTP/1.1\r\n\r\nGET /rest/ping HTTP/1.1\r\n\r\n")
+                == .failure(.badRequest))
+    }
+
+    @Test("A body of any bytes is carried as it is")
+    func binaryBody() throws {
+        var data = Data("POST /pair HTTP/1.1\r\nContent-Length: 4\r\n\r\n".utf8)
+        data.append(contentsOf: [0x00, 0xFF, 0x0D, 0x0A])
+        guard case .request(let parsed) = HTTPRequestParser.parse(data) else {
+            Issue.record("did not parse")
+            return
+        }
+        #expect(parsed.body == Data([0x00, 0xFF, 0x0D, 0x0A]))
+    }
+
     // MARK: Limits
 
     @Test("A head that outgrows the limit is refused without waiting for its end")
@@ -177,6 +223,30 @@ struct HTTPRequestParserTests {
         }
     }
 
+    @Test("Mutated POST requests never crash the parser or exceed the body limit")
+    func fuzzPost() {
+        let seedRequest = Array(
+            "POST /pair HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: 31\r\n\r\n{\"code\":\"123456\",\"name\":\"iPad\"}".utf8)
+        let interesting: [UInt8] = [0, 10, 13, 32, 48, 49, 57, 58, 45, 43, 255]
+        var generator = SeededGenerator(seed: 0x9A12_0057)
+        for _ in 0..<40_000 {
+            var bytes = seedRequest
+            for _ in 0..<Int.random(in: 1...4, using: &generator) {
+                let index = Int.random(in: 0..<bytes.count, using: &generator)
+                switch Int.random(in: 0..<3, using: &generator) {
+                case 0: bytes[index] = interesting.randomElement(using: &generator)!
+                case 1: bytes.remove(at: index)
+                default: bytes.insert(interesting.randomElement(using: &generator)!, at: index)
+                }
+                if bytes.isEmpty { break }
+            }
+            if case .request(let request) = HTTPRequestParser.parse(Data(bytes)) {
+                #expect(request.body.count <= HTTPRequestParser.Limits().bodyBytes)
+                #expect(request.method == .post || request.body.isEmpty)
+            }
+        }
+    }
+
     /// Random bytes almost never get past the request line. Mutating a valid
     /// request reaches the header and query code that random input cannot.
     @Test("Mutated valid requests never crash the parser")
@@ -199,6 +269,10 @@ struct HTTPRequestParserTests {
             }
             let result = HTTPRequestParser.parse(Data(bytes))
             // Whatever survives mutation must still be within the limits.
+            if case .request(let request) = result {
+                #expect(request.body.count <= HTTPRequestParser.Limits().bodyBytes)
+                #expect(request.method == .post || request.body.isEmpty)
+            }
             if case .request(let request) = result {
                 #expect(request.path.hasPrefix("/"))
                 #expect(!request.path.utf8.contains(0))
