@@ -157,6 +157,7 @@ final class LibraryImporter {
                     combined.skipped += summary.skipped
                     combined.failed += summary.failed
                     combined.removed += summary.removed
+                    combined.moved += summary.moved
                     combined.failures += summary.failures
                     self.recordScanned(url)
                     self.recordFailures(summary.failures, for: url)

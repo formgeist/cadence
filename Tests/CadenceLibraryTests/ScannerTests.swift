@@ -358,6 +358,110 @@ struct ScannerTests {
         #expect(try await harness.store.tracks(matching: "alternate").count == 1)
     }
 
+    // MARK: - Moved files
+
+    @Test("A file moved into a subfolder keeps its id, its playlist place and its like")
+    func movedFileKeepsIdentity() async throws {
+        let harness = try Self.makeHarness()
+        defer { try? FileManager.default.removeItem(at: harness.root) }
+        try await harness.scanner.scan(folder: harness.music)
+
+        let before = try #require(
+            try await harness.store.tracks(matching: "glacier").first)
+        let playlist = try await harness.store.createPlaylist(named: "Cold")
+        try await harness.store.addTracks([before.id], to: playlist.id)
+        try await harness.store.setLiked(true, trackIDs: [before.id])
+
+        let sorted = harness.music.appendingPathComponent("Sorted", isDirectory: true)
+        try FileManager.default.createDirectory(at: sorted, withIntermediateDirectories: true)
+        try FileManager.default.moveItem(
+            at: harness.music.appendingPathComponent("08-glacier-mouth.flac"),
+            to: sorted.appendingPathComponent("glacier mouth.flac"))
+
+        let second = try await harness.scanner.scan(folder: harness.music)
+        #expect(second.moved == 1)
+        #expect(second.removed == 0)
+
+        let tracks = try await harness.store.allTracks()
+        #expect(tracks.count == Self.corpus.count)
+        let after = try #require(tracks.first { $0.title == "Glacier Mouth" })
+        #expect(after.id == before.id)
+        #expect(after.url.lastPathComponent == "glacier mouth.flac")
+        #expect(try await harness.store.playlists().first?.trackIDs == [before.id])
+        #expect(try await harness.store.likedTrackIDs() == [before.id])
+        #expect(try await harness.store.tracks(matching: "glacier").count == 1)
+    }
+
+    @Test("Moving every file at once keeps every id")
+    func movedFolderKeepsEveryIdentity() async throws {
+        let harness = try Self.makeHarness()
+        defer { try? FileManager.default.removeItem(at: harness.root) }
+        // A batch smaller than the library, so moves span several writes.
+        try await harness.scanner.scan(folder: harness.music)
+        let before = Dictionary(
+            uniqueKeysWithValues: try await harness.store.allTracks()
+                .map { ($0.url.lastPathComponent, $0.id) })
+
+        let renamed = harness.music.appendingPathComponent("FLAC", isDirectory: true)
+        try FileManager.default.createDirectory(at: renamed, withIntermediateDirectories: true)
+        for name in before.keys {
+            try FileManager.default.moveItem(
+                at: harness.music.appendingPathComponent(name),
+                to: renamed.appendingPathComponent(name))
+        }
+
+        let second = try await harness.scanner.scan(folder: harness.music)
+        #expect(second.moved == Self.corpus.count)
+        #expect(second.removed == 0)
+
+        let after = Dictionary(
+            uniqueKeysWithValues: try await harness.store.allTracks()
+                .map { ($0.url.lastPathComponent, $0.id) })
+        #expect(after == before)
+    }
+
+    @Test("A different recording with the same size and date is a new track, not a move")
+    func lookalikeIsNotAMove() async throws {
+        let harness = try Self.makeHarness()
+        defer { try? FileManager.default.removeItem(at: harness.root) }
+        try await harness.scanner.scan(folder: harness.music)
+
+        let original = harness.music.appendingPathComponent("08-glacier-mouth.flac")
+        let before = try #require(
+            try await harness.store.tracks(matching: "glacier").first)
+        try await harness.store.setLiked(true, trackIDs: [before.id])
+
+        // Same audio, same tag lengths, one word different: identical size.
+        let elsewhere = harness.root.appendingPathComponent("elsewhere", isDirectory: true)
+        let lookalike = try #require(try FLACFixture.build([
+            .init(name: "09-glacier-south", tags: [
+                ("TITLE", "Glacier South"), ("ARTIST", "Delta Sleep Choir"),
+                ("ALBUM", "Nordic Ambient, Vol. 4"), ("COMPILATION", "1"), ("DATE", "2024"),
+                ("TRACKNUMBER", "2"),
+            ]),
+        ], in: elsewhere).first)
+        let attributes = try FileManager.default.attributesOfItem(atPath: original.path)
+        try FileManager.default.setAttributes(
+            [.modificationDate: try #require(attributes[.modificationDate])],
+            ofItemAtPath: lookalike.path)
+        // The premise of the test: by fingerprint alone these are one file.
+        #expect(FLACMetadataReader.fingerprint(for: lookalike)
+                == FLACMetadataReader.fingerprint(for: original))
+
+        try FileManager.default.removeItem(at: original)
+        try FileManager.default.moveItem(
+            at: lookalike, to: harness.music.appendingPathComponent("09-glacier-south.flac"))
+
+        let second = try await harness.scanner.scan(folder: harness.music)
+        #expect(second.moved == 0)
+        #expect(second.removed == 1)
+
+        let south = try #require(try await harness.store.tracks(matching: "south").first)
+        #expect(south.id != before.id)
+        // The like belonged to the track that left, and left with it.
+        #expect(try await harness.store.likedTrackIDs().isEmpty)
+    }
+
     @Test("A deleted file leaves the library on the next scan")
     func rescanRemovesDeleted() async throws {
         let harness = try Self.makeHarness()
