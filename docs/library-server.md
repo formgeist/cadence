@@ -10,11 +10,12 @@ from the app yet.
 
 | Built | Not built yet |
 |---|---|
-| HTTP request parser | `stream`, `download`, `getCoverArt` |
-| OpenSubsonic response envelope and error codes | Playlists and starred |
+| HTTP request parser | Playlists and starred |
+| OpenSubsonic response envelope and error codes | A way to start the server from the app |
 | API-key check against a fixed key | Pairing, per-device keys, TLS, Bonjour (Phase 3) |
 | `ping`, `getOpenSubsonicExtensions` | A "Share library" switch in the app (Phase 3) |
 | `getMusicFolders`, `getArtists`, `getArtist`, `getAlbum`, `getAlbumList2`, `getSong`, `search3` | |
+| `stream`, `download`, `getCoverArt` | |
 | Debug-only loopback listener | |
 
 ## Shape
@@ -134,6 +135,51 @@ the library's metadata. A non-empty query returns at most 100 songs in total.
 and never load tracks. `getAlbum` and `getArtist` read only the rows they
 need. Nothing is cached between requests yet; `make bench` timings come with
 the debug harness later in this phase.
+
+## Audio and cover art
+
+`stream`, `download` and `getCoverArt` answer with bytes, not an envelope. A
+failure is still a JSON envelope; a client tells the two apart by content
+type.
+
+**The request names a thing by id; the server decides where it is.** A song
+id is looked up in the library, and the library's own record says which file
+to open. Nothing a client sends is used as, or joined into, a path.
+
+**No transcoding.** `stream` and `download` both send the original file. The
+protocol's `maxBitRate` and `format` parameters are ignored.
+
+**Byte ranges.** One range in bytes is honoured, in the three forms a player
+seeks with: `a-b`, `a-` and `-n`. An end past the file is brought back to its
+last byte. A range that starts outside the file is 416 with the file's size.
+Anything else, including several ranges at once, is ignored and answered with
+the whole file, as RFC 9110 permits.
+
+**Files are sent in 64 KB pieces**, each read only after the one before it
+has been handed to the network, so a slow client holds one piece in memory
+and not the file.
+
+**A file is opened with `O_NOFOLLOW` and must be a regular file.** The path
+was true when the library was scanned, not necessarily now. A file since
+swapped for a symbolic link or a directory is refused, so the server only
+sends what the scanner read. The file is opened before the response head is
+sent: if it has gone or shrunk in between, the client gets a 500 and not a
+head followed by a short body.
+
+**A cover id must be a content address**: exactly 64 lowercase hex
+characters. The artwork store builds a file name from the id, so this check
+is what keeps a cover request inside the artwork folder.
+
+**Cover sizes are rounded up to 64, 128, 256, 512 or 1024 pixels.** The
+artwork store keeps one thumbnail file per cover per size; without the
+rounding, a client could fill the disk by asking for every size in turn.
+Sized covers are PNG. With no `size`, the stored original is sent.
+
+**Image types are read from the bytes.** Cover bytes come from tags in music
+files. JPEG, PNG, GIF and WebP are served; anything else is "not found".
+
+Not built yet: a limit on concurrent streams per device, and a timeout for a
+client that stops reading mid-stream. Both belong to Phase 3.
 
 ## Limits
 

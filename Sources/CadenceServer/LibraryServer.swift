@@ -29,10 +29,10 @@ public struct LibraryServer: Sendable {
     /// The server reads `library` and never writes to it: it calls no method
     /// of the store that changes anything.
     public init(configuration: Configuration, authenticator: any Authenticator,
-                library: SQLiteLibraryStore) {
+                library: SQLiteLibraryStore, artwork: DiskArtworkStore? = nil) {
         self.configuration = configuration
         self.authenticator = authenticator
-        endpoints = LibraryEndpoints(library: library)
+        endpoints = LibraryEndpoints(library: library, artwork: artwork)
     }
 
     // MARK: - Routing
@@ -47,6 +47,9 @@ public struct LibraryServer: Sendable {
         case getAlbumList2
         case getSong
         case search3
+        case stream
+        case download
+        case getCoverArt
 
         /// The one endpoint a client may call before it has a key: it is how
         /// a client learns which ways of signing in the server offers.
@@ -89,6 +92,12 @@ public struct LibraryServer: Sendable {
                 return ok("song", try await endpoints.song(request))
             case .search3:
                 return ok("searchResult3", try await endpoints.search(request))
+            // These answer with the bytes themselves. A failure is still an
+            // envelope, which a client tells apart by its content type.
+            case .stream, .download:
+                return try await endpoints.audio(request)
+            case .getCoverArt:
+                return try await endpoints.coverArt(request)
             }
         } catch let refusal as EndpointFailure {
             return failure(refusal.code, refusal.message)
