@@ -141,12 +141,20 @@ public struct ServerIdentityStore: Sendable {
         let attributes: [CFString: Any] = [
             kSecAttrKeyType: kSecAttrKeyTypeECSECPrimeRandom,
             kSecAttrKeySizeInBits: 256,
-            // Stored, and not something that can be copied out again. These
-            // two are set here, at the top: set only inside the private-key
-            // attributes below, "not extractable" was silently ignored.
+            // Stored, and not something that can be copied out again.
+            //
+            // "Not extractable" is said twice and backed by "sensitive",
+            // because where it is honoured has varied: set only inside the
+            // private-key attributes it was ignored on one system, and set
+            // only at the top it was ignored on another (the CI runner). A
+            // test tries to export the key, so a system that honours neither
+            // fails loudly instead of quietly keeping an exportable key.
             kSecAttrIsPermanent: true,
             kSecAttrIsExtractable: false,
             kSecPrivateKeyAttrs: [
+                kSecAttrIsPermanent: true,
+                kSecAttrIsExtractable: false,
+                kSecAttrIsSensitive: true,
                 kSecAttrApplicationTag: Data(keyTag.utf8),
                 kSecAttrLabel: "Cadence Library Server",
             ] as [CFString: Any],
