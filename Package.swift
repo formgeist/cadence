@@ -13,6 +13,7 @@ let package = Package(
         .library(name: "CadenceLibrary", targets: ["CadenceLibrary"]),
         .library(name: "CadenceAudio", targets: ["CadenceAudio"]),
         .library(name: "CadenceDesign", targets: ["CadenceDesign"]),
+        .library(name: "CadenceServer", targets: ["CadenceServer"]),
         .executable(name: "Cadence", targets: ["Cadence"]),
     ],
     dependencies: [
@@ -58,6 +59,12 @@ let package = Package(
             ]
         ),
 
+        // The read-only library server: an HTTP request parser, the
+        // OpenSubsonic envelope, and the endpoints. Apple frameworks only.
+        // It gains CadenceCore and CadenceLibrary when the first endpoint
+        // that reads the library lands.
+        .target(name: "CadenceServer"),
+
         .executableTarget(
             name: "Cadence",
             dependencies: ["CadenceCore", "CadenceLibrary", "CadenceAudio", "CadenceDesign"]
@@ -75,6 +82,14 @@ let package = Package(
             name: "CadenceDesignTests",
             dependencies: [
                 "CadenceDesign",
+                .product(name: "Testing", package: "swift-testing"),
+            ]
+        ),
+
+        .testTarget(
+            name: "CadenceServerTests",
+            dependencies: [
+                "CadenceServer",
                 .product(name: "Testing", package: "swift-testing"),
             ]
         ),

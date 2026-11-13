@@ -80,7 +80,7 @@ Development Mode app needs its owner on Premium.
 
 ## The layering rule
 
-Cadence is five targets, and the dependency direction is the design:
+Cadence is six targets, and the dependency direction is the design:
 
 | Target | May depend on | Contains |
 |---|---|---|
@@ -88,7 +88,8 @@ Cadence is five targets, and the dependency direction is the design:
 | `CadenceDesign` | **nothing third-party** | design tokens and the bundled fonts, shared with the iOS app |
 | `CadenceLibrary` | GRDB | SQLite store, FTS5 search, FLAC tag reader, import scanner, artwork cache |
 | `CadenceAudio` | SFBAudioEngine | decode, gapless, metadata for every non-FLAC format |
-| `Cadence` | all four | the app — views, design tokens, snapshot and diagnostic tools |
+| `CadenceServer` | **nothing third-party** | the read-only library server: HTTP parser, OpenSubsonic envelope, endpoints — see [docs/library-server.md](docs/library-server.md) |
+| `Cadence` | the first four | the app — views, design tokens, snapshot and diagnostic tools |
 
 Two things follow that a change must not break:
 
