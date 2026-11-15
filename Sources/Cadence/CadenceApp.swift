@@ -31,6 +31,9 @@ final class AppContainer {
     let discovery: DiscoveryController
     /// File ▸ Import Spotify Playlist…, and the Spotify sign-in behind it.
     let spotify: SpotifyImporter
+    /// The library server's switch, state and paired devices. Starts nothing
+    /// by being built: see `SharingController.resumeIfEnabled`.
+    let sharing: SharingController
     /// Whether a text field has the keyboard, so the menu bar can get out of
     /// its way — see `TextEntryMonitor`.
     let textEntry: TextEntryMonitor
@@ -152,6 +155,9 @@ final class AppContainer {
         // Last.fm's similar-artist answers are kept in the library database
         // beside the history; memory when that did not open.
         var similarCache: any SimilarArtistCache = InMemorySimilarArtistCache()
+        // The server reads the real database and nothing else. Until that
+        // has opened there is nothing to share.
+        var sharingBackend: any SharingBackend = UnavailableSharingBackend()
 
         switch mode {
         case .live:
@@ -166,6 +172,7 @@ final class AppContainer {
                     ? MockPlayLogStore(library: store) : store
                 similarCache = store
                 let artwork = try DiskArtworkStore.makeDefault()
+                sharingBackend = LiveSharingBackend(library: store, artwork: artwork)
                 let scanner = LibraryScanner(
                     store: store, artwork: artwork, router: Self.metadataRouter)
                 model = AppModel(store: store, settings: settings, artwork: artwork,
@@ -206,7 +213,22 @@ final class AppContainer {
                              memories: InMemoryMemoryStore(memories: PreviewData.memories()))
             importer = LibraryImporter(scanner: nil, bookmarks: folders)
             artworkLoader = ArtworkLoader(store: previewArtwork)
+            sharingBackend = PreviewSharingBackend()
         }
+
+        switch mode {
+        case .live:
+            sharing = SharingController(backend: sharingBackend, settings: settings)
+        case .preview:
+            // On, with made-up devices and a made-up name: design review sees
+            // the full rows, and a screenshot never shows this Mac's own name.
+            settings.set(true, forKey: .librarySharingEnabled)
+            sharing = SharingController(backend: sharingBackend, settings: settings,
+                                        computerName: "Studio Mac",
+                                        hostProvider: { "studio-mac.local" })
+            sharing.resumeIfEnabled()
+        }
+        AppDelegate.sharing = sharing
 
         // Play history is recorded here, not inside `PlaybackController`,
         // which knows nothing about `AppModel` or persistence — see #72. The
@@ -276,6 +298,7 @@ struct CadenceApp: App {
                 .environment(container.playLog)
                 .environment(container.discovery)
                 .environment(container.spotify)
+                .environment(container.sharing)
                 .environment(\.isSilentPlayback, container.isSilentPlayback)
                 .frame(minWidth: Tokens.Layout.minWindow.width,
                        minHeight: Tokens.Layout.minWindow.height)
@@ -493,6 +516,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Set by the app so `applicationWillTerminate` can scrobble a track
     /// that's already past the threshold at quit — see #95.
     @MainActor static weak var scrobble: ScrobbleController?
+    /// Lets a normal launch start the library server if sharing was left on.
+    @MainActor static weak var sharing: SharingController?
 
     /// Held for the process lifetime — an unretained monitor is removed
     /// immediately. See `applicationDidFinishLaunching`.
@@ -714,6 +739,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             FileHandle.standardError.write(Data(
                 "Cadence: bundled fonts not found, falling back to the system face.\n".utf8))
         }
+
+        // Only here, on a normal launch. Every headless mode above has
+        // returned by now, so none of them starts the server.
+        AppDelegate.sharing?.resumeIfEnabled()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

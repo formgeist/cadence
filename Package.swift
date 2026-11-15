@@ -130,6 +130,8 @@ let package = Package(
             dependencies: [
                 "Cadence",
                 "CadenceCore",
+                "CadenceLibrary",
+                "CadenceServer",
                 .product(name: "Testing", package: "swift-testing"),
             ]
         ),

@@ -68,6 +68,10 @@ struct SettingsView: View {
                     SettingsSection("Discovery") {
                         DiscoverySettings()
                     }
+
+                    SettingsSection("Sharing") {
+                        SharingSettings()
+                    }
                 }
                 .frame(maxWidth: Tokens.Layout.settingsContentWidth, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .leading)

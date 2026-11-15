@@ -35,6 +35,7 @@ struct TitleBarView: View {
             // centred, and gives Preferences a way in besides ⌘,.
             HStack(spacing: Tokens.Space.xs) {
                 Spacer(minLength: 0)
+                SharingIndicator()
                 IconButton(systemImage: "gearshape", label: "Preferences",
                            glyphSize: 13, side: 26,
                            isActive: model.screen == .settings) {
