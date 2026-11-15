@@ -12,9 +12,9 @@ a release build can start it yet.
 | Built | Not built yet |
 |---|---|
 | HTTP request parser | Starting the TLS listener from the app |
-| OpenSubsonic response envelope and error codes | Bonjour |
+| OpenSubsonic response envelope and error codes | `SECURITY.md` |
 | Per-device API keys, stored hashed, revocable; pairing by QR token; rate and stream limits | A "Share library" switch in the app (Phase 3) |
-| Self-signed certificate, keychain identity, TLS 1.3 listener | |
+| Self-signed certificate, keychain identity, TLS 1.3 listener, Bonjour | |
 | `ping`, `getOpenSubsonicExtensions` | |
 | `getMusicFolders`, `getArtists`, `getArtist`, `getAlbum`, `getAlbumList2`, `getSong`, `search3` | |
 | `stream`, `download`, `getCoverArt` | |
@@ -355,6 +355,41 @@ fails to connect, loudly, and cannot be fooled quietly.
 identities being made at the same moment made key generation fail. The tests
 make real keys in the user's login keychain, under tags of their own, and
 delete them; an interrupted test run can leave one behind.
+
+## Being found on the network
+
+When sharing is on, the server announces itself over Bonjour so a phone can
+find it without being told an address.
+
+**Service type `_cadence._tcp`** (decided 2026-11-13). The iOS app must list
+it under `NSBonjourServices` and browse for it.
+
+**The announcement is a name, a type and a port.** There is no TXT record. It
+says a Cadence server is here, and nothing about what is in the library, which
+devices are paired, or which version is running. A test reads the record back
+and checks it is empty. The name is whatever the app passes; the settings UI
+will use the Mac's name.
+
+**Being found is not being trusted.** Anyone on the network can see the
+announcement and connect. They get a TLS handshake and then nothing without a
+key. An announcement can also be faked by anything on the network, which is
+why the phone trusts the fingerprint from the QR code and not the name it
+discovered.
+
+**Off unless asked for.** `HTTPListener.tls` advertises only when given a
+name. A test starts one without and checks nothing new appears.
+
+**What the app bundle needed** (`Scripts/make-app.sh`):
+
+| Addition | Why |
+|---|---|
+| `com.apple.security.network.server` entitlement | A sandboxed build cannot listen without it |
+| `NSBonjourServices` with `_cadence._tcp` | The announcement is not allowed unless the type is declared |
+| `NSLocalNetworkUsageDescription` | The sentence macOS shows when it asks about local network use |
+
+These are the only network additions. Nothing in the app starts the server
+yet, so nothing listens and nothing is announced until the sharing switch
+exists.
 
 ## The library on the wire
 
