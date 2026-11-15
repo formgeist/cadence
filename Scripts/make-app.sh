@@ -108,6 +108,15 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>NSSupportsAutomaticTermination</key><true/>
     <key>LSApplicationCategoryType</key>     <string>public.app-category.music</string>
 
+    <!-- Library sharing. macOS asks before an app uses the local network,
+         and shows this sentence when it does. The service type is the one
+         the server announces itself under; it must be declared here for the
+         announcement to be allowed. -->
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Cadence uses the local network to share your library with your paired iPhone and iPad, when you turn sharing on.</string>
+    <key>NSBonjourServices</key>
+    <array><string>_cadence._tcp</string></array>
+
     <!-- The drag type for tracks moving onto a playlist. Declared so the
          identifier UTType(exportedAs:) forms in PlaylistActions.swift is a
          real one rather than a type the system invents per launch. Spelled
@@ -171,6 +180,10 @@ if [ "${SANDBOX:-1}" = "1" ]; then
     <!-- Scrobbling talks to Last.fm — issue #95. A sandboxed build makes no
          outbound connection without this. -->
     <key>com.apple.security.network.client</key>                      <true/>
+    <!-- The library server accepts connections from paired devices on the
+         local network. It listens only while the user has turned sharing
+         on; without this a sandboxed build cannot listen at all. -->
+    <key>com.apple.security.network.server</key>                      <true/>
 ENTITLEMENTS
 
         # keychain-access-groups is checked against the signature's team

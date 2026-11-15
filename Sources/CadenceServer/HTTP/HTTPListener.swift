@@ -55,8 +55,12 @@ public final class HTTPListener: @unchecked Sendable {
     ///   - port: Nil lets the system choose one.
     ///   - loopbackOnly: Binds to 127.0.0.1 alone, for tests. The real server
     ///     listens on the local network.
+    ///   - advertisedName: When set, the server is announced on the local
+    ///     network under this name, so a phone can find it without being
+    ///     told an address. See `bonjourType`.
     public static func tls(
         identity: ServerIdentity, port: UInt16? = nil, loopbackOnly: Bool = false,
+        advertisedName: String? = nil,
         limits: Limits = Limits(), handler: @escaping Handler
     ) throws -> HTTPListener {
         let options = NWProtocolTLS.Options()
@@ -75,8 +79,20 @@ public final class HTTPListener: @unchecked Sendable {
         } else if port != nil {
             parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.any), port: endpointPort)
         }
-        return try HTTPListener(parameters: parameters, limits: limits, handler: handler)
+        let listener = try HTTPListener(parameters: parameters, limits: limits, handler: handler)
+        if let advertisedName {
+            // A name, a type and the port the system fills in. No TXT record:
+            // the announcement says a Cadence server is here and nothing
+            // about what is in its library, who has paired, or its version.
+            listener.listener.service = NWListener.Service(
+                name: advertisedName, type: Self.bonjourType)
+        }
+        return listener
     }
+
+    /// The Bonjour service type the server announces and the iOS app looks
+    /// for. The iOS app must list it under `NSBonjourServices`.
+    public static let bonjourType = "_cadence._tcp"
 
     #if DEBUG
     /// Plain HTTP on the loopback interface, on a port the system picks. For
