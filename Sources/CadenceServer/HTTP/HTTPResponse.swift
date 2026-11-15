@@ -19,6 +19,7 @@ public struct HTTPStatus: Sendable, Equatable {
     public static let lengthRequired = HTTPStatus(411, "Length Required")
     public static let contentTooLarge = HTTPStatus(413, "Content Too Large")
     public static let unsupportedMediaType = HTTPStatus(415, "Unsupported Media Type")
+    public static let tooManyRequests = HTTPStatus(429, "Too Many Requests")
     public static let uriTooLong = HTTPStatus(414, "URI Too Long")
     public static let rangeNotSatisfiable = HTTPStatus(416, "Range Not Satisfiable")
     public static let headerFieldsTooLarge = HTTPStatus(431, "Request Header Fields Too Large")
@@ -36,6 +37,11 @@ public struct HTTPResponse: Sendable, Equatable {
     /// When set, the body is this part of a file and `body` is ignored. The
     /// listener sends it in pieces.
     public var file: FileBody?
+    /// Called once when the response is finished with: sent in full, cut
+    /// short, or never sent because the client had gone. Whoever sends a
+    /// response must call it; `HTTPListener` does. It is how something taken
+    /// for the length of a response, such as a streaming slot, is given back.
+    public var onFinish: (@Sendable () -> Void)?
 
     public init(status: HTTPStatus, contentType: String? = nil,
                 headers: [(name: String, value: String)] = [], body: Data = Data(),

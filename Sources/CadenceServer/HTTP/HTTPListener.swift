@@ -16,6 +16,10 @@ public final class HTTPListener: @unchecked Sendable {
         public var connections = 32
         /// How long a client has to send its request head.
         public var headTimeout: TimeInterval = 10
+        /// How long a client may go without taking any of a file it is being
+        /// sent. Past this the connection is closed, so a client that asks
+        /// for a stream and stops reading does not hold its place for ever.
+        public var stallTimeout: TimeInterval = 30
 
         public init() {}
     }
@@ -164,6 +168,10 @@ public final class HTTPListener: @unchecked Sendable {
         private var buffer = Data()
         private var isClosed = false
         private var isAnswering = false
+        /// The response's `onFinish`, held until the connection closes.
+        private var finish: (@Sendable () -> Void)?
+        /// Counts pieces of a file handed to the network, for the stall check.
+        private var progress = 0
         var onClose: (() -> Void)?
 
         init(_ raw: NWConnection, queue: DispatchQueue, limits: Limits, handler: @escaping Handler) {
@@ -196,8 +204,9 @@ public final class HTTPListener: @unchecked Sendable {
                 if let data { self.buffer.append(data) }
 
                 switch HTTPRequestParser.parse(self.buffer, limits: self.limits.parser) {
-                case .request(let request):
+                case .request(var request):
                     self.isAnswering = true
+                    request.remoteAddress = self.remoteAddress
                     let handler = self.handler
                     Task {
                         let response = await handler(request)
@@ -217,8 +226,22 @@ public final class HTTPListener: @unchecked Sendable {
             }
         }
 
+        /// The peer's address without its port, and without the interface
+        /// suffix a link-local IPv6 address carries.
+        private var remoteAddress: String? {
+            guard case .hostPort(let host, _) = raw.endpoint else { return nil }
+            let text = "\(host)"
+            return text.split(separator: "%").first.map(String.init) ?? text
+        }
+
         private func send(_ response: HTTPResponse, includingBody: Bool) {
-            guard !isClosed else { return }
+            guard !isClosed else {
+                // The client left while the answer was being worked out. The
+                // response still has to be told it is finished with.
+                response.onFinish?()
+                return
+            }
+            finish = response.onFinish
             isAnswering = true
             guard let file = response.file, includingBody else {
                 raw.send(content: response.serialized(includingBody: includingBody),
@@ -258,6 +281,16 @@ public final class HTTPListener: @unchecked Sendable {
                 return
             }
             let count = Int(min(remaining, UInt64(Self.chunkSize)))
+            // If this piece has not been taken by the time the stall timeout
+            // passes, the client has stopped reading. `progress` moves on
+            // each time a piece is accepted, so a check that finds it where
+            // it left it knows nothing happened in between.
+            let expected = progress
+            queue.asyncAfter(deadline: .now() + limits.stallTimeout) { [weak self] in
+                guard let self, !self.isClosed, self.progress == expected else { return }
+                source.close()
+                self.close()
+            }
             // Reading can block on a sleeping disk. It happens off the
             // listener's queue so other connections keep moving.
             Self.files.async { [queue] in
@@ -273,6 +306,7 @@ public final class HTTPListener: @unchecked Sendable {
                             source.close()
                             self.close()
                         } else {
+                            self.progress += 1
                             self.pump(source, remaining: remaining - UInt64(chunk.count))
                         }
                     })
@@ -297,6 +331,8 @@ public final class HTTPListener: @unchecked Sendable {
             guard !isClosed else { return }
             isClosed = true
             raw.cancel()
+            finish?()
+            finish = nil
             onClose?()
             onClose = nil
         }
