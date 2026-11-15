@@ -316,6 +316,15 @@ struct StreamSocketTests {
     }
 
     /// Waits, briefly, for the listener to finish closing a connection.
+    /// Waits up to ten seconds for the device's stream count to be `count`.
+    private func reaches(_ count: Int, _ fixture: Fixture) async throws -> Bool {
+        for _ in 0..<500 {
+            if fixture.server.streams.activeCount(Fixture.device) == count { return true }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        return false
+    }
+
     private func settled(_ fixture: Fixture) async throws -> Int {
         for _ in 0..<100 {
             if fixture.server.streams.activeCount(Fixture.device) == 0 { return 0 }
@@ -403,11 +412,10 @@ struct StreamSocketTests {
         #expect(writer.write(request, maxLength: request.count) == request.count)
 
         // Read nothing. The stream is taken, then given back when the server
-        // gives up on us.
-        try await Task.sleep(for: .milliseconds(200))
-        #expect(fixture.server.streams.activeCount(Fixture.device) == 1)
-        try await Task.sleep(for: .seconds(2))
-        #expect(fixture.server.streams.activeCount(Fixture.device) == 0)
+        // gives up on us. Both are waited for, not timed: a busy machine can
+        // take longer than any fixed pause to reach either.
+        #expect(try await reaches(1, fixture))
+        #expect(try await reaches(0, fixture))
 
         // What did arrive is less than the file: the server stopped sending.
         let drain = Drain(reader)
