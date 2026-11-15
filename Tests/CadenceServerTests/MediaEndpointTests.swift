@@ -68,6 +68,20 @@ struct ByteRangeTests {
     }
 }
 
+/// Whether two blobs are equal, as a plain `Bool`.
+///
+/// `#expect(a == b)` on two large `Data` values is fine when it passes. When
+/// it fails, the framework works out an element-by-element difference to
+/// print, and for 300,000 bytes that took over eight minutes. Comparing here
+/// and expecting the `Bool` fails at once, with the sizes for a clue.
+private func same(_ a: Data, _ b: Data) -> Bool {
+    if a.count != b.count {
+        Issue.record("sizes differ: \(a.count) bytes and \(b.count) bytes")
+        return false
+    }
+    return a.elementsEqual(b)
+}
+
 /// A library whose tracks are real files with known contents.
 private struct MediaFixture {
     let server: TestServer
@@ -249,7 +263,7 @@ struct StreamingSocketTests {
             #expect(http.statusCode == 200)
             #expect(http.value(forHTTPHeaderField: "Content-Type") == "audio/flac")
             #expect(http.value(forHTTPHeaderField: "Content-Length") == "300000")
-            #expect(data == fixture.bytes)
+            #expect(same(data, fixture.bytes))
         }
     }
 
@@ -266,7 +280,7 @@ struct StreamingSocketTests {
             #expect(http.statusCode == 206)
             #expect(http.value(forHTTPHeaderField: "Content-Range")
                     == "bytes \(first)-\(last)/300000")
-            #expect(data == fixture.bytes.subdata(in: first..<(last + 1)))
+            #expect(same(data, fixture.bytes.subdata(in: first..<(last + 1))))
         }
     }
 
@@ -277,11 +291,11 @@ struct StreamingSocketTests {
             var request = URLRequest(url: url)
             request.setValue("bytes=250000-", forHTTPHeaderField: "Range")
             let tail = try await session.data(for: request).0
-            #expect(tail == fixture.bytes.suffix(50_000))
+            #expect(same(tail, fixture.bytes.suffix(50_000)))
 
             request.setValue("bytes=-70000", forHTTPHeaderField: "Range")
             let suffix = try await session.data(for: request).0
-            #expect(suffix == fixture.bytes.suffix(70_000))
+            #expect(same(suffix, fixture.bytes.suffix(70_000)))
         }
     }
 
@@ -327,16 +341,18 @@ struct StreamingSocketTests {
         #expect((response as? HTTPURLResponse)?.statusCode == 500)
     }
 
+    /// Four, the default limit per device. A fifth at once would be refused;
+    /// `StreamLimitTests` covers that.
     @Test("Several streams at once each arrive whole")
     func concurrent() async throws {
         let fixture = try await MediaFixture()
         try await withListener(fixture) { url in
             try await withThrowingTaskGroup(of: Data.self) { group in
-                for _ in 0..<6 {
+                for _ in 0..<4 {
                     group.addTask { try await self.session.data(from: url).0 }
                 }
                 for try await data in group {
-                    #expect(data == fixture.bytes)
+                    #expect(same(data, fixture.bytes))
                 }
             }
         }

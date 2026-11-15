@@ -24,15 +24,21 @@ public struct HTTPRequest: Sendable, Equatable {
     public var headers: [String: String]
     /// Empty for `GET` and `HEAD`, which may not carry one.
     public var body: Data
+    /// The address the connection came from, as text. Set by the listener
+    /// from the socket, never from anything the client sent: a header saying
+    /// who the request is "for" is ignored. Nil when there is no socket.
+    public var remoteAddress: String?
 
     public init(method: Method, path: String,
                 query: [(name: String, value: String)] = [],
-                headers: [String: String] = [:], body: Data = Data()) {
+                headers: [String: String] = [:], body: Data = Data(),
+                remoteAddress: String? = nil) {
         self.method = method
         self.path = path
         self.query = query
         self.headers = headers
         self.body = body
+        self.remoteAddress = remoteAddress
     }
 
     /// The first value sent for `name`, or nil.
@@ -42,7 +48,7 @@ public struct HTTPRequest: Sendable, Equatable {
 
     public static func == (a: HTTPRequest, b: HTTPRequest) -> Bool {
         a.method == b.method && a.path == b.path && a.headers == b.headers
-            && a.body == b.body
+            && a.body == b.body && a.remoteAddress == b.remoteAddress
             && a.query.map(\.name) == b.query.map(\.name)
             && a.query.map(\.value) == b.query.map(\.value)
     }

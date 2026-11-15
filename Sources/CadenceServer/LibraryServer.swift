@@ -17,6 +17,16 @@ public struct LibraryServer: Sendable {
         /// Reported to clients in every response, so a client can tell which
         /// release it is talking to.
         public var serverVersion: String
+        /// Failed attempts from one address, within `failureWindow` seconds,
+        /// before that address is refused for `blockDuration` seconds. A
+        /// failed attempt is a request with a missing or wrong key, or a
+        /// pairing request that was refused.
+        public var failureLimit = 10
+        public var failureWindow: TimeInterval = 60
+        public var blockDuration: TimeInterval = 60
+        /// Files one device may be sent at the same time.
+        public var streamsPerDevice = 4
+        public var now: @Sendable () -> Date = Date.init
 
         public init(serverVersion: String) {
             self.serverVersion = serverVersion
@@ -27,6 +37,8 @@ public struct LibraryServer: Sendable {
     private let authenticator: any Authenticator
     private let endpoints: LibraryEndpoints
     private let pairing: PairingSession?
+    private let throttle: FailureThrottle
+    let streams: StreamLimiter
 
     /// The server reads `library` and never writes to it: it calls no method
     /// of the store that changes anything.
@@ -37,6 +49,10 @@ public struct LibraryServer: Sendable {
         self.authenticator = authenticator
         self.pairing = pairing
         endpoints = LibraryEndpoints(library: library, artwork: artwork)
+        throttle = FailureThrottle(
+            limit: configuration.failureLimit, window: configuration.failureWindow,
+            block: configuration.blockDuration, now: configuration.now)
+        streams = StreamLimiter(limit: configuration.streamsPerDevice)
     }
 
     // MARK: - Routing
@@ -64,6 +80,13 @@ public struct LibraryServer: Sendable {
     }
 
     public func respond(to request: HTTPRequest) async -> HTTPResponse {
+        // An address serving a block is refused before anything else is
+        // looked at, a correct key included.
+        if let address = request.remoteAddress,
+           let seconds = throttle.secondsBlocked(address) {
+            return Self.tooManyRequests(retryAfter: seconds)
+        }
+
         if request.path == "/pair" { return await pair(request) }
         // Everything else is the library, which is read with `GET` and
         // `HEAD` and nothing more.
@@ -78,8 +101,15 @@ public struct LibraryServer: Sendable {
             return failure(.generic, "Unknown endpoint.", status: .notFound)
         }
 
-        if !endpoint.isPublic, let refusal = await authenticate(request) {
-            return refusal
+        var device: PairedDevice.ID?
+        if !endpoint.isPublic {
+            switch await authenticate(request) {
+            case .device(let id):
+                device = id
+            case .refused(let refusal):
+                noteFailure(request)
+                return refusal
+            }
         }
 
         do {
@@ -113,7 +143,16 @@ public struct LibraryServer: Sendable {
             // These answer with the bytes themselves. A failure is still an
             // envelope, which a client tells apart by its content type.
             case .stream, .download:
-                return try await endpoints.audio(request)
+                var response = try await endpoints.audio(request)
+                // Only a response that will send a file holds a place. An
+                // error, or a range that cannot be satisfied, sends none.
+                guard response.file != nil, let device else { return response }
+                guard streams.acquire(device) else {
+                    return Self.tooManyRequests(retryAfter: 1)
+                }
+                let streams = streams
+                response.onFinish = { streams.release(device) }
+                return response
             case .getCoverArt:
                 return try await endpoints.coverArt(request)
             }
@@ -176,6 +215,7 @@ public struct LibraryServer: Sendable {
             return .empty(.badRequest)
         }
         guard let paired else {
+            noteFailure(request)
             // One answer for wrong, expired, used up and not open.
             return Self.json(.forbidden, ["error": "pairing_failed"])
         }
@@ -200,22 +240,41 @@ public struct LibraryServer: Sendable {
     /// API keys are the only way in. A user name, password or token is
     /// refused as a mechanism, not checked, so there is no password for
     /// anyone to guess. A missing key and a wrong key get the same answer.
-    private func authenticate(_ request: HTTPRequest) async -> HTTPResponse? {
+    private enum Authentication {
+        case device(PairedDevice.ID)
+        case refused(HTTPResponse)
+    }
+
+    private func authenticate(_ request: HTTPRequest) async -> Authentication {
         let legacy = ["u", "p", "t", "s"].contains { request.parameter($0) != nil }
         guard let key = request.parameter("apiKey") else {
-            return legacy
+            return .refused(legacy
                 ? failure(.authenticationMechanismNotSupported,
                           "This server accepts API keys only.")
-                : failure(.invalidAPIKey, "Invalid API key.")
+                : failure(.invalidAPIKey, "Invalid API key."))
         }
         guard !legacy else {
-            return failure(.conflictingAuthentication,
-                           "Send an API key alone, without a user name.")
+            return .refused(failure(.conflictingAuthentication,
+                                    "Send an API key alone, without a user name."))
         }
-        guard await authenticator.device(forAPIKey: key) != nil else {
-            return failure(.invalidAPIKey, "Invalid API key.")
+        guard let device = await authenticator.device(forAPIKey: key) else {
+            return .refused(failure(.invalidAPIKey, "Invalid API key."))
         }
-        return nil
+        return .device(device)
+    }
+
+    // MARK: - Limits
+
+    private func noteFailure(_ request: HTTPRequest) {
+        if let address = request.remoteAddress { throttle.recordFailure(address) }
+    }
+
+    /// 429 with `Retry-After`, in whole seconds, rounded up so a client that
+    /// waits exactly that long is not refused again.
+    private static func tooManyRequests(retryAfter seconds: TimeInterval) -> HTTPResponse {
+        HTTPResponse(
+            status: .tooManyRequests,
+            headers: [(name: "Retry-After", value: String(max(1, Int(seconds.rounded(.up)))))])
     }
 
     private func failure(

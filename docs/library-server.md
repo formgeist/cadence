@@ -13,7 +13,7 @@ a release build can start it yet.
 |---|---|
 | HTTP request parser | Starting the TLS listener from the app |
 | OpenSubsonic response envelope and error codes | Bonjour |
-| Per-device API keys, stored hashed, revocable; pairing by QR token | A "Share library" switch in the app (Phase 3) |
+| Per-device API keys, stored hashed, revocable; pairing by QR token; rate and stream limits | A "Share library" switch in the app (Phase 3) |
 | Self-signed certificate, keychain identity, TLS 1.3 listener | |
 | `ping`, `getOpenSubsonicExtensions` | |
 | `getMusicFolders`, `getArtists`, `getArtist`, `getAlbum`, `getAlbumList2`, `getSong`, `search3` | |
@@ -485,12 +485,13 @@ Sized covers are PNG. With no `size`, the stored original is sent.
 **Image types are read from the bytes.** Cover bytes come from tags in music
 files. JPEG, PNG, GIF and WebP are served; anything else is "not found".
 
-Not built yet: a limit on concurrent streams per device, and a timeout for a
-client that stops reading mid-stream. Both belong to Phase 3.
+The limit on concurrent streams per device and the timeout for a client that
+stops reading are described under Limits.
 
 ## Limits
 
-Set in `HTTPRequestParser.Limits` and `HTTPListener.Limits`.
+Set in `HTTPRequestParser.Limits`, `HTTPListener.Limits` and
+`LibraryServer.Configuration`.
 
 | Limit | Value | Refused with |
 |---|---|---|
@@ -502,9 +503,43 @@ Set in `HTTPRequestParser.Limits` and `HTTPListener.Limits`.
 | Request body, `POST` | 1 KB, length declared | 413, or 411 with no length |
 | Open connections | 32 | Closed unanswered |
 | Time to send the request head | 10 s | 408 |
+| Failed sign-ins from one address | 10 in 60 s, then blocked for 60 s | 429 with `Retry-After` |
+| Files being sent to one device at once | 4 | 429 with `Retry-After` |
+| Time a client may go without reading a file it is being sent | 30 s | Connection closed |
 
-Limits on concurrent streams per device and rate limiting of failed
-authentication belong to Phase 3, with pairing.
+**Failed sign-ins are limited by address.** A failed sign-in is a request
+with a missing or wrong key, or a pairing request that was refused. Ten from
+one address inside a minute and that address is refused for a minute: every
+request, before any key is looked at, a correct key included. Checking a key
+during a block would defeat it, since "is this key right?" is the answer a
+guesser wants. Requests that succeed are never counted, and neither is an
+error after a valid key, such as an unknown id.
+
+This does not make keys safer; 256 random bits need no help. It stops a
+device hammering the server, makes a pairing token's few attempts harder to
+spend from one place, and keeps a broken client from flooding the log.
+
+**The address is the socket's.** The listener takes it from the connection.
+Nothing a client sends can change it: `X-Forwarded-For` and its relatives are
+ignored, and a test sends them to check. At most 1,024 addresses are
+remembered, so a flood of addresses cannot grow the table without end.
+
+**A device may be sent four files at once.** A stream holds a file open and a
+connection busy for as long as the client reads. Without a cap, one device or
+one stolen key could take every connection. Only a response that will send a
+file takes a place: an error, or a range outside the file, takes none.
+Browsing is not limited by streams in use. A place is given back when the
+connection closes, however it closes; the listener calls the response's
+`onFinish` exactly once, including when the client left before the answer was
+ready.
+
+**A client that stops reading is dropped after 30 seconds.** Each piece of a
+file must be taken by the network within the stall timeout. A test asks for a
+64 MB file, reads nothing, and checks that the server closes the connection
+and frees the place.
+
+Not limited yet: the total rate of requests from a paired device. A device
+with a valid key can ask as fast as its connections allow.
 
 ## Testing
 
@@ -515,6 +550,12 @@ authentication belong to Phase 3, with pairing.
   store in a temporary folder, with a key generated for the test run. They
   include hostile ids and queries, and a check that no response contains a
   path.
+- **Fuzzing in CI.** The fuzz tests are ordinary tests with fixed seeds, so
+  they run on every push and a failure reproduces: the request parser (random
+  bytes, mutated `GET`, mutated `POST`), byte ranges, and the pairing payload.
+- **Large data.** Tests compare big blobs with a helper that returns a `Bool`.
+  A failed `#expect(a == b)` on 300,000 bytes made the test framework spend
+  over eight minutes computing a difference to print.
 - **Socket**: a loopback listener driven by `URLSession`, and by raw streams
   for the cases `URLSession` cannot produce (silence, garbage).
 
