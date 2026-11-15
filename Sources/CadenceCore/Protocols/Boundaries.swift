@@ -265,6 +265,10 @@ public enum SettingsKey: String, Sendable {
     case similarArtistsFromLastFM
     /// How a catalog page lays out its albums: `list` or `grid`.
     case catalogAlbumLayout
+    /// Whether the library server runs — see `docs/library-server.md`. Off
+    /// unless the listener turns it on: on, the Mac listens on the local
+    /// network.
+    case librarySharingEnabled
 }
 
 /// Small pieces of state that should survive a relaunch — volume, mute,

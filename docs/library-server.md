@@ -5,16 +5,18 @@ Cadence client browse and stream this Mac's library. It speaks the
 [OpenSubsonic](https://opensubsonic.netlify.app) API. This note records the
 decisions behind it; the code comments carry the detail.
 
-Status: Phase 2 of the build plan. Every endpoint the plan lists is built.
-The server runs from a debug build on the loopback interface only; nothing in
-a release build can start it yet.
+Status: Phase 3 of the build plan. Every endpoint the plan lists is built,
+and the app can start the server: Preferences has a Sharing section with the
+switch, the pairing code and the paired devices. It is off until the listener
+turns it on.
 
 | Built | Not built yet |
 |---|---|
-| HTTP request parser | Starting the TLS listener from the app |
-| OpenSubsonic response envelope and error codes | `SECURITY.md` |
-| Per-device API keys, stored hashed, revocable; pairing by QR token; rate and stream limits | A "Share library" switch in the app (Phase 3) |
+| HTTP request parser | `SECURITY.md` |
+| OpenSubsonic response envelope and error codes | |
+| Per-device API keys, stored hashed, revocable; pairing by QR token; rate and stream limits | |
 | Self-signed certificate, keychain identity, TLS 1.3 listener, Bonjour | |
+| Sharing in Preferences: switch, QR code, paired devices, title-bar indicator | |
 | `ping`, `getOpenSubsonicExtensions` | |
 | `getMusicFolders`, `getArtists`, `getArtist`, `getAlbum`, `getAlbumList2`, `getSong`, `search3` | |
 | `stream`, `download`, `getCoverArt` | |
@@ -367,8 +369,7 @@ it under `NSBonjourServices` and browse for it.
 **The announcement is a name, a type and a port.** There is no TXT record. It
 says a Cadence server is here, and nothing about what is in the library, which
 devices are paired, or which version is running. A test reads the record back
-and checks it is empty. The name is whatever the app passes; the settings UI
-will use the Mac's name.
+and checks it is empty. The name is the Mac's name from System Settings.
 
 **Being found is not being trusted.** Anyone on the network can see the
 announcement and connect. They get a TLS handshake and then nothing without a
@@ -387,9 +388,58 @@ name. A test starts one without and checks nothing new appears.
 | `NSBonjourServices` with `_cadence._tcp` | The announcement is not allowed unless the type is declared |
 | `NSLocalNetworkUsageDescription` | The sentence macOS shows when it asks about local network use |
 
-These are the only network additions. Nothing in the app starts the server
-yet, so nothing listens and nothing is announced until the sharing switch
-exists.
+These are the only network additions. Nothing listens and nothing is
+announced until the listener turns sharing on.
+
+## Sharing in the app
+
+Preferences has a Sharing section, built from the same rows and cards as the
+rest of the page (decided 2026-11-13: follow the existing patterns, no
+separate design pass). `SharingController` holds the state; `SharingBackend`
+is the server behind it.
+
+**Off until asked.** The setting defaults to off. Building the controller
+starts nothing whatever the saved setting says: the app calls
+`resumeIfEnabled()` once, at the end of a normal launch. The headless modes
+(`--scan`, `--snapshot`, `--bench` and the rest) return before that line, so
+none of them opens a port. The keychain is first read when sharing is
+switched on; an app that never shares never asks for it.
+
+**A failed start switches sharing off** and says so. The switch never reads
+"on" while nothing is listening.
+
+**Sharing is always visible.** While the server runs, the title bar shows
+"Sharing" with a dot; it shows nothing otherwise. Clicking it opens
+Preferences.
+
+**Port 4533**, the one Subsonic servers use. If another program holds it the
+system picks a free one; the Bonjour announcement and the pairing code carry
+whichever it is.
+
+**The pairing code** is the `cadence://pair` link as a QR code, black on
+white. The Mac checks the link with the same reader the phone uses before it
+shows it. The host in it is the Mac's `.local` name when it has one, else its
+IPv4 address on the local network. The link holds the pairing token, so it is
+drawn and nothing else: it is not logged, not put on the pasteboard and not
+in the accessibility tree, where the code is named "Pairing code" and no
+more. The code leaves the screen when the server says it no longer works
+(used, run out, or spoiled by wrong guesses), and Preferences says which
+device paired, or that none did.
+
+**Paired devices** are listed with when they paired and when they last
+connected. They stay listed with sharing off, so access can be taken away
+without switching the server on. Removing one asks first, then locks the
+device out at once. If the change cannot be written to disk, Preferences says
+so: a device removed only in memory would be back after a restart.
+
+**The fingerprint** is shown in sixteen groups of four while sharing is on,
+for comparing by eye with what the phone shows for a paired server.
+
+**Preview mode** (snapshots, design review) uses a canned backend: no port,
+no file, no keychain, a made-up Mac name and two made-up devices.
+
+**Not checked yet:** the sandboxed app bundle creating the keychain key, and
+macOS's local-network permission prompt. Both need the built app run by hand.
 
 ## The library on the wire
 
@@ -591,6 +641,10 @@ with a valid key can ask as fast as its connections allow.
 - **Large data.** Tests compare big blobs with a helper that returns a `Bool`.
   A failed `#expect(a == b)` on 300,000 bytes made the test framework spend
   over eight minutes computing a difference to print.
+- **Sharing controller**: against a fake backend, so the switch, quick
+  toggles, failed starts, pairing and removal are tested without a port. The
+  real backend is tested against a scratch library, a scratch device file and
+  a keychain item of its own.
 - **Socket**: a loopback listener driven by `URLSession`, and by raw streams
   for the cases `URLSession` cannot produce (silence, garbage).
 
