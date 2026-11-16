@@ -5,24 +5,25 @@ Cadence client browse and stream this Mac's library. It speaks the
 [OpenSubsonic](https://opensubsonic.netlify.app) API. This note records the
 decisions behind it; the code comments carry the detail.
 
-Status: Phase 3 of the build plan is built apart from `SECURITY.md`. Every
+Status: Phases 3 and 4 of the build plan are built. Every
 endpoint the plan lists is built, and the app can start the server:
 Preferences has a Sharing section with the switch, the pairing code and the
 paired devices. Phase 4 is built: `CadenceRemote`, the client the iOS app
 uses, is described under [The client](#the-client).
 
-| Built | Not built yet |
-|---|---|
-| HTTP request parser | `SECURITY.md` |
-| OpenSubsonic response envelope and error codes | |
-| Per-device API keys, stored hashed, revocable; pairing by QR token; rate and stream limits | |
-| Self-signed certificate, keychain identity, TLS 1.3 listener, Bonjour | |
-| Sharing in Preferences: switch, QR code, paired devices, title-bar indicator | |
-| `ping`, `getOpenSubsonicExtensions` | |
-| `getMusicFolders`, `getArtists`, `getArtist`, `getAlbum`, `getAlbumList2`, `getSong`, `search3` | |
-| `stream`, `download`, `getCoverArt` | |
-| `getPlaylists`, `getPlaylist`, `getStarred2` | |
-| Debug-only loopback listener, `make serve` | |
+| Built |
+|---|
+| HTTP request parser |
+| OpenSubsonic response envelope and error codes |
+| Per-device API keys, stored hashed, revocable; pairing by QR token; rate and stream limits |
+| Self-signed certificate, keychain identity, TLS 1.3 listener, Bonjour |
+| Sharing in Preferences: switch, QR code, paired devices, title-bar indicator |
+| `ping`, `getOpenSubsonicExtensions` |
+| `getMusicFolders`, `getArtists`, `getArtist`, `getAlbum`, `getAlbumList2`, `getSong`, `search3` |
+| `stream`, `download`, `getCoverArt` |
+| `getPlaylists`, `getPlaylist`, `getStarred2` |
+| Debug-only loopback listener, `make serve` |
+| [`SECURITY.md`](../SECURITY.md): threat model and private reporting |
 
 ## Running it
 
