@@ -7,7 +7,7 @@ import CadenceLibrary
 
 /// A real server, over TLS on the loopback interface, with pairing open: the
 /// whole path a phone takes, minus the camera and the Wi-Fi.
-private final class LiveServer: Sendable {
+final class LiveServer: Sendable {
     let directory: URL
     let identityStore: ServerIdentityStore
     let identity: ServerIdentity
@@ -66,9 +66,9 @@ private final class LiveServer: Sendable {
                               token: code.token, name: "Test Mac")
     }
 
-    func pair() async throws -> RemoteLibraryClient {
+    func pair(cache: RemoteMetadataCache? = nil) async throws -> RemoteLibraryClient {
         RemoteLibraryClient(credentials: try await RemotePairing.pair(
-            await pairingCode(), deviceName: "Test Phone"))
+            await pairingCode(), deviceName: "Test Phone"), cache: cache)
     }
 
     func stop() {
@@ -80,13 +80,13 @@ private final class LiveServer: Sendable {
 
 /// Runs `body` against a fresh server, and removes it afterwards whatever
 /// happens.
-private func withServer(_ body: (LiveServer) async throws -> Void) async throws {
+func withServer(_ body: (LiveServer) async throws -> Void) async throws {
     let server = try await LiveServer()
     defer { server.stop() }
     try await body(server)
 }
 
-private func expectError(
+func expectError(
     _ expected: RemoteError, sourceLocation: SourceLocation = #_sourceLocation,
     _ body: () async throws -> Void
 ) async {

@@ -21,12 +21,19 @@ public final class RemoteLibraryClient: Sendable {
     static let apiVersion = "1.16.1"
 
     public let credentials: RemoteCredentials
+    /// Where browse answers are kept, when the app gives one.
+    public let cache: RemoteMetadataCache?
     private let session: PinnedSession
 
-    /// - Parameter timeout: Seconds to wait for each answer. Short, so that
-    ///   a Mac that is asleep is reported as unreachable promptly.
-    public init(credentials: RemoteCredentials, timeout: TimeInterval = 15) {
+    /// - Parameters:
+    ///   - cache: Keeps each browse answer, so `source: .cache` can show the
+    ///     library without the Mac. Search, songs and files are not cached.
+    ///   - timeout: Seconds to wait for each answer. Short, so that a Mac
+    ///     that is asleep is reported as unreachable promptly.
+    public init(credentials: RemoteCredentials, cache: RemoteMetadataCache? = nil,
+                timeout: TimeInterval = 15) {
         self.credentials = credentials
+        self.cache = cache
         session = PinnedSession(fingerprint: credentials.server.fingerprint, timeout: timeout)
     }
 
@@ -39,6 +46,11 @@ public final class RemoteLibraryClient: Sendable {
         /// The Cadence release on the Mac, for display.
         public var serverVersion: String
         public var protocolVersion: Int
+
+        public init(serverVersion: String, protocolVersion: Int) {
+            self.serverVersion = serverVersion
+            self.protocolVersion = protocolVersion
+        }
     }
 
     /// Checks that the server is the paired one, that it still accepts this
@@ -59,32 +71,35 @@ public final class RemoteLibraryClient: Sendable {
     // MARK: - Browsing
 
     /// Every artist, grouped under index letters, in the server's order.
-    public func artists() async throws -> [RemoteArtistIndex] {
-        try await payload("getArtists", "artists", [], as: ArtistsPayload.self).index ?? []
+    public func artists(source: RemoteReadSource = .network) async throws -> [RemoteArtistIndex] {
+        try await payload("getArtists", "artists", [], as: ArtistsPayload.self,
+                          source: source).index ?? []
     }
 
     /// An artist with its albums.
-    public func artist(id: String) async throws -> RemoteArtist {
-        try await payload("getArtist", "artist", [.init(name: "id", value: id)])
+    public func artist(id: String, source: RemoteReadSource = .network) async throws -> RemoteArtist {
+        try await payload("getArtist", "artist", [.init(name: "id", value: id)], source: source)
     }
 
     /// An album with its songs, in disc and track order.
-    public func album(id: String) async throws -> RemoteAlbum {
-        try await payload("getAlbum", "album", [.init(name: "id", value: id)])
+    public func album(id: String, source: RemoteReadSource = .network) async throws -> RemoteAlbum {
+        try await payload("getAlbum", "album", [.init(name: "id", value: id)], source: source)
     }
 
     /// One page of albums. `size` is capped by the server.
     public func albums(
-        _ order: RemoteAlbumOrder, size: Int = 50, offset: Int = 0
+        _ order: RemoteAlbumOrder, size: Int = 50, offset: Int = 0,
+        source: RemoteReadSource = .network
     ) async throws -> [RemoteAlbum] {
         try await payload("getAlbumList2", "albumList2", order.parameters + [
             .init(name: "size", value: String(size)),
             .init(name: "offset", value: String(offset)),
-        ], as: AlbumListPayload.self).album ?? []
+        ], as: AlbumListPayload.self, source: order == .random ? .network : source,
+           cacheable: order != .random).album ?? []
     }
 
     public func song(id: String) async throws -> RemoteSong {
-        try await payload("getSong", "song", [.init(name: "id", value: id)])
+        try await payload("getSong", "song", [.init(name: "id", value: id)], cacheable: false)
     }
 
     /// Artists, albums and songs matching `query`. An empty query is the
@@ -99,22 +114,23 @@ public final class RemoteLibraryClient: Sendable {
             .init(name: "albumCount", value: String(albumCount)),
             .init(name: "songCount", value: String(songCount)),
             .init(name: "songOffset", value: String(songOffset)),
-        ])
+        ], cacheable: false)
     }
 
     /// Every playlist, without its songs, in the Mac's sidebar order.
-    public func playlists() async throws -> [RemotePlaylist] {
-        try await payload("getPlaylists", "playlists", [], as: PlaylistsPayload.self).playlist ?? []
+    public func playlists(source: RemoteReadSource = .network) async throws -> [RemotePlaylist] {
+        try await payload("getPlaylists", "playlists", [], as: PlaylistsPayload.self,
+                          source: source).playlist ?? []
     }
 
     /// A playlist with its songs, in playlist order.
-    public func playlist(id: String) async throws -> RemotePlaylist {
-        try await payload("getPlaylist", "playlist", [.init(name: "id", value: id)])
+    public func playlist(id: String, source: RemoteReadSource = .network) async throws -> RemotePlaylist {
+        try await payload("getPlaylist", "playlist", [.init(name: "id", value: id)], source: source)
     }
 
     /// The artists, albums and songs liked on the Mac.
-    public func starred() async throws -> RemoteStarred {
-        try await payload("getStarred2", "starred2", [])
+    public func starred(source: RemoteReadSource = .network) async throws -> RemoteStarred {
+        try await payload("getStarred2", "starred2", [], source: source)
     }
 
     // MARK: - Files
@@ -181,10 +197,30 @@ public final class RemoteLibraryClient: Sendable {
     }
 
     private func payload<Value: Decodable>(
-        _ endpoint: String, _ key: String, _ parameters: [URLQueryItem], as type: Value.Type = Value.self
+        _ endpoint: String, _ key: String, _ parameters: [URLQueryItem],
+        as type: Value.Type = Value.self, source: RemoteReadSource = .network,
+        cacheable: Bool = true
     ) async throws -> Value {
-        let (data, response) = try await session.data(for: try request(endpoint, parameters))
-        _ = try Self.checked(response, data)
+        let data: Data
+        switch source {
+        case .cache:
+            guard cacheable, let cached = cache?.data(for: endpoint, parameters) else {
+                throw RemoteError.notCached
+            }
+            data = cached
+        case .network:
+            let (fetched, response) = try await session.data(for: try request(endpoint, parameters))
+            _ = try Self.checked(response, fetched)
+            data = fetched
+        }
+        let value = try Self.decode(Value.self, key, data)
+        // Kept only once it has decoded, so the cache never holds an answer
+        // this client cannot read.
+        if source == .network, cacheable { cache?.store(data, for: endpoint, parameters) }
+        return value
+    }
+
+    private static func decode<Value: Decodable>(_ type: Value.Type, _ key: String, _ data: Data) throws -> Value {
         let decoder = JSONDecoder()
         decoder.userInfo[Payload<Value>.keyInfo] = key
         do {

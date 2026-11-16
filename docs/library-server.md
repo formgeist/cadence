@@ -8,7 +8,7 @@ decisions behind it; the code comments carry the detail.
 Status: Phase 3 of the build plan is built apart from `SECURITY.md`. Every
 endpoint the plan lists is built, and the app can start the server:
 Preferences has a Sharing section with the switch, the pairing code and the
-paired devices. Phase 4 has begun: `CadenceRemote`, the client the iOS app
+paired devices. Phase 4 is built: `CadenceRemote`, the client the iOS app
 uses, is described under [The client](#the-client).
 
 | Built | Not built yet |
@@ -669,9 +669,43 @@ failure, from a timeout to a refused connection, is `.unreachable`, which is
 what a sleeping Mac looks like. A cancelled task throws `CancellationError`,
 as `TrackSource` requires.
 
-Not built yet, and next in Phase 4: mapping the remote models onto
-CadenceCore's, a `TrackSource` that downloads into the Caches directory, the
-metadata cache, and reconnecting when the network returns.
+**Mapping.** `Track(remote:)`, `Album(remote:)`, `Artist(remote:)` and
+`Playlist(remote:)` turn answers into CadenceCore's models. Track and playlist
+ids are the Mac's own UUIDs, read back out of `tr-` and `pl-` ids, and an
+album's key is rebuilt from the same artist, title and year, so its
+`stableID` is the id the server sent. A remote track's `url` is
+`cadence-remote://song/<id>?suffix=flac`: it names the song and nothing about
+the server, so a saved queue survives the Mac's address changing. A song
+fetched without its album names only its own artist, which then stands in for
+the album artist until the album is loaded.
+
+**Playing.** `RemoteTrackSource` is the `TrackSource` for a paired library. It
+downloads a song's whole file into a cache folder and hands the engine that
+file. Two callers asking for one song share one download; a caller that is
+cancelled (a skip) is answered at once, and the download stops when no one is
+left waiting. A download is written to a hidden partial file and renamed into
+place only when complete. The folder has a byte budget, 2 GB by default; past
+it, the files used longest ago are removed, never the ones handed out most
+recently, which an engine may have open. Failures reach the engine as
+`PlaybackError.engine` with `RemoteError.message`, a sentence for the listener.
+
+**Browsing without the Mac.** `RemoteMetadataCache` keeps the last answer to
+each browse request as a file, keyed by a digest of the endpoint and its
+parameters, as the recon note chose: no database, so GRDB stays off the
+phone. Browse methods take `source: .cache` to read it without asking the
+Mac, and throw `.notCached` when there is nothing. Search, single songs and
+random album lists are never cached. An answer is stored only after it has
+decoded, and the key is never part of a file name or a file.
+
+**Reconnecting.** `RemoteConnection` holds one state for the app to show:
+connecting, connected, offline, unreachable, or needs attention. It watches
+the network with `NWPathMonitor`. A Mac that does not answer is retried after
+2, 4, 8… seconds, at most a minute apart, and at once when the network
+changes. A busy Mac is retried when it said to. A revoked key, a changed
+certificate or a version mismatch is `.needsAttention` and is not retried
+until the app calls `retryNow()`, since only the user can fix it. A request
+that fails with `.unreachable` while connected is reported with
+`connectionLost(_:)`, which starts reconnecting.
 
 ## Testing
 
@@ -699,6 +733,9 @@ metadata cache, and reconnecting when the network returns.
   interface over TLS, pairs with it from a pairing code, browses, and
   downloads a song's bytes. It checks that a wrong fingerprint is refused
   before the token is spent, that a revoked device is told so, and that a
-  stopped server is unreachable.
+  stopped server is unreachable. The track source, the metadata cache and
+  the mapping are tested against the same live server; shared and cancelled
+  downloads and the budget against a stand-in downloader that can hold a
+  download open; reconnecting against a scripted server and network.
 
 No key is stored in the repository. Tests generate one per run.

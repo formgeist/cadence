@@ -104,7 +104,7 @@ public typealias RemoteSearchResult = RemoteStarred
 /// Which albums `albums(_:)` lists, and in what order. The ones the server
 /// answers; it has no ratings or play counts by album, so the protocol's
 /// "recent", "frequent" and "highest" lists are not offered.
-public enum RemoteAlbumOrder: Sendable, Equatable {
+public enum RemoteAlbumOrder: Sendable, Equatable, Hashable {
     case alphabeticalByName
     case alphabeticalByArtist
     /// Most recently added first.

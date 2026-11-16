@@ -33,9 +33,39 @@ public enum RemoteError: Error, Equatable, Sendable {
     case server(code: Int, message: String)
     /// The server answered with something that is not a well-formed reply.
     case invalidResponse
+    /// Asked for from the cache only, and the cache has no answer to it.
+    case notCached
 }
 
 extension RemoteError {
+    /// One sentence for the listener.
+    public var message: String {
+        switch self {
+        case .untrustedServer:
+            "This Mac is not the one this device paired with. Pair again to continue."
+        case .notPaired:
+            "This device is no longer paired with the Mac. Pair again to continue."
+        case .pairingRefused:
+            "The Mac did not accept this pairing code. Show a new code on the Mac and scan it again."
+        case .incompatibleServer(let version, _):
+            "The Mac is running Cadence \(version), which this app cannot talk to. Update both to the latest version."
+        case .notFound:
+            "This is no longer in the Mac's library."
+        case .busy:
+            "The Mac is busy. Try again in a moment."
+        case .offline:
+            "This device is offline."
+        case .unreachable:
+            "The Mac is not answering. Check that it is awake, on the same network, and sharing its library."
+        case .server(_, let message):
+            message.isEmpty ? "The Mac could not answer." : message
+        case .invalidResponse:
+            "The Mac sent an answer this app could not read."
+        case .notCached:
+            "This has not been opened while the Mac was reachable, so it is not available offline."
+        }
+    }
+
     /// The error for a transport failure. A certificate the pinning check
     /// refused is caught before this, by `PinnedSession`.
     static func transport(_ error: URLError) -> RemoteError {
