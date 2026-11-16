@@ -588,6 +588,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         #if DEBUG
+        if let options = ShareDemoHarness.parse(CommandLine.arguments) {
+            NSApp.setActivationPolicy(.prohibited)
+            Task { @MainActor in
+                do {
+                    exit(try await ShareDemoHarness.run(options))
+                } catch {
+                    FileHandle.standardError.write(Data("Share demo failed: \(error)\n".utf8))
+                    exit(1)
+                }
+            }
+            return
+        }
+
         if let options = ServeHarness.parse(CommandLine.arguments) {
             NSApp.setActivationPolicy(.prohibited)
             Task { @MainActor in

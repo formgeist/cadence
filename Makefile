@@ -10,7 +10,7 @@ SNAPSHOT_DIR ?= Snapshots
 # so `make …` generates an empty stub before SwiftPM compiles the app target.
 CREDENTIALS := Sources/Cadence/LastFMCredentials.swift Sources/Cadence/SpotifyCredentials.swift
 
-.PHONY: build test run app dmg shots scan serve audio-check a11y bench clean
+.PHONY: build test run app dmg shots scan serve share-demo audio-check a11y bench clean
 
 Sources/Cadence/LastFMCredentials.swift:
 	@./Scripts/gen-lastfm-credentials.sh
@@ -67,6 +67,13 @@ scan: $(CREDENTIALS)
 ##   make serve [LIBRARY=/tmp/scratch.sqlite]
 serve: $(CREDENTIALS)
 	./Scripts/run-dev.sh --serve $(if $(LIBRARY),--library $(LIBRARY),)
+
+## Run the real sharing server, TLS and pairing included, with its own identity,
+## devices and port (4534), and print pairing links for the iPhone app. Debug
+## builds only. RESET=1 forgets the demo's identity and paired devices first.
+##   make share-demo [LIBRARY=/tmp/scratch.sqlite] [RESET=1]
+share-demo: $(CREDENTIALS)
+	./Scripts/run-dev.sh --share-demo $(if $(LIBRARY),--library $(LIBRARY),) $(if $(RESET),--reset,)
 
 clean:
 	swift package clean
