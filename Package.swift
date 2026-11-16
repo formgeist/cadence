@@ -4,7 +4,7 @@ import PackageDescription
 let package = Package(
     name: "Cadence",
     // iOS is here for the library products cadence-ios depends on:
-    // CadenceCore and CadenceDesign. The app, CadenceLibrary and CadenceAudio
+    // CadenceCore, CadenceDesign and CadenceRemote. The app, CadenceLibrary and CadenceAudio
     // are macOS-only and are never built for iOS, because no iOS product
     // reaches them. The string form is because `.v26` needs tools 6.2.
     platforms: [.macOS(.v14), .iOS("26.0")],
@@ -14,6 +14,7 @@ let package = Package(
         .library(name: "CadenceAudio", targets: ["CadenceAudio"]),
         .library(name: "CadenceDesign", targets: ["CadenceDesign"]),
         .library(name: "CadenceServer", targets: ["CadenceServer"]),
+        .library(name: "CadenceRemote", targets: ["CadenceRemote"]),
         .executable(name: "Cadence", targets: ["Cadence"]),
     ],
     dependencies: [
@@ -67,6 +68,14 @@ let package = Package(
             dependencies: ["CadenceCore", "CadenceLibrary"]
         ),
 
+        // The client side of the library server, for the iOS app: a typed
+        // OpenSubsonic client over URLSession that pins the server's
+        // certificate, and pairing by QR code. Apple frameworks only.
+        .target(
+            name: "CadenceRemote",
+            dependencies: ["CadenceCore"]
+        ),
+
         .executableTarget(
             name: "Cadence",
             dependencies: ["CadenceCore", "CadenceLibrary", "CadenceAudio", "CadenceDesign",
@@ -92,6 +101,18 @@ let package = Package(
         .testTarget(
             name: "CadenceServerTests",
             dependencies: [
+                "CadenceServer",
+                "CadenceCore",
+                "CadenceLibrary",
+                .product(name: "Testing", package: "swift-testing"),
+            ]
+        ),
+
+        // Runs the client against a real in-process server over TLS.
+        .testTarget(
+            name: "CadenceRemoteTests",
+            dependencies: [
+                "CadenceRemote",
                 "CadenceServer",
                 "CadenceCore",
                 "CadenceLibrary",

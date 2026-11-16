@@ -5,10 +5,11 @@ Cadence client browse and stream this Mac's library. It speaks the
 [OpenSubsonic](https://opensubsonic.netlify.app) API. This note records the
 decisions behind it; the code comments carry the detail.
 
-Status: Phase 3 of the build plan. Every endpoint the plan lists is built,
-and the app can start the server: Preferences has a Sharing section with the
-switch, the pairing code and the paired devices. It is off until the listener
-turns it on.
+Status: Phase 3 of the build plan is built apart from `SECURITY.md`. Every
+endpoint the plan lists is built, and the app can start the server:
+Preferences has a Sharing section with the switch, the pairing code and the
+paired devices. Phase 4 is built: `CadenceRemote`, the client the iOS app
+uses, is described under [The client](#the-client).
 
 | Built | Not built yet |
 |---|---|
@@ -626,6 +627,86 @@ and frees the place.
 Not limited yet: the total rate of requests from a paired device. A device
 with a valid key can ask as fast as its connections allow.
 
+## The client
+
+`CadenceRemote` is the other end: a library product, built for macOS and iOS,
+that the iOS app uses to pair and to read the library. Apple frameworks only,
+and it depends on CadenceCore alone, so it never pulls the server into the
+phone.
+
+| Type | Does |
+|---|---|
+| `RemotePairing.pair` | Trades a scanned `PairingPayload` for `RemoteCredentials` |
+| `RemoteLibraryClient` | One method per endpoint: browse, search, playlists, likes, `download`, `coverArt` |
+| `RemoteError` | Every failure, in terms the app can act on |
+
+**The pin is checked on every request, by that request.** Each request passes
+its own task delegate, which compares the SHA-256 of the leaf certificate
+with the paired fingerprint and cancels the challenge on any other. A refused
+challenge reaches the caller as a cancellation; because the check belongs to
+the request, the client can tell it apart and report `.untrustedServer`. Host
+name, expiry and chain are not consulted, as the certificate section explains.
+
+**Pairing checks before it spends the token.** It connects to the address in
+the code and checks the certificate first, so an impostor never sees the
+token. It then reads the protocol version from `getOpenSubsonicExtensions`,
+the one endpoint without a key, so a mismatched server is refused before it
+makes a key no one could use. Only then does it `POST /pair`.
+
+**The protocol version is checked on every answer**, not only at `connect()`,
+so a Mac updated while the phone app is open is caught on the next request.
+`RemoteLibraryClient.protocolVersion` must equal the server's
+`cadenceProtocolVersion`; a test fails if they part.
+
+**Nothing keeps a URL with a key in it.** The protocol puts the key in the
+query string, so the session is ephemeral with no URL cache and no cookies.
+`RemoteCredentials` holds the key, and the app must keep it in the keychain.
+
+**Errors.** Codes 40 to 44 all become `.notPaired`: whichever it is, the way
+in is gone and pairing again is the fix. 70 is `.notFound`, 429 is
+`.busy(retryAfter:)`. "Not connected" is `.offline`; every other transport
+failure, from a timeout to a refused connection, is `.unreachable`, which is
+what a sleeping Mac looks like. A cancelled task throws `CancellationError`,
+as `TrackSource` requires.
+
+**Mapping.** `Track(remote:)`, `Album(remote:)`, `Artist(remote:)` and
+`Playlist(remote:)` turn answers into CadenceCore's models. Track and playlist
+ids are the Mac's own UUIDs, read back out of `tr-` and `pl-` ids, and an
+album's key is rebuilt from the same artist, title and year, so its
+`stableID` is the id the server sent. A remote track's `url` is
+`cadence-remote://song/<id>?suffix=flac`: it names the song and nothing about
+the server, so a saved queue survives the Mac's address changing. A song
+fetched without its album names only its own artist, which then stands in for
+the album artist until the album is loaded.
+
+**Playing.** `RemoteTrackSource` is the `TrackSource` for a paired library. It
+downloads a song's whole file into a cache folder and hands the engine that
+file. Two callers asking for one song share one download; a caller that is
+cancelled (a skip) is answered at once, and the download stops when no one is
+left waiting. A download is written to a hidden partial file and renamed into
+place only when complete. The folder has a byte budget, 2 GB by default; past
+it, the files used longest ago are removed, never the ones handed out most
+recently, which an engine may have open. Failures reach the engine as
+`PlaybackError.engine` with `RemoteError.message`, a sentence for the listener.
+
+**Browsing without the Mac.** `RemoteMetadataCache` keeps the last answer to
+each browse request as a file, keyed by a digest of the endpoint and its
+parameters, as the recon note chose: no database, so GRDB stays off the
+phone. Browse methods take `source: .cache` to read it without asking the
+Mac, and throw `.notCached` when there is nothing. Search, single songs and
+random album lists are never cached. An answer is stored only after it has
+decoded, and the key is never part of a file name or a file.
+
+**Reconnecting.** `RemoteConnection` holds one state for the app to show:
+connecting, connected, offline, unreachable, or needs attention. It watches
+the network with `NWPathMonitor`. A Mac that does not answer is retried after
+2, 4, 8… seconds, at most a minute apart, and at once when the network
+changes. A busy Mac is retried when it said to. A revoked key, a changed
+certificate or a version mismatch is `.needsAttention` and is not retried
+until the app calls `retryNow()`, since only the user can fix it. A request
+that fails with `.unreachable` while connected is reported with
+`connectionLost(_:)`, which starts reconnecting.
+
 ## Testing
 
 - **Parser**: accepted and refused inputs case by case, plus two seeded fuzz
@@ -647,5 +728,14 @@ with a valid key can ask as fast as its connections allow.
   a keychain item of its own.
 - **Socket**: a loopback listener driven by `URLSession`, and by raw streams
   for the cases `URLSession` cannot produce (silence, garbage).
+
+- **Client**: `CadenceRemoteTests` starts a real server on the loopback
+  interface over TLS, pairs with it from a pairing code, browses, and
+  downloads a song's bytes. It checks that a wrong fingerprint is refused
+  before the token is spent, that a revoked device is told so, and that a
+  stopped server is unreachable. The track source, the metadata cache and
+  the mapping are tested against the same live server; shared and cancelled
+  downloads and the budget against a stand-in downloader that can hold a
+  download open; reconnecting against a scripted server and network.
 
 No key is stored in the repository. Tests generate one per run.
