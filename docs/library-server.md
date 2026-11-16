@@ -57,6 +57,29 @@ every rebuild. Without the certificate it can: the server then prints nothing
 and appears to hang. CONTRIBUTING.md, "A stable signature for local builds",
 says how to make the certificate.
 
+### The sharing demo, for the iPhone app
+
+`make share-demo` runs the real sharing server: TLS, the pairing endpoint and
+paired-device keys, the same `LiveSharingBackend` the "Share library" switch
+starts. It exists in debug builds only. It keeps a pairing code open and
+prints its link whenever a new one opens, once for the simulator (host
+127.0.0.1) and once for a phone on the same network:
+
+```bash
+make share-demo
+```
+
+```bash
+xcrun simctl openurl booted 'cadence://pair?v=1&host=127.0.0.1&port=4534&…'
+```
+
+It cannot disturb real sharing. It has its own keychain key and certificate,
+its own paired-devices file (both in `Application Support/Cadence/share-demo`)
+and its own port, 4534, so it runs beside the app's sharing on 4533. A device
+paired with the demo is not paired with the app. The identity and devices are
+kept between runs, so a simulator stays paired; `make share-demo RESET=1`
+forgets them first. `LIBRARY=…` serves another database, as with `make serve`.
+
 ## Shape
 
 ```
