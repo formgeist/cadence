@@ -778,6 +778,18 @@ struct ReplayGainTests {
 @Suite("MockPlayerEngine")
 struct MockEngineTests {
 
+    /// Waits until `condition` holds, up to `timeout`. A fixed sleep failed on
+    /// a loaded CI runner, where the main actor was busy for seconds and the
+    /// engine's clock had not ticked yet when the sleep ended.
+    private func wait(
+        timeout: Duration = .seconds(10), until condition: () -> Bool
+    ) async throws {
+        let deadline = ContinuousClock.now + timeout
+        while !condition() && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+    }
+
     @Test("The clock advances and reports positions")
     func clockAdvances() async throws {
         let engine = MockPlayerEngine(rate: 50)
@@ -785,7 +797,7 @@ struct MockEngineTests {
         let tracks = [makeTrack("A", seconds: 30), makeTrack("B", seconds: 30)]
 
         controller.play(tracks[0], in: tracks)
-        try await Task.sleep(for: .milliseconds(400))
+        try await wait { controller.progress.elapsed > 0 }
 
         #expect(controller.progress.elapsed > 0)
     }
@@ -799,7 +811,7 @@ struct MockEngineTests {
         let tracks = [makeTrack("A", seconds: 5), makeTrack("B", seconds: 600)]
 
         controller.play(tracks[0], in: tracks)
-        try await Task.sleep(for: .milliseconds(400))
+        try await wait { controller.currentTrack?.title == "B" }
 
         #expect(controller.currentTrack?.title == "B")
         #expect(controller.state.isPlaying)
