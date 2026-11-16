@@ -197,6 +197,74 @@ public enum Tokens {
         /// A button giving under a click and springing back.
         public static let press = Animation.spring(response: 0.22, dampingFraction: 0.65)
     }
+
+    // MARK: - Mobile
+
+    /// What the iPhone app needs beyond the Mac's tokens, from the approved
+    /// iOS design (the "Cadence for iOS" canvas linked from cadence-ios).
+    ///
+    /// Only what differs lives here. The surface, the primary text colour and
+    /// the faces are shared; the Mac app never reads anything in this enum.
+    /// The iOS screens draw on glass over a tinted ground, where the Mac's
+    /// secondary grey and its accent read too dim or too low in contrast.
+    public enum Mobile {
+
+        public enum Palette {
+            /// Red text and icons on the dark ground: the selected tab, the
+            /// artist under an album title, "Forget this Mac". 7.1:1 on
+            /// `surface`, where the Mac's `accent` is 5.0:1.
+            public static let accentText = Color(hex: 0xFF6F66)
+            /// The fill of a primary button such as Play, under white text.
+            public static let accentFill = Color(hex: 0xC8322A).opacity(0.95)
+            public static let accentFillEdge = Color(hex: 0xFFA096).opacity(0.5)
+            /// Secondary text over glass, where `Palette.textSecondary` is
+            /// too dim.
+            public static let textSecondary = Color(hex: 0xB8B8C2)
+            /// Section labels and fine print.
+            public static let textTertiary = Color(hex: 0xA6A6B2)
+            /// The glass fill behind floating controls: the tab bar, the mini
+            /// player, cards. Drawn over a blur.
+            public static let glass = Color(hex: 0x3E3E4C).opacity(0.42)
+            public static let glassEdge = Color.white.opacity(0.13)
+            public static let separator = Color.white.opacity(0.07)
+            /// "Connected" dots and toggles.
+            public static let positive = Color(hex: 0x5BC98A)
+        }
+
+        /// Sizes at the default text size. Every one scales with Dynamic Type
+        /// through `Typography.sans` and `mono`.
+        public enum Typography {
+            public static var largeTitle: Font { Tokens.Typography.sans(34, .heavy) }
+            public static var title: Font { Tokens.Typography.sans(26, .heavy) }
+            public static var stateTitle: Font { Tokens.Typography.sans(26, .heavy) }
+            public static var headline: Font { Tokens.Typography.sans(17, .heavy) }
+            public static var body: Font { Tokens.Typography.sans(16, .medium) }
+            public static var button: Font { Tokens.Typography.sans(16, .bold) }
+            public static var rowTitle: Font { Tokens.Typography.sans(15, .semibold) }
+            public static var tileTitle: Font { Tokens.Typography.sans(14, .bold) }
+            public static var subtitle: Font { Tokens.Typography.sans(13, .medium) }
+            public static var tabLabel: Font { Tokens.Typography.sans(11, .semibold) }
+            public static var sectionLabel: Font { Tokens.Typography.mono(11, .medium) }
+            public static var monoValue: Font { Tokens.Typography.mono(12, .regular) }
+            public static var monoTime: Font { Tokens.Typography.mono(13, .regular) }
+        }
+
+        public enum Space {
+            /// The left and right margin of a screen.
+            public static let screen: CGFloat = 20
+            /// The smallest thing a finger is asked to hit.
+            public static let touchTarget: CGFloat = 44
+            public static let rowHeight: CGFloat = 54
+            public static let buttonHeight: CGFloat = 54
+            public static let tileGap: CGFloat = 16
+        }
+
+        public enum Radius {
+            public static let tile: CGFloat = 14
+            public static let artwork: CGFloat = 24
+            public static let card: CGFloat = 24
+        }
+    }
 }
 
 // MARK: - Font registration
