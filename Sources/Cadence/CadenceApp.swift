@@ -81,6 +81,27 @@ final class AppContainer {
         return try SQLiteLibraryStore.defaultURL()
     }
 
+    /// The container the app is built with. A headless run (`--snapshot`,
+    /// `--scan`, `--serve` and the rest) gets the in-memory preview one: it
+    /// exits before any window opens, and the live container reads the
+    /// Last.fm and Spotify items from the keychain as it is built. After a
+    /// rebuild that read stops at a password prompt nobody is looking at, so
+    /// `make shots` and friends hung. The harnesses that need the real
+    /// library open it themselves.
+    static func forLaunch(arguments: [String] = CommandLine.arguments) -> AppContainer {
+        AppContainer(mode: isHeadless(arguments) ? .preview : .live)
+    }
+
+    /// The flags that run Cadence without a window.
+    nonisolated static let headlessFlags: Set<String> = [
+        "--snapshot", "--scan", "--serve", "--share-demo", "--bench", "--a11y",
+        "--play", "--audio-check", "--fonts",
+    ]
+
+    nonisolated static func isHeadless(_ arguments: [String]) -> Bool {
+        arguments.contains { headlessFlags.contains($0) }
+    }
+
     /// `store` stands in for the preview library, so a snapshot can render a
     /// library that is empty — or has no playlists — without a second
     /// composition root. `artwork` gives preview mode covers to draw, which
@@ -283,7 +304,7 @@ final class DockAction: NSObject {
 @main
 struct CadenceApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-    @State private var container = AppContainer()
+    @State private var container = AppContainer.forLaunch()
 
     var body: some Scene {
         WindowGroup {
