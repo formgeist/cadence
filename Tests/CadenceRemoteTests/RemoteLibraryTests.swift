@@ -153,6 +153,27 @@ private actor FakeDownloader: RemoteSongDownloading {
     }
 }
 
+/// Answers "busy" `refusals` times, then writes the file.
+private actor BusyDownloader: RemoteSongDownloading {
+    var attempts = 0
+    private var refusals: Int
+    private let wait: TimeInterval
+
+    init(refusals: Int, wait: TimeInterval) {
+        self.refusals = refusals
+        self.wait = wait
+    }
+
+    func download(songID: String, to destination: URL) async throws {
+        attempts += 1
+        if refusals > 0 {
+            refusals -= 1
+            throw RemoteError.busy(retryAfter: wait)
+        }
+        try Data(repeating: 7, count: 100).write(to: destination)
+    }
+}
+
 @Suite("Remote track source", .serialized)
 struct RemoteTrackSourceTests {
 
@@ -259,6 +280,32 @@ struct RemoteTrackSourceTests {
         #expect(FileManager.default.fileExists(atPath: one.path))
         #expect(!FileManager.default.fileExists(atPath: two.path))
         #expect(FileManager.default.fileExists(atPath: three.path))
+    }
+
+    @Test("A briefly busy Mac is waited for; a long refusal fails the track")
+    func busy() async throws {
+        let directory = scratch("busy")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let brief = BusyDownloader(refusals: 2, wait: 0.01)
+        let source = RemoteTrackSource(downloader: brief, directory: directory)
+        let file = try await source.fileURL(for: location(1))
+        #expect(FileManager.default.fileExists(atPath: file.path))
+        #expect(await brief.attempts == 3)
+
+        let long = BusyDownloader(refusals: 1, wait: 600)
+        let refused = RemoteTrackSource(downloader: long, directory: directory)
+        await #expect(throws: PlaybackError.engine(RemoteError.busy(retryAfter: 600).message)) {
+            _ = try await refused.fileURL(for: location(2))
+        }
+        #expect(await long.attempts == 1)
+
+        let endless = BusyDownloader(refusals: 100, wait: 0.01)
+        let givesUp = RemoteTrackSource(downloader: endless, directory: directory, busyRetries: 2)
+        await #expect(throws: PlaybackError.self) {
+            _ = try await givesUp.fileURL(for: location(3))
+        }
+        #expect(await endless.attempts == 3)
     }
 
     @Test("A failure is a playback error the listener can read")

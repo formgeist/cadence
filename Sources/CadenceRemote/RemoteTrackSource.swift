@@ -23,12 +23,22 @@ extension RemoteLibraryClient: RemoteSongDownloading {}
 ///   an engine may still have open.
 /// - **Nothing half-written is ever handed out.** A download goes to a
 ///   partial file and is renamed into place only once it is complete.
+/// - **A busy Mac is waited for, briefly.** The Mac allows each device a few
+///   downloads at once and answers "busy" past that. A skip frees its slot
+///   only once the Mac notices the dropped connection, so right after a few
+///   quick skips the next download can be refused for a moment. That is
+///   retried after the wait the Mac asks for, instead of failing the track
+///   and skipping it. A long wait (the Mac refusing this address) is not.
 public actor RemoteTrackSource: TrackSource {
 
     private let downloader: any RemoteSongDownloading
     private let directory: URL
     private let budget: Int64
     private let protectedCount: Int
+    private let busyRetries: Int
+
+    /// The longest wait a "busy" answer may ask for and still be retried.
+    static let longestBusyWait: TimeInterval = 5
 
     private struct Pending {
         /// Tells this download apart from a later one for the same song.
@@ -49,12 +59,16 @@ public actor RemoteTrackSource: TrackSource {
     ///   - budget: Bytes the cache may hold before it removes files.
     ///   - protectedCount: How many of the most recently handed-out files
     ///     are never removed: the playing track, the next, and a margin.
+    ///   - busyRetries: How many times a download the Mac answers "busy" is
+    ///     tried again before the track fails.
     public init(downloader: any RemoteSongDownloading, directory: URL,
-                budget: Int64 = 2_000_000_000, protectedCount: Int = 4) {
+                budget: Int64 = 2_000_000_000, protectedCount: Int = 4,
+                busyRetries: Int = 4) {
         self.downloader = downloader
         self.directory = directory
         self.budget = budget
         self.protectedCount = protectedCount
+        self.busyRetries = busyRetries
     }
 
     public func fileURL(for location: URL) async throws -> URL {
@@ -128,13 +142,14 @@ public actor RemoteTrackSource: TrackSource {
     private func start(songID: String, file: URL, token: UUID) -> Task<Void, Never> {
         let downloader = downloader
         let directory = directory
+        let busyRetries = busyRetries
         // Runs on this actor, which it leaves while the download is awaited,
         // so bookkeeping at either end needs no hop.
         return Task {
             let partial = directory.appendingPathComponent(".partial-\(UUID().uuidString)")
             do {
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-                try await downloader.download(songID: songID, to: partial)
+                try await Self.download(songID, to: partial, with: downloader, retries: busyRetries)
                 try Task.checkCancellation()
                 try? FileManager.default.removeItem(at: file)
                 try FileManager.default.moveItem(at: partial, to: file)
@@ -142,6 +157,23 @@ public actor RemoteTrackSource: TrackSource {
             } catch {
                 try? FileManager.default.removeItem(at: partial)
                 self.finished(songID, token, .failure(error))
+            }
+        }
+    }
+
+    /// One download, tried again while the Mac says it is briefly busy.
+    private static func download(_ songID: String, to partial: URL,
+                                 with downloader: any RemoteSongDownloading,
+                                 retries: Int) async throws {
+        var left = retries
+        while true {
+            do {
+                try await downloader.download(songID: songID, to: partial)
+                return
+            } catch RemoteError.busy(let wait) where left > 0 && wait <= longestBusyWait {
+                left -= 1
+                try? FileManager.default.removeItem(at: partial)
+                try await Task.sleep(for: .seconds(max(wait, 0)))
             }
         }
     }
