@@ -778,14 +778,18 @@ struct ReplayGainTests {
 @Suite("MockPlayerEngine")
 struct MockEngineTests {
 
-    /// Waits until `condition` holds, up to `timeout`. A fixed sleep failed on
-    /// a loaded CI runner, where the main actor was busy for seconds and the
-    /// engine's clock had not ticked yet when the sleep ended.
+    /// Waits until `condition` holds, checking up to `polls` times.
+    ///
+    /// Counted in checks, not in wall-clock time. On a loaded CI runner the
+    /// main actor, which this test and the engine's clock share, was busy
+    /// for longer than a deadline: by the time the test ran again the
+    /// deadline had passed, and it gave up before the clock got a single
+    /// turn. A count still gives the clock hundreds of turns after the
+    /// runner frees up, and stays about ten seconds when nothing is slow.
     private func wait(
-        timeout: Duration = .seconds(10), until condition: () -> Bool
+        polls: Int = 500, until condition: () -> Bool
     ) async throws {
-        let deadline = ContinuousClock.now + timeout
-        while !condition() && ContinuousClock.now < deadline {
+        for _ in 0..<polls where !condition() {
             try await Task.sleep(for: .milliseconds(20))
         }
     }
