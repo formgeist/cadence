@@ -92,6 +92,11 @@ public actor RemoteTrackSource: TrackSource {
         }
         do {
             let file = try await cached(songID: songID, suffix: suffix)
+            // A keep sharing this download may have resumed first and moved
+            // the file into the kept folder while this caller waited.
+            if let kept = downloads?.existingFile(songID: songID, suffix: suffix) {
+                return kept
+            }
             hand(file)
             return file
         } catch let error as RemoteError {
@@ -110,7 +115,8 @@ public actor RemoteTrackSource: TrackSource {
     /// already kept is returned as it is.
     ///
     /// - Throws: `RemoteError` when the Mac cannot provide the song
-    ///   (`.notFound` for a location that is not a remote track's), and
+    ///   (`.notFound` for a location that is not a remote track's,
+    ///   `.storageFailed` when the file cannot be put in the folder), and
     ///   `CancellationError` when the caller is cancelled first. Either way
     ///   nothing is left in the kept folder.
     /// - Precondition: The source was created with a `downloads` folder.
@@ -140,7 +146,7 @@ public actor RemoteTrackSource: TrackSource {
         do {
             return try downloads.keep(file, songID: songID, suffix: suffix, moving: !inUse)
         } catch {
-            throw RemoteError.server(code: 0, message: error.localizedDescription)
+            throw RemoteError.storageFailed(message: error.localizedDescription)
         }
     }
 

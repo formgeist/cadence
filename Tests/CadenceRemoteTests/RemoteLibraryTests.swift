@@ -329,6 +329,200 @@ struct RemoteTrackSourceTests {
     }
 }
 
+// MARK: - Kept songs
+
+/// Every file in a folder, hidden ones included, or none when it is missing.
+private func everything(in directory: URL) -> [String] {
+    (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+}
+
+@Suite("Kept songs", .serialized)
+struct RemoteDownloadsTests {
+
+    private func location(_ n: Int) -> URL {
+        RemoteTrackLocation.url(songID: "tr-song-\(n)", suffix: "flac")
+    }
+
+    /// A cache folder and a kept folder side by side, removed afterwards.
+    private func folders(_ name: String) -> (cache: URL, kept: RemoteDownloads, root: URL) {
+        let root = scratch(name)
+        return (root.appendingPathComponent("cache"),
+                RemoteDownloads(directory: root.appendingPathComponent("downloads")), root)
+    }
+
+    @Test("Keeping downloads once, and playback then uses the kept file")
+    func keepOnce() async throws {
+        let (cache, kept, root) = folders("keep-once")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let downloader = FakeDownloader()
+        let source = RemoteTrackSource(downloader: downloader, directory: cache, downloads: kept)
+
+        let file = try await source.keep(location(1))
+        #expect(file.deletingLastPathComponent().standardizedFileURL
+                == kept.directory.standardizedFileURL)
+        #expect(kept.file(for: location(1)) == file)
+        #expect(try await source.fileURL(for: location(1)) == file)
+        #expect(try await source.keep(location(1)) == file)
+        #expect(await downloader.started() == 1)
+    }
+
+    @Test("A cached song nothing is playing is moved into the kept folder")
+    func keepMovesCached() async throws {
+        let (cache, kept, root) = folders("keep-moves")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let downloader = FakeDownloader()
+        let player = RemoteTrackSource(downloader: downloader, directory: cache)
+        let cached = try await player.fileURL(for: location(1))
+
+        // A second source over the same cache has handed nothing out.
+        let source = RemoteTrackSource(downloader: downloader, directory: cache, downloads: kept)
+        let file = try await source.keep(location(1))
+        #expect(FileManager.default.fileExists(atPath: file.path))
+        #expect(!FileManager.default.fileExists(atPath: cached.path))
+        #expect(await downloader.started() == 1)
+    }
+
+    @Test("A song just handed out for playback is copied, not moved")
+    func keepCopiesPlaying() async throws {
+        let (cache, kept, root) = folders("keep-copies")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let downloader = FakeDownloader()
+        let source = RemoteTrackSource(downloader: downloader, directory: cache, downloads: kept)
+        let playing = try await source.fileURL(for: location(1))
+
+        let file = try await source.keep(location(1))
+        #expect(file != playing)
+        #expect(FileManager.default.fileExists(atPath: file.path))
+        #expect(FileManager.default.fileExists(atPath: playing.path))
+        #expect(await downloader.started() == 1)
+    }
+
+    @Test("Playing and keeping at once share one download")
+    func keepSharesWithPlayback() async throws {
+        let (cache, kept, root) = folders("keep-shares")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let downloader = FakeDownloader(held: true)
+        let source = RemoteTrackSource(downloader: downloader, directory: cache, downloads: kept)
+
+        async let playing = source.fileURL(for: location(1))
+        async let keeping = source.keep(location(1))
+        try await Task.sleep(for: .milliseconds(100))
+        await downloader.release()
+        let (played, file) = try await (playing, keeping)
+        #expect(FileManager.default.fileExists(atPath: played.path))
+        #expect(FileManager.default.fileExists(atPath: file.path))
+        #expect(kept.songIDs() == ["tr-song-1"])
+        #expect(await downloader.started() == 1)
+    }
+
+    @Test("Cancelling a keep leaves nothing in the kept folder")
+    func keepCancelled() async throws {
+        let (cache, kept, root) = folders("keep-cancel")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let downloader = FakeDownloader(held: true)
+        let source = RemoteTrackSource(downloader: downloader, directory: cache, downloads: kept)
+
+        let task = Task { try await source.keep(location(1)) }
+        try await Task.sleep(for: .milliseconds(100))
+        task.cancel()
+        await #expect(throws: CancellationError.self) { try await task.value }
+        await downloader.release()
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(everything(in: kept.directory).isEmpty)
+        #expect(everything(in: cache).isEmpty)
+        #expect(kept.file(for: location(1)) == nil)
+    }
+
+    @Test("Kept songs are outside the cache's budget")
+    func keptSurviveBudget() async throws {
+        let (cache, kept, root) = folders("keep-budget")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = RemoteTrackSource(downloader: FakeDownloader(size: 1000), directory: cache,
+                                       budget: 1500, protectedCount: 1, downloads: kept)
+        let file = try await source.keep(location(1))
+        for n in 2...5 {
+            _ = try await source.fileURL(for: location(n))
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(FileManager.default.fileExists(atPath: file.path))
+        #expect(try await source.fileURL(for: location(1)) == file)
+        // The cache trimmed meanwhile, down to the files it protects: the
+        // last one handed out and the one just downloaded.
+        #expect(everything(in: cache).count <= 2)
+    }
+
+    @Test("A keep waiting on a download survives other songs filling the cache")
+    func keepGuardedFromTrim() async throws {
+        let (cache, kept, root) = folders("keep-guard")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let downloader = FakeDownloader(size: 1000, held: true)
+        let source = RemoteTrackSource(downloader: downloader, directory: cache,
+                                       budget: 1500, protectedCount: 1, downloads: kept)
+
+        let keeping = Task { try await source.keep(location(1)) }
+        let others = (2...4).map { n in Task { try await source.fileURL(for: location(n)) } }
+        try await Task.sleep(for: .milliseconds(100))
+        await downloader.release()
+        for other in others { _ = try await other.value }
+        let file = try await keeping.value
+        #expect(FileManager.default.fileExists(atPath: file.path))
+        #expect(kept.songIDs() == ["tr-song-1"])
+    }
+
+    @Test("Listing, sizing and removing kept songs")
+    func folder() async throws {
+        let (cache, kept, root) = folders("keep-folder")
+        defer { try? FileManager.default.removeItem(at: root) }
+        #expect(kept.songIDs().isEmpty)
+        #expect(kept.totalBytes() == 0)
+
+        let source = RemoteTrackSource(downloader: FakeDownloader(size: 1000), directory: cache,
+                                       downloads: kept)
+        _ = try await source.keep(location(1))
+        _ = try await source.keep(location(2))
+        _ = try await source.keep(RemoteTrackLocation.url(songID: "tr-song-3", suffix: "mp3"))
+        #expect(kept.songIDs() == ["tr-song-1", "tr-song-2", "tr-song-3"])
+        #expect(kept.totalBytes() == 3000)
+
+        let excluded = try kept.directory.resourceValues(forKeys: [.isExcludedFromBackupKey])
+        #expect(excluded.isExcludedFromBackup == true)
+
+        // Removed whatever its suffix.
+        kept.remove(songID: "tr-song-3")
+        kept.remove(songID: "tr-song-9")
+        #expect(kept.songIDs() == ["tr-song-1", "tr-song-2"])
+
+        kept.removeAll()
+        #expect(kept.songIDs().isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: kept.directory.path))
+    }
+
+    @Test("Clearing the cache leaves kept songs alone")
+    func clearingCache() async throws {
+        let (cache, kept, root) = folders("keep-clear")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = RemoteTrackSource(downloader: FakeDownloader(), directory: cache, downloads: kept)
+        _ = try await source.fileURL(for: location(1))
+        let file = try await source.keep(location(2))
+
+        await source.removeAll()
+        #expect(!FileManager.default.fileExists(atPath: cache.path))
+        #expect(FileManager.default.fileExists(atPath: file.path))
+    }
+
+    @Test("A location that is not a remote track's is not found")
+    func invalidLocation() async throws {
+        let (cache, kept, root) = folders("keep-invalid")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = RemoteTrackSource(downloader: FakeDownloader(), directory: cache, downloads: kept)
+        await #expect(throws: RemoteError.notFound) {
+            _ = try await source.keep(URL(fileURLWithPath: "/tmp/x.flac"))
+        }
+        #expect(kept.file(for: URL(fileURLWithPath: "/tmp/x.flac")) == nil)
+        #expect(everything(in: kept.directory).isEmpty)
+    }
+}
+
 // MARK: - Metadata cache
 
 @Suite("Remote metadata cache", .serialized)

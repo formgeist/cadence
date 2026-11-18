@@ -38,6 +38,9 @@ public enum RemoteError: Error, Equatable, Sendable {
     /// A change to a library that lives on another Mac. The server is
     /// read-only, so the client refuses before asking.
     case readOnly
+    /// This device could not save what it downloaded: out of space, or the
+    /// folder could not be written. The message is the system's.
+    case storageFailed(message: String)
 }
 
 /// So that an app showing `localizedDescription`, as the Mac app's banners
@@ -74,6 +77,8 @@ extension RemoteError {
             "This has not been opened while the Mac was reachable, so it is not available offline."
         case .readOnly:
             "This library is on another Mac and cannot be changed from here."
+        case .storageFailed(let message):
+            message.isEmpty ? "This device could not save the song." : "This device could not save the song. \(message)"
         }
     }
 
