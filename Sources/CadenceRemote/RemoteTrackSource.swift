@@ -29,10 +29,15 @@ extension RemoteLibraryClient: RemoteSongDownloading {}
 ///   quick skips the next download can be refused for a moment. That is
 ///   retried after the wait the Mac asks for, instead of failing the track
 ///   and skipping it. A long wait (the Mac refusing this address) is not.
+/// - **A kept song is played from where it is kept.** With a
+///   `RemoteDownloads` folder, `fileURL(for:)` looks there before the cache,
+///   and `keep(_:)` puts a song there. Keeping shares downloads with
+///   playback: a song being played and kept at once is downloaded once.
 public actor RemoteTrackSource: TrackSource {
 
     private let downloader: any RemoteSongDownloading
     private let directory: URL
+    private let downloads: RemoteDownloads?
     private let budget: Int64
     private let protectedCount: Int
     private let busyRetries: Int
@@ -51,6 +56,10 @@ public actor RemoteTrackSource: TrackSource {
     private var pending: [String: Pending] = [:]
     /// The files handed out most recently, newest last.
     private var recent: [URL] = []
+    /// Songs on their way from the cache into the kept folder, with how many
+    /// `keep(_:)` calls are waiting on each. The budget never removes their
+    /// cached file in between.
+    private var keeping: [String: Int] = [:]
 
     /// - Parameters:
     ///   - directory: A folder of the cache's own, in the Caches directory.
@@ -61,11 +70,14 @@ public actor RemoteTrackSource: TrackSource {
     ///     are never removed: the playing track, the next, and a margin.
     ///   - busyRetries: How many times a download the Mac answers "busy" is
     ///     tried again before the track fails.
+    ///   - downloads: Where kept songs live, or nil for a source that only
+    ///     caches. Required for `keep(_:)`.
     public init(downloader: any RemoteSongDownloading, directory: URL,
                 budget: Int64 = 2_000_000_000, protectedCount: Int = 4,
-                busyRetries: Int = 4) {
+                busyRetries: Int = 4, downloads: RemoteDownloads? = nil) {
         self.downloader = downloader
         self.directory = directory
+        self.downloads = downloads
         self.budget = budget
         self.protectedCount = protectedCount
         self.busyRetries = busyRetries
@@ -75,26 +87,85 @@ public actor RemoteTrackSource: TrackSource {
         guard let (songID, suffix) = RemoteTrackLocation.parse(location) else {
             throw PlaybackError.engine("This track is not in a shared library.")
         }
-        let file = directory.appendingPathComponent(suffix.isEmpty ? songID : "\(songID).\(suffix)")
-
-        if FileManager.default.fileExists(atPath: file.path) {
+        if let kept = downloads?.existingFile(songID: songID, suffix: suffix) {
+            return kept
+        }
+        do {
+            let file = try await cached(songID: songID, suffix: suffix)
+            // A keep sharing this download may have resumed first and moved
+            // the file into the kept folder while this caller waited.
+            if let kept = downloads?.existingFile(songID: songID, suffix: suffix) {
+                return kept
+            }
             hand(file)
             return file
-        }
-
-        let waiter = UUID()
-        do {
-            let url = try await withTaskCancellationHandler {
-                try await withCheckedThrowingContinuation { continuation in
-                    wait(for: songID, file: file, as: waiter, continuation)
-                }
-            } onCancel: {
-                Task { await self.abandon(songID, waiter) }
-            }
-            hand(url)
-            return url
         } catch let error as RemoteError {
             throw PlaybackError.engine(error.message)
+        }
+    }
+
+    // MARK: - Keeping
+
+    /// Keeps a song on this device until it is removed from the
+    /// `RemoteDownloads` folder, and returns its kept file.
+    ///
+    /// A song already in the cache is moved across without downloading it
+    /// again, or copied when it was handed out recently and may be playing.
+    /// A song being downloaded for playback is not downloaded twice. A song
+    /// already kept is returned as it is.
+    ///
+    /// - Throws: `RemoteError` when the Mac cannot provide the song
+    ///   (`.notFound` for a location that is not a remote track's,
+    ///   `.storageFailed` when the file cannot be put in the folder), and
+    ///   `CancellationError` when the caller is cancelled first. Either way
+    ///   nothing is left in the kept folder.
+    /// - Precondition: The source was created with a `downloads` folder.
+    public func keep(_ location: URL) async throws -> URL {
+        guard let downloads else {
+            preconditionFailure("keep(_:) needs a RemoteTrackSource created with a downloads folder.")
+        }
+        guard let (songID, suffix) = RemoteTrackLocation.parse(location) else {
+            throw RemoteError.notFound
+        }
+        if let kept = downloads.existingFile(songID: songID, suffix: suffix) {
+            return kept
+        }
+
+        keeping[songID, default: 0] += 1
+        defer {
+            keeping[songID, default: 1] -= 1
+            if keeping[songID] == 0 { keeping[songID] = nil }
+        }
+        let file = try await cached(songID: songID, suffix: suffix)
+        // Another keep for the same song may have finished while this one
+        // waited on the shared download.
+        if let kept = downloads.existingFile(songID: songID, suffix: suffix) {
+            return kept
+        }
+        let inUse = recent.contains { $0.standardizedFileURL == file.standardizedFileURL }
+        do {
+            return try downloads.keep(file, songID: songID, suffix: suffix, moving: !inUse)
+        } catch {
+            throw RemoteError.storageFailed(message: error.localizedDescription)
+        }
+    }
+
+    // MARK: - The cache
+
+    /// The song's file in the cache, downloaded first if it is not there.
+    /// Not handed out: the caller decides whether it counts as used.
+    private func cached(songID: String, suffix: String) async throws -> URL {
+        let file = directory.appendingPathComponent(suffix.isEmpty ? songID : "\(songID).\(suffix)")
+        if FileManager.default.fileExists(atPath: file.path) {
+            return file
+        }
+        let waiter = UUID()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                wait(for: songID, file: file, as: waiter, continuation)
+            }
+        } onCancel: {
+            Task { await self.abandon(songID, waiter) }
         }
     }
 
@@ -212,6 +283,10 @@ public actor RemoteTrackSource: TrackSource {
         let kept = Set((recent + [file]).map(\.standardizedFileURL))
         entries.sort { $0.used < $1.used }
         for entry in entries where total > budget && !kept.contains(entry.url.standardizedFileURL) {
+            // On its way into the kept folder: removing it now would fail
+            // that keep after its download had already succeeded.
+            let songID = String(entry.url.lastPathComponent.prefix { $0 != "." })
+            if keeping[songID] != nil { continue }
             try? FileManager.default.removeItem(at: entry.url)
             total -= entry.size
         }
