@@ -510,6 +510,91 @@ struct RemoteDownloadsTests {
         #expect(FileManager.default.fileExists(atPath: file.path))
     }
 
+    private func song(_ n: Int) -> RemoteSong {
+        RemoteSong(id: "tr-song-\(n)", title: "Song \(n)", suffix: "flac")
+    }
+
+    @Test("Downloaded albums and playlists are kept with their songs, and read back")
+    func records() throws {
+        let (_, kept, root) = folders("keep-records")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let album = RemoteAlbum(id: "al-one", name: "One", songCount: 2, duration: 60,
+                                song: [song(1), song(2)])
+        let playlist = RemotePlaylist(id: "pl-mix", name: "Mix", songCount: 1, duration: 30,
+                                      entry: [song(2)])
+        try kept.save(album: album)
+        try kept.save(playlist: playlist)
+
+        #expect(kept.album(id: "al-one") == album)
+        #expect(kept.playlist(id: "pl-mix") == playlist)
+        #expect(kept.albums() == [album])
+        #expect(kept.playlists() == [playlist])
+        // Records are not songs.
+        #expect(kept.songIDs().isEmpty)
+        #expect(kept.totalBytes() == 0)
+    }
+
+    @Test("Removing an album removes only the songs nothing else kept lists")
+    func removeAlbum() async throws {
+        let (cache, kept, root) = folders("keep-remove-album")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = RemoteTrackSource(downloader: FakeDownloader(), directory: cache, downloads: kept)
+        for n in 1...3 { _ = try await source.keep(location(n)) }
+        try kept.save(album: RemoteAlbum(id: "al-one", name: "One", songCount: 2, duration: 60,
+                                         song: [song(1), song(2)]))
+        try kept.save(album: RemoteAlbum(id: "al-two", name: "Two", songCount: 1, duration: 30,
+                                         song: [song(3)]))
+        try kept.save(playlist: RemotePlaylist(id: "pl-mix", name: "Mix", songCount: 1, duration: 30,
+                                               entry: [song(2)]))
+
+        kept.removeAlbum(id: "al-one")
+        // Song 2 is still in the playlist; song 3 belongs to the other album.
+        #expect(kept.songIDs() == ["tr-song-2", "tr-song-3"])
+        #expect(kept.album(id: "al-one") == nil)
+
+        kept.removePlaylist(id: "pl-mix")
+        #expect(kept.songIDs() == ["tr-song-3"])
+        kept.removeAlbum(id: "al-missing")
+        #expect(kept.songIDs() == ["tr-song-3"])
+    }
+
+    @Test("Covers are kept under their artwork id")
+    func covers() throws {
+        let (_, kept, root) = folders("keep-covers")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let id = String(repeating: "ab", count: 32)
+        #expect(kept.cover(id: id) == nil)
+        try kept.save(cover: Data([1, 2, 3]), id: id)
+        let file = try #require(kept.cover(id: id))
+        #expect(try Data(contentsOf: file) == Data([1, 2, 3]))
+        #expect(kept.songIDs().isEmpty)
+
+        #expect(throws: (any Error).self) { try kept.save(cover: Data(), id: "../escape") }
+        #expect(kept.cover(id: "../escape") == nil)
+    }
+
+    @Test("Ids that could not be the server's never become file names")
+    func unsafeIDs() {
+        let (_, kept, root) = folders("keep-unsafe")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let album = RemoteAlbum(id: "../../etc", name: "x", songCount: 0, duration: 0)
+        #expect(throws: (any Error).self) { try kept.save(album: album) }
+        #expect(kept.album(id: "../../etc") == nil)
+        #expect(!FileManager.default.fileExists(atPath: kept.directory.path))
+    }
+
+    @Test("Models survive being stored and read back")
+    func codableRoundTrip() throws {
+        let original = RemoteAlbum(id: "al-1", name: "N", artist: "A", artistId: "ar-1",
+                                   coverArt: String(repeating: "0", count: 64), songCount: 1,
+                                   duration: 10, created: "2026-01-01T00:00:00Z", year: 2000,
+                                   genre: "G", song: [RemoteSong(id: "tr-1", title: "T", album: "N",
+                                                                 track: 1, duration: 10, suffix: "flac",
+                                                                 bitDepth: 16, samplingRate: 44100)])
+        let decoded = try JSONDecoder().decode(RemoteAlbum.self, from: JSONEncoder().encode(original))
+        #expect(decoded == original)
+    }
+
     @Test("A location that is not a remote track's is not found")
     func invalidLocation() async throws {
         let (cache, kept, root) = folders("keep-invalid")

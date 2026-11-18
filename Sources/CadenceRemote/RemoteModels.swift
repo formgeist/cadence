@@ -26,7 +26,7 @@ public struct RemoteArtist: Decodable, Sendable, Equatable, Identifiable {
     public var album: [RemoteAlbum]?
 }
 
-public struct RemoteAlbum: Decodable, Sendable, Equatable, Identifiable {
+public struct RemoteAlbum: Codable, Sendable, Equatable, Identifiable {
     public var id: String
     public var name: String
     public var artist: String?
@@ -43,7 +43,7 @@ public struct RemoteAlbum: Decodable, Sendable, Equatable, Identifiable {
     public var song: [RemoteSong]?
 }
 
-public struct RemoteSong: Decodable, Sendable, Equatable, Identifiable {
+public struct RemoteSong: Codable, Sendable, Equatable, Identifiable {
     public var id: String
     public var title: String
     public var album: String?
@@ -72,7 +72,7 @@ public struct RemoteSong: Decodable, Sendable, Equatable, Identifiable {
     public var starred: String?
 }
 
-public struct RemotePlaylist: Decodable, Sendable, Equatable, Identifiable {
+public struct RemotePlaylist: Codable, Sendable, Equatable, Identifiable {
     public var id: String
     public var name: String
     public var songCount: Int

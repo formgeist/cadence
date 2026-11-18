@@ -21,9 +21,16 @@ import Foundation
 /// else), so the part before the first dot is always the id.
 ///
 /// Songs are put here by `RemoteTrackSource.keep(_:)`, which shares its
-/// downloads with playback. This type only reads, lists and removes, and is
-/// safe to use from any thread: everything it does is a single file-system
-/// call, and a file appears here only by an atomic rename.
+/// downloads with playback. This type only reads, lists and removes songs,
+/// and is safe to use from any thread: everything it does is a single
+/// file-system call, and a file appears here only by an atomic rename.
+///
+/// **What was downloaded is kept too.** A Downloaded screen has to work with
+/// the Mac away, for albums never opened offline, and the metadata cache can
+/// be emptied. So the albums and playlists the listener downloaded are
+/// stored here as well, with their songs, in `albums/` and `playlists/`, and
+/// their covers in `covers/`. Removing an album removes only the songs no
+/// other kept album or playlist lists.
 public struct RemoteDownloads: Sendable {
 
     public let directory: URL
@@ -61,10 +68,75 @@ public struct RemoteDownloads: Sendable {
         }
     }
 
-    /// Removes every kept song, and the folder. For when the listener clears
-    /// their downloads or forgets the Mac.
+    /// Removes every kept song, album, playlist and cover, and the folder.
+    /// For when the listener clears their downloads or forgets the Mac.
     public func removeAll() {
         try? FileManager.default.removeItem(at: directory)
+    }
+
+    // MARK: - Albums and playlists
+
+    /// Remembers a downloaded album, with its songs, replacing an earlier
+    /// copy.
+    public func save(album: RemoteAlbum) throws {
+        try write(album, to: record(Self.albums, id: album.id))
+    }
+
+    /// Remembers a downloaded playlist, with its songs in order.
+    public func save(playlist: RemotePlaylist) throws {
+        try write(playlist, to: record(Self.playlists, id: playlist.id))
+    }
+
+    /// Every downloaded album, in no particular order.
+    public func albums() -> [RemoteAlbum] {
+        records(Self.albums)
+    }
+
+    public func playlists() -> [RemotePlaylist] {
+        records(Self.playlists)
+    }
+
+    public func album(id: String) -> RemoteAlbum? {
+        record(Self.albums, id: id).flatMap(read)
+    }
+
+    public func playlist(id: String) -> RemotePlaylist? {
+        record(Self.playlists, id: id).flatMap(read)
+    }
+
+    /// Forgets a downloaded album and removes its songs, except those another
+    /// downloaded album or playlist lists.
+    public func removeAlbum(id: String) {
+        guard let file = record(Self.albums, id: id) else { return }
+        let songs = read(file).map { (album: RemoteAlbum) in album.song ?? [] } ?? []
+        try? FileManager.default.removeItem(at: file)
+        removeSongs(songs.map(\.id))
+    }
+
+    /// Forgets a downloaded playlist and removes its songs, except those
+    /// another downloaded album or playlist lists.
+    public func removePlaylist(id: String) {
+        guard let file = record(Self.playlists, id: id) else { return }
+        let songs = read(file).map { (playlist: RemotePlaylist) in playlist.entry ?? [] } ?? []
+        try? FileManager.default.removeItem(at: file)
+        removeSongs(songs.map(\.id))
+    }
+
+    // MARK: - Covers
+
+    /// Keeps a cover's image under its artwork id.
+    public func save(cover data: Data, id: String) throws {
+        guard let file = coverFile(id: id) else { throw CocoaError(.fileWriteInvalidFileName) }
+        try prepare()
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
+        try data.write(to: file, options: .atomic)
+    }
+
+    /// The kept image for an artwork id, or nil when there is none.
+    public func cover(id: String) -> URL? {
+        guard let file = coverFile(id: id), FileManager.default.fileExists(atPath: file.path) else { return nil }
+        return file
     }
 
     // MARK: - For RemoteTrackSource
@@ -118,11 +190,67 @@ public struct RemoteDownloads: Sendable {
         try folder.setResourceValues(values)
     }
 
-    /// Every kept file. Hidden files are partial ones still arriving.
+    /// Every kept song file. Hidden files are partial ones still arriving,
+    /// and the folders hold albums, playlists and covers.
     private func files() -> [URL] {
-        (try? FileManager.default.contentsOfDirectory(
-            at: directory, includingPropertiesForKeys: [.fileSizeKey],
+        let found = (try? FileManager.default.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey],
             options: [.skipsHiddenFiles])) ?? []
+        return found.filter {
+            (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
+        }
+    }
+
+    private static let albums = "albums"
+    private static let playlists = "playlists"
+
+    /// The file for an album or playlist record, or nil for an id that could
+    /// not be one the server issued and so must never become a file name.
+    private func record(_ kind: String, id: String) -> URL? {
+        guard Self.isSafe(id) else { return nil }
+        return directory.appendingPathComponent(kind, isDirectory: true)
+            .appendingPathComponent(id + ".json")
+    }
+
+    private func records<Record: Decodable>(_ kind: String) -> [Record] {
+        let folder = directory.appendingPathComponent(kind, isDirectory: true)
+        let found = (try? FileManager.default.contentsOfDirectory(
+            at: folder, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])) ?? []
+        return found.filter { $0.pathExtension == "json" }.compactMap(read)
+    }
+
+    private func read<Record: Decodable>(_ file: URL) -> Record? {
+        guard let data = try? Data(contentsOf: file) else { return nil }
+        return try? JSONDecoder().decode(Record.self, from: data)
+    }
+
+    private func write<Record: Encodable>(_ value: Record, to file: URL?) throws {
+        guard let file else { throw CocoaError(.fileWriteInvalidFileName) }
+        try prepare()
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
+        try JSONEncoder().encode(value).write(to: file, options: .atomic)
+    }
+
+    /// Removes kept songs that no remaining album or playlist lists.
+    private func removeSongs(_ ids: [String]) {
+        var wanted = Set<String>()
+        for album in albums() { wanted.formUnion((album.song ?? []).map(\.id)) }
+        for playlist in playlists() { wanted.formUnion((playlist.entry ?? []).map(\.id)) }
+        for id in Set(ids).subtracting(wanted) { remove(songID: id) }
+    }
+
+    private func coverFile(id: String) -> URL? {
+        // Artwork ids are 64 hex characters from the server.
+        guard id.count == 64, id.allSatisfy(\.isHexDigit) else { return nil }
+        return directory.appendingPathComponent("covers", isDirectory: true)
+            .appendingPathComponent(id + ".img")
+    }
+
+    /// Letters, digits and hyphens, as the server's ids are.
+    private static func isSafe(_ id: String) -> Bool {
+        !id.isEmpty && id.count <= 128
+            && id.unicodeScalars.allSatisfy { CharacterSet.alphanumerics.contains($0) && $0.isASCII || $0 == "-" }
     }
 
     private static func songID(of file: URL) -> String {
