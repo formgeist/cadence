@@ -760,6 +760,54 @@ as empty. Every write throws `RemoteError.readOnly` without asking the Mac.
 `RemoteArtworkStore` fetches covers by the id a track already holds and keeps
 each answer on disk under a digest of the id and size.
 
+## The Mac as a client
+
+The Mac app can show another Mac's library instead of its own: a work laptop
+playing the music kept on a personal one. One library at a time, chosen in
+Preferences › Library.
+
+**Pairing.** A Mac has no camera, so the Sharing pane's code has a Copy Link
+button beside it. The link is the same `cadence://pair` URL the QR code holds.
+On the other Mac it is either opened, since the app registers the scheme, or
+pasted into Preferences. Either way Preferences asks before pairing. Pairing
+is `RemotePairing.pair`, as on the phone, and the credentials go in the
+keychain under `com.formgeist.cadence.pairing`, this device only. One paired
+Mac at a time; pairing with another replaces it and removes what was kept
+for the first.
+
+**Switching relaunches.** The store, the engine's track source, Now Playing,
+the folder watcher and the sharing server are all built once at launch, for
+one library. So choosing a library writes the choice to `Cadence.librarySource`
+and reopens the app. A copy run outside its bundle, as `swift run` runs it,
+cannot reopen itself and says so.
+
+**What the paired library is built from.** `AppContainer` puts
+`RemoteLibraryStore` under `AppModel`, `RemoteArtworkStore` under the artwork
+loader and Now Playing, and `RemoteTrackSource` under `SFBPlayerEngine`.
+Listening history, memories and Last.fm answers are kept on this Mac, in
+`Application Support/Cadence/Remote/<fingerprint>/history.sqlite`, since the
+paired library cannot hold them. Metadata, covers and downloaded tracks are in
+`Caches/Cadence/Remote/<fingerprint>/`. Forgetting the Mac removes both.
+
+**Settings kept apart.** `PerLibrarySettingsStore` files the queue, recents,
+the selected tab, collapsed folders and the sharing switch under their own
+keys for the paired library, so switching back finds this Mac's queue where
+it was. Volume, scrobbling and sort orders are shared.
+
+**Read-only.** `AppModel.canEditLibrary` is false for a paired library, and
+hides what would change it: new playlists and folders, playlist and track
+edits, likes, Remove from Library, catalogs, artist and playlist images,
+imports and folders. Liked tracks keep their heart. The store refuses every
+write as well, and a refusal reaches the banner as `RemoteError.readOnly`'s
+sentence. The Sharing section is hidden: this Mac shares only its own
+library.
+
+**Connection.** `RemoteConnection` runs for the session, and the title bar
+shows Remote, Offline, Away or Check beside the gear, with the full sentence
+in the tooltip and in Preferences. A failed download has the connection
+check, since it is often the first sign the other Mac has gone to sleep.
+When the Mac answers again, the library loads again.
+
 ## Testing
 
 - **Parser**: accepted and refused inputs case by case, plus two seeded fuzz

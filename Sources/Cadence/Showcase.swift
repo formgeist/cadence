@@ -282,6 +282,7 @@ enum Showcase {
                 .environment(container.playLog)
                 .environment(container.discovery)
                 .environment(container.sharing)
+                .environment(container.library)
                 .environment(container.spotify)
                 // The mock engine is silent, but a marketing shot should not say so.
                 .environment(\.isSilentPlayback, false)

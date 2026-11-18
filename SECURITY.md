@@ -36,7 +36,8 @@ or read outside input:
 |---|---|
 | The library server: listener, HTTP parser, endpoints, limits | `Sources/CadenceServer` |
 | Pairing, paired devices, the server's certificate and key | `Sources/CadenceServer`, `Sources/CadenceCore/Pairing` |
-| The client library the iOS app uses | `Sources/CadenceRemote` |
+| The client library the iOS app and the Mac app use | `Sources/CadenceRemote` |
+| The Mac app as a client: pairing links, the stored key | `Sources/Cadence/RemoteLibrary.swift` |
 | Reading tags and audio from files in the library | `Sources/CadenceLibrary`, `Sources/CadenceAudio` |
 | Stored credentials (Last.fm, Spotify) | `Sources/Cadence/KeychainStore.swift` |
 
@@ -76,14 +77,17 @@ Mac's screen.
   fingerprint. The phone checks it before it sends the one-time token, so
   something answering in the Mac's place never sees the token. The token works
   once, expires after five minutes and allows five attempts. Typed codes, which
-  could not carry a fingerprint, are switched off.
+  could not carry a fingerprint, are switched off. Another Mac pairs with the
+  link the QR code holds, copied rather than scanned: the same fingerprint,
+  the same token. A link opened from outside Cadence is shown for the user to
+  confirm before anything is sent.
 - **Encrypted and pinned.** All traffic is TLS 1.3 to a certificate the phone
   pinned at pairing. Release builds contain no plain-HTTP listener. A client
   that does not pin cannot connect at all.
 - **Keys are per device, random and revocable.** 256 bits from the system
   generator. The Mac stores only their SHA-256, in a file only the user can
-  read. The client library never writes a key anywhere; the iOS app is to
-  keep it in the Keychain. Revoking a device takes effect on its next
+  read. The client library never writes a key anywhere; the iOS app and a
+  paired Mac keep it in the Keychain, for this device only. Revoking a device takes effect on its next
   request. Keys are never logged.
 - **No paths on the wire.** Requests name songs, albums and artwork by opaque
   ids, never by path. No part of a request is joined to a directory, and a file
@@ -107,12 +111,16 @@ Mac's screen.
 - **If the paired-devices file cannot be rewritten when a device is revoked**,
   the device is refused until Cadence quits but would be accepted after a
   relaunch. The app reports the failure when it happens.
+- **A copied pairing link pairs whoever opens it first**, until it is used or
+  expires. The copy is marked concealed so clipboard managers that honour the
+  convention skip it, but it can still reach Universal Clipboard or a chat
+  history. Close the code once the other Mac has paired.
 - **Being found is not being trusted.** Anyone on the network can see that a
   Cadence server is there. They get a TLS handshake and nothing more.
 
 **Out of scope**
 
-- Someone who already controls the Mac's user account, or the phone.
+- Someone who already controls the Mac's user account, or a paired device.
 - Someone who can see the Mac's screen while a pairing code is showing.
 - A paired device reading the library, which is what pairing grants.
 - Reaching the Mac from outside the local network; Cadence does not offer it.

@@ -402,6 +402,15 @@ final class AppModel {
     /// Set when the real database could not be opened and the preview library
     /// is standing in.
     var storeFailure: String?
+
+    /// The name of the Mac whose library this is, when it is another Mac's.
+    /// Nil for this Mac's own library.
+    var pairedMacName: String?
+
+    /// False for another Mac's library, which this app can browse and play
+    /// but not change: no playlist edits, likes, imports or removals. The
+    /// store refuses them too; this is what hides the controls.
+    var canEditLibrary: Bool { pairedMacName == nil }
     /// The last write that failed under the user's hand — creating a playlist,
     /// so far. Shown in the banner and dismissible, because a silent no-op
     /// looks like the button is broken.
@@ -1762,6 +1771,8 @@ final class AppModel {
     var librarySummary: String {
         let tracks = NumberFormatter.localizedString(
             from: NSNumber(value: trackCount), number: .decimal)
+        // Another Mac's library does not say how much disk it takes.
+        guard canEditLibrary else { return "\(tracks) tracks" }
         return "\(tracks) tracks · \(DurationFormat.bytes(librarySize))"
     }
 

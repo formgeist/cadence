@@ -51,6 +51,7 @@ enum A11yHarness {
                 .environment(container.playLog)
                 .environment(container.discovery)
                 .environment(container.sharing)
+                .environment(container.library)
                 .environment(container.spotify)
                 .environment(\.isSilentPlayback, container.isSilentPlayback)
                 .preferredColorScheme(.dark)

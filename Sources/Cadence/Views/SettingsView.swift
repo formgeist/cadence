@@ -30,7 +30,14 @@ struct SettingsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Tokens.Space.contentInset) {
                     SettingsSection("Library") {
-                        LibrarySettings()
+                        VStack(alignment: .leading, spacing: Tokens.Space.l) {
+                            LibrarySourceSettings()
+                            // Folders belong to this Mac's library; the
+                            // paired Mac's are chosen on the paired Mac.
+                            if model.canEditLibrary {
+                                LibrarySettings()
+                            }
+                        }
                     }
 
                     SettingsSection("Playback") {
@@ -69,8 +76,11 @@ struct SettingsView: View {
                         DiscoverySettings()
                     }
 
-                    SettingsSection("Sharing") {
-                        SharingSettings()
+                    // Only this Mac's own library can be shared from here.
+                    if model.canEditLibrary {
+                        SettingsSection("Sharing") {
+                            SharingSettings()
+                        }
                     }
                 }
                 .frame(maxWidth: Tokens.Layout.settingsContentWidth, alignment: .leading)

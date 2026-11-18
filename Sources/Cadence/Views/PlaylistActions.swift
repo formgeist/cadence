@@ -228,7 +228,8 @@ enum PlaylistMenu {
         let liked = model.isLiked(track)
         return .action(liked ? "Remove from \(AppModel.likedSongsName)"
                              : "Add to \(AppModel.likedSongsName)",
-                       liked ? Symbol.unlike : Symbol.like) {
+                       liked ? Symbol.unlike : Symbol.like,
+                       enabled: model.canEditLibrary) {
             Task { await model.toggleLike(track, announce: true) }
         }
     }
@@ -273,6 +274,10 @@ enum PlaylistMenu {
     /// dialog: choosing the destination is the whole interaction, and a
     /// library with three playlists should not open a window to pick one.
     static func destinations(model: AppModel, tracks: [Track]) -> MenuItem {
+        // Another Mac's playlists are not changed from here.
+        guard model.canEditLibrary else {
+            return .action("Add to Playlist", Symbol.addToPlaylist, enabled: false) {}
+        }
         var items: [MenuItem] = model.playlists.map { playlist in
             .action(playlist.name, Symbol.addToPlaylist, enabled: !tracks.isEmpty) {
                 Task { await model.addTracks(tracks.map(\.id), to: playlist.id) }
@@ -306,6 +311,10 @@ enum PlaylistMenu {
             .action("Add to Queue", Symbol.addToQueue, enabled: hasTracks) {
                 playback.appendToQueue(tracks)
             },
+        ]
+        // Another Mac's playlist can be played, not changed.
+        guard model.canEditLibrary else { return items }
+        items += [
             .separator,
             // An empty playlist has nothing to play, but renaming and deleting
             // it are exactly what you want to do with one.
@@ -391,6 +400,11 @@ enum PlaylistMenu {
             .separator,
             destinations(model: model, tracks: tracks),
         ]
+        // Another Mac's tracks are not files here, and its library is not
+        // changed from here.
+        guard model.canEditLibrary else {
+            return start + memoryItems(.album(album.key), model: model)
+        }
         return start + memoryItems(.album(album.key), model: model) + [
             .separator,
             .action("Reveal in Finder", Symbol.revealInFinder, enabled: !tracks.isEmpty) {
@@ -423,20 +437,23 @@ enum PlaylistMenu {
         items.append(destinations(model: model, tracks: [track]))
         items += memoryItems(Memory.Subject(track: track), model: model)
         items.append(.separator)
-        items.append(.action("Reveal in Finder", Symbol.revealInFinder) {
-            NSWorkspace.shared.activateFileViewerSelecting([track.url])
-        })
+        if track.url.isFileURL {
+            items.append(.action("Reveal in Finder", Symbol.revealInFinder) {
+                NSWorkspace.shared.activateFileViewerSelecting([track.url])
+            })
+        }
         items.append(.action("Get Info", Symbol.getInfo) {
             model.infoTrack = track
         })
         if let showCredits {
             items.append(.action("View Credits", Symbol.credits, showCredits))
         }
-        if let remove {
+        if let remove, model.canEditLibrary {
             items.append(.separator)
             items.append(.action(remove.title, Symbol.remove,
                                  shortcut: "⌫", destructive: true, remove.action))
         }
+        guard model.canEditLibrary else { return items }
         items.append(.separator)
         items.append(.action("Remove from Library", Symbol.delete, destructive: true) {
             model.tracksPendingRemoval = [track]

@@ -101,7 +101,8 @@ struct LibraryView: View {
                         .foregroundStyle(Color(hex: 0x63636D))
                 }
                 // The primary action sits at the trailing edge, after the count.
-                if model.tab == .catalogs && !model.isInitialLoading && !model.catalogs.isEmpty {
+                if model.tab == .catalogs && !model.isInitialLoading && !model.catalogs.isEmpty
+                    && model.canEditLibrary {
                     CapsuleButton(title: "New Catalog", systemImage: "plus") {
                         model.editingCatalog = .create
                     }
@@ -788,10 +789,14 @@ private struct PlaylistsEmptyState: View {
         EmptyState(
             systemImage: "music.note.list",
             title: "No playlists yet",
-            message: "A playlist is your own running order.\nMake one, then drop tracks into it as you go."
+            message: model.canEditLibrary
+                ? "A playlist is your own running order.\nMake one, then drop tracks into it as you go."
+                : "\(model.pairedMacName ?? "The other Mac") has no playlists.\nPlaylists are made there."
         ) {
-            CapsuleButton(title: "New Playlist", systemImage: "plus", kind: .filled) {
-                model.naming = .create(seed: [])
+            if model.canEditLibrary {
+                CapsuleButton(title: "New Playlist", systemImage: "plus", kind: .filled) {
+                    model.naming = .create(seed: [])
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -904,7 +909,7 @@ private struct PlaylistCard: View {
         .onTapGesture(perform: open)
         .dropDestination(for: TrackSelection.self) { selections, _ in
             let ids = selections.flatMap(\.trackIDs)
-            guard !ids.isEmpty else { return false }
+            guard model.canEditLibrary, !ids.isEmpty else { return false }
             Task { await model.addTracks(ids, to: playlist.id) }
             return true
         } isTargeted: { isTargeted = $0 }

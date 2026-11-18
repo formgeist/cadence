@@ -36,6 +36,7 @@ struct TitleBarView: View {
             HStack(spacing: Tokens.Space.xs) {
                 Spacer(minLength: 0)
                 SharingIndicator()
+                PairedLibraryIndicator()
                 IconButton(systemImage: "gearshape", label: "Preferences",
                            glyphSize: 13, side: 26,
                            isActive: model.screen == .settings) {

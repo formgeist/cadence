@@ -187,6 +187,7 @@ enum HeroSequence {
             .environment(container.playLog)
             .environment(container.discovery)
             .environment(container.sharing)
+            .environment(container.library)
             .environment(container.spotify)
             .environment(\.isSilentPlayback, false)
             .preferredColorScheme(.dark))

@@ -26,7 +26,7 @@ final class ArtworkLoader {
         var image: NSImage?
     }
 
-    @ObservationIgnored private let store: DiskArtworkStore?
+    @ObservationIgnored private let store: (any ArtworkStore)?
     /// Decoded covers, bounded by resident bitmap size rather than count — a
     /// 600pt header image and a 32pt row icon cost very different amounts of
     /// memory for the same one slot. `DiskArtworkStore` caches the encoded
@@ -52,7 +52,7 @@ final class ArtworkLoader {
     /// actually requests (32–600pt, so up to 1200px on a side at retina).
     private static let costLimit = 150 * 1_024 * 1_024
 
-    init(store: DiskArtworkStore?) {
+    init(store: (any ArtworkStore)?) {
         self.store = store
         images.totalCostLimit = Self.costLimit
     }

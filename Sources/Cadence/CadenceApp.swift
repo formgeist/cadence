@@ -4,6 +4,7 @@ import AppKit
 import CadenceCore
 import CadenceLibrary
 import CadenceAudio
+import CadenceRemote
 import MediaPlayer
 
 /// The composition root. Everything the app depends on is built here and handed
@@ -34,6 +35,8 @@ final class AppContainer {
     /// The library server's switch, state and paired devices. Starts nothing
     /// by being built: see `SharingController.resumeIfEnabled`.
     let sharing: SharingController
+    /// Which library is showing, the paired Mac, and pairing with one.
+    let library: LibrarySourceController
     /// Whether a text field has the keyboard, so the menu bar can get out of
     /// its way — see `TextEntryMonitor`.
     let textEntry: TextEntryMonitor
@@ -110,11 +113,29 @@ final class AppContainer {
          artwork previewArtwork: DiskArtworkStore? = nil) {
         textEntry = TextEntryMonitor()
 
+        // This Mac's library, or the paired Mac's. Preview mode is always
+        // the preview library. A paired library whose caches cannot be
+        // opened falls back to this Mac's, with the reason on screen.
+        var remote: RemoteLibrarySession?
+        var remoteFailure: String?
+        if mode == .live, case (.pairedMac, let credentials?) = LibraryChoice.current() {
+            do {
+                remote = try RemoteLibrarySession(credentials: credentials)
+            } catch {
+                remoteFailure = "Could not open \(credentials.server.name)'s library: "
+                    + error.localizedDescription
+            }
+        }
+
         // Preview mode keeps everything in memory, the same way it keeps the
         // mock engine — snapshots and design review should never touch the
         // user's real defaults.
         let settings: any SettingsStore
         switch mode {
+        case .live where remote != nil:
+            settings = PerLibrarySettingsStore(
+                shared: UserDefaultsSettingsStore(),
+                library: UserDefaultsSettingsStore(prefix: RemoteLibrarySession.settingsPrefix))
         case .live: settings = UserDefaultsSettingsStore()
         case .preview: settings = InMemorySettingsStore()
         }
@@ -124,7 +145,11 @@ final class AppContainer {
         // and design review never open an audio device.
         switch mode {
         case .live:
-            playback = PlaybackController(engine: SFBPlayerEngine(), settings: settings)
+            // The paired Mac's tracks are downloaded before they play; this
+            // Mac's are files already.
+            let source: any TrackSource = remote?.tracks ?? LocalTrackSource()
+            playback = PlaybackController(engine: SFBPlayerEngine(source: source),
+                                          settings: settings)
             isSilentPlayback = false
         case .preview:
             playback = PlaybackController(engine: MockPlayerEngine(), settings: settings)
@@ -181,6 +206,24 @@ final class AppContainer {
         var sharingBackend: any SharingBackend = UnavailableSharingBackend()
 
         switch mode {
+        case .live where remote != nil:
+            // The paired Mac's library: read-only, nothing to scan or watch,
+            // and nothing to share. History is kept on this Mac.
+            let remote = remote!
+            // Its own, always empty, list of folders: this Mac's folders are
+            // not opened, and everything offered for them stays hidden.
+            let scoped = SecurityScopedFolders(defaultsKey: "CadencePairedMacBookmarks")
+            folders = scoped
+            playLogStore = remote.history
+            similarCache = remote.history
+            // No artwork store: covers can be read but not set, which is
+            // what hides the image editors.
+            model = AppModel(store: remote.library, settings: settings, memories: remote.history)
+            model.pairedMacName = remote.macName
+            importer = LibraryImporter(scanner: nil, bookmarks: scoped)
+            artworkLoader = ArtworkLoader(store: remote.artwork)
+            nowPlaying = NowPlayingCoordinator(playback: playback, artwork: remote.artwork)
+
         case .live:
             // A database that cannot be opened must not take the app down with
             // it; falling back to the preview library keeps the window usable
@@ -235,6 +278,17 @@ final class AppContainer {
             importer = LibraryImporter(scanner: nil, bookmarks: folders)
             artworkLoader = ArtworkLoader(store: previewArtwork)
             sharingBackend = PreviewSharingBackend()
+        }
+
+        library = LibrarySourceController(active: remote == nil ? .thisMac : .pairedMac,
+                                          session: remote,
+                                          store: mode == .live ? PairedMacStore() : nil)
+        if let remoteFailure { model.storeFailure = remoteFailure }
+        if let remote {
+            remote.onReconnected = { [weak model = self.model] in
+                Task { await model?.load() }
+            }
+            remote.start()
         }
 
         switch mode {
@@ -320,6 +374,17 @@ struct CadenceApp: App {
                 .environment(container.discovery)
                 .environment(container.spotify)
                 .environment(container.sharing)
+                .environment(container.library)
+                // A `cadence://pair` link, opened from Messages or Safari.
+                // Preferences asks before pairing: a link is input from
+                // outside, and pairing switches the library.
+                .onOpenURL { url in
+                    // The scheme also carries the Spotify sign-in's
+                    // callback, which its own session handles.
+                    guard url.host == "pair" else { return }
+                    container.library.open(url)
+                    if container.model.screen != .settings { container.model.show(.settings) }
+                }
                 .environment(\.isSilentPlayback, container.isSilentPlayback)
                 .frame(minWidth: Tokens.Layout.minWindow.width,
                        minHeight: Tokens.Layout.minWindow.height)
@@ -371,14 +436,19 @@ struct CadenceCommands: Commands {
             // `CommandGroup(replacing: .newItem)` — worth doing, since both
             // windows share one AppModel and mirror each other, but that is a
             // decision about the app rather than about playlists.
+            // Another Mac's library is not changed from here.
+            let canEdit = container.model.canEditLibrary
+
             Button("New Playlist…") {
                 container.model.naming = .create(seed: [])
             }
             .keyboardShortcut("n", modifiers: [.command, .shift])
+            .disabled(!canEdit)
 
             Button("Import Spotify Playlist…") {
                 container.model.isImportingSpotifyPlaylist = true
             }
+            .disabled(!canEdit)
 
             Button("Add Music Folder…") {
                 guard let folder = container.importer.chooseFolder() else { return }
@@ -387,6 +457,7 @@ struct CadenceCommands: Commands {
                 }
             }
             .keyboardShortcut("o", modifiers: .command)
+            .disabled(!canEdit)
 
             Button("Rescan Library") {
                 container.importer.rescanAll {
@@ -470,7 +541,7 @@ struct CadenceCommands: Commands {
                 Task { await container.model.toggleLike(track, announce: true) }
             }
             .keyboardShortcut("l", modifiers: .command)
-            .disabled(container.playback.currentTrack == nil)
+            .disabled(container.playback.currentTrack == nil || !container.model.canEditLibrary)
 
             Divider()
 

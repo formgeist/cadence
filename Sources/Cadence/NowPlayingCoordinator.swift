@@ -17,14 +17,14 @@ import CadenceLibrary
 final class NowPlayingCoordinator {
 
     private let playback: PlaybackController
-    private let artwork: DiskArtworkStore?
+    private let artwork: (any ArtworkStore)?
 
     private var observation: Task<Void, Never>?
     private var lastPublishedTrack: Track.ID?
     private var lastPublishedState: Bool?
     private var artworkTask: Task<Void, Never>?
 
-    init(playback: PlaybackController, artwork: DiskArtworkStore?) {
+    init(playback: PlaybackController, artwork: (any ArtworkStore)?) {
         self.playback = playback
         self.artwork = artwork
         registerCommands()

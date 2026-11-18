@@ -13,10 +13,14 @@ struct CatalogsEmptyState: View {
         EmptyState(
             systemImage: "books.vertical",
             title: "No catalogs yet",
-            message: "A catalog gathers albums by rules — a label, a decade, a format.\nIt keeps itself up to date as your library changes."
+            message: model.canEditLibrary
+                ? "A catalog gathers albums by rules — a label, a decade, a format.\nIt keeps itself up to date as your library changes."
+                : "Catalogs are kept on the Mac they were made on,\nand are not shared with this one."
         ) {
-            CapsuleButton(title: "New Catalog", systemImage: "plus", kind: .filled) {
-                model.editingCatalog = .create
+            if model.canEditLibrary {
+                CapsuleButton(title: "New Catalog", systemImage: "plus", kind: .filled) {
+                    model.editingCatalog = .create
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

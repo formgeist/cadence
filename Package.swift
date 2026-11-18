@@ -79,7 +79,7 @@ let package = Package(
         .executableTarget(
             name: "Cadence",
             dependencies: ["CadenceCore", "CadenceLibrary", "CadenceAudio", "CadenceDesign",
-                           "CadenceServer"]
+                           "CadenceServer", "CadenceRemote"]
         ),
 
         .testTarget(

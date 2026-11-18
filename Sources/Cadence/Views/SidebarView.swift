@@ -35,7 +35,8 @@ struct SidebarView: View {
 
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: Tokens.Space.s) {
-                    SectionLabel("Local library", size: 10, color: Color(hex: 0x4E4E57))
+                    SectionLabel(model.pairedMacName.map { "\($0)'s library" } ?? "Local library",
+                                 size: 10, color: Color(hex: 0x4E4E57))
                     Spacer(minLength: 0)
                     if !importer.folders.isEmpty {
                         IconButton(systemImage: importer.isImporting ? "xmark" : "arrow.clockwise",
@@ -163,11 +164,13 @@ private struct PlaylistSection: View {
             HStack(spacing: Tokens.Space.xxs) {
                 SectionLabel("Playlists")
                 Spacer(minLength: 0)
-                IconButton(systemImage: PlaylistMenu.Symbol.newFolder, label: "New folder") {
-                    model.naming = .createFolder
-                }
-                IconButton(systemImage: "plus", label: "New playlist") {
-                    model.naming = .create(seed: [])
+                if model.canEditLibrary {
+                    IconButton(systemImage: PlaylistMenu.Symbol.newFolder, label: "New folder") {
+                        model.naming = .createFolder
+                    }
+                    IconButton(systemImage: "plus", label: "New playlist") {
+                        model.naming = .create(seed: [])
+                    }
                 }
             }
             .padding(.leading, 18)
@@ -413,7 +416,7 @@ private struct LikedSongsRow: View {
         .animatedHover($isHovering)
         .dropDestination(for: TrackSelection.self) { selections, _ in
             let tracks = selections.flatMap(\.trackIDs).compactMap { model.track(id: $0) }
-            guard !tracks.isEmpty else { return false }
+            guard model.canEditLibrary, !tracks.isEmpty else { return false }
             Task { await model.setLiked(true, tracks, announce: true) }
             return true
         } isTargeted: { isTargeted = $0 }
