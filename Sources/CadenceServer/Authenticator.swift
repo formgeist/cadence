@@ -13,6 +13,10 @@ public protocol Authenticator: Sendable {
     /// request may do next depends on whose it is: limits are kept per
     /// device, and the Mac shows which devices are connected.
     func device(forAPIKey apiKey: String) async -> PairedDevice.ID?
+
+    /// Whether a device is still paired. A download token names its device,
+    /// and is refused once that device is revoked.
+    func isPaired(_ device: PairedDevice.ID) async -> Bool
 }
 
 /// One key, fixed for the life of the process. For the debug harness, the
@@ -35,5 +39,9 @@ public struct FixedKeyAuthenticator: Authenticator {
         // Comparing digests, which CryptoKit does in constant time, so how
         // long a refusal takes says nothing about how close the guess was.
         SHA256.hash(data: Data(apiKey.utf8)) == digest ? deviceID : nil
+    }
+
+    public func isPaired(_ device: PairedDevice.ID) async -> Bool {
+        device == deviceID
     }
 }

@@ -69,7 +69,16 @@ Mac's screen.
 - **Nothing without a key.** Every library endpoint needs a paired device's
   key. There are no user names or passwords to guess; a missing key and a
   wrong key get the same answer. The only endpoint without a key says which
-  sign-in methods exist and nothing else.
+  sign-in methods exist and nothing else. The one exception is a download
+  token, below.
+- **The key never leaves the app for background downloads.** The system
+  keeps a background download's request, query included, outside the app
+  until it finishes. Those requests carry a download token instead of the
+  key: an HMAC worth one song, to one device, for six hours. `download`
+  accepts it and nothing else does. It stops working when the device is
+  revoked, and every token ends when Cadence quits on the Mac, since the
+  secret behind them is made at launch and kept in memory. A wrong token
+  counts as a failed sign-in.
 - **Read-only.** No endpoint changes, deletes or rescans anything. The one
   request that changes anything, `POST /pair`, can only add a paired device,
   and only while the user has a pairing code on screen.

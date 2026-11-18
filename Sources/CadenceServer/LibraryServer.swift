@@ -26,6 +26,8 @@ public struct LibraryServer: Sendable {
         public var blockDuration: TimeInterval = 60
         /// Files one device may be sent at the same time.
         public var streamsPerDevice = 4
+        /// How long a download token works. See `DownloadTokens`.
+        public var downloadTokenLifetime: TimeInterval = 6 * 60 * 60
         public var now: @Sendable () -> Date = Date.init
 
         public init(serverVersion: String) {
@@ -38,6 +40,7 @@ public struct LibraryServer: Sendable {
     private let endpoints: LibraryEndpoints
     private let pairing: PairingSession?
     private let throttle: FailureThrottle
+    private let tokens: DownloadTokens
     let streams: StreamLimiter
 
     /// The server reads `library` and never writes to it: it calls no method
@@ -53,6 +56,7 @@ public struct LibraryServer: Sendable {
             limit: configuration.failureLimit, window: configuration.failureWindow,
             block: configuration.blockDuration, now: configuration.now)
         streams = StreamLimiter(limit: configuration.streamsPerDevice)
+        tokens = DownloadTokens(lifetime: configuration.downloadTokenLifetime)
     }
 
     // MARK: - Routing
@@ -73,6 +77,10 @@ public struct LibraryServer: Sendable {
         case getPlaylists
         case getPlaylist
         case getStarred2
+        /// Cadence's own: a short-lived token for downloading one song in the
+        /// background, so the API key stays out of the system's copy of the
+        /// request. See `DownloadTokens`.
+        case getDownloadToken
 
         /// The one endpoint a client may call before it has a key: it is how
         /// a client learns which ways of signing in the server offers.
@@ -103,7 +111,7 @@ public struct LibraryServer: Sendable {
 
         var device: PairedDevice.ID?
         if !endpoint.isPublic {
-            switch await authenticate(request) {
+            switch await authenticate(request, endpoint) {
             case .device(let id):
                 device = id
             case .refused(let refusal):
@@ -119,7 +127,8 @@ public struct LibraryServer: Sendable {
                     .httpResponse()
             case .getOpenSubsonicExtensions:
                 return ok("openSubsonicExtensions",
-                          [Extension(name: "apiKeyAuthentication", versions: [1])])
+                          [Extension(name: "apiKeyAuthentication", versions: [1]),
+                           Extension(name: "cadenceDownloadTokens", versions: [1])])
             case .getMusicFolders:
                 return ok("musicFolders", endpoints.musicFolders())
             case .getArtists:
@@ -140,6 +149,15 @@ public struct LibraryServer: Sendable {
                 return ok("playlist", try await endpoints.playlist(request))
             case .getStarred2:
                 return ok("starred2", try await endpoints.starred())
+            case .getDownloadToken:
+                // Only for a song that exists, so a token is never issued for
+                // an id nothing answers to.
+                let song = try await endpoints.song(request)
+                guard let device else { return failure(.invalidAPIKey, "Invalid API key.") }
+                let issued = tokens.issue(songID: song.id, device: device, now: configuration.now())
+                return ok("downloadToken", DownloadToken(
+                    token: issued.token,
+                    expires: issued.expires.formatted(.iso8601)))
             // These answer with the bytes themselves. A failure is still an
             // envelope, which a client tells apart by its content type.
             case .stream, .download:
@@ -245,8 +263,19 @@ public struct LibraryServer: Sendable {
         case refused(HTTPResponse)
     }
 
-    private func authenticate(_ request: HTTPRequest) async -> Authentication {
+    private func authenticate(_ request: HTTPRequest, _ endpoint: Endpoint) async -> Authentication {
         let legacy = ["u", "p", "t", "s"].contains { request.parameter($0) != nil }
+        // A download token, in place of the key, on `download` alone.
+        if endpoint == .download, !legacy, request.parameter("apiKey") == nil,
+           let token = request.parameter("token") {
+            guard let songID = request.parameter("id"),
+                  let device = tokens.verify(token, songID: songID, now: configuration.now()),
+                  await authenticator.isPaired(device)
+            else {
+                return .refused(failure(.notAuthorized, "This download token is not valid. Ask for a new one."))
+            }
+            return .device(device)
+        }
         guard let key = request.parameter("apiKey") else {
             return .refused(legacy
                 ? failure(.authenticationMechanismNotSupported,
@@ -282,6 +311,12 @@ public struct LibraryServer: Sendable {
     ) -> HTTPResponse {
         SubsonicResponse.failed(.init(code, message), serverVersion: configuration.serverVersion)
             .httpResponse(status: status)
+    }
+
+    private struct DownloadToken: Encodable, Sendable {
+        var token: String
+        /// ISO 8601.
+        var expires: String
     }
 
     private struct Extension: Encodable, Sendable {

@@ -343,3 +343,114 @@ struct RemoteAnswerTests {
         #expect(named.baseURL?.absoluteString == "https://studio-mac.local:4533")
     }
 }
+
+// MARK: - Background downloads
+
+@Suite("Background downloads", .serialized)
+struct RemoteBackgroundDownloadsTests {
+
+    private func scratchFolder() -> RemoteDownloads {
+        RemoteDownloads(directory: FileManager.default.temporaryDirectory
+            .appendingPathComponent("cadence-background-\(UUID().uuidString)"))
+    }
+
+    /// The same delegate code as the app's background session, on an
+    /// ephemeral session the tests can run.
+    private func downloads(_ folder: RemoteDownloads, fingerprint: String) -> RemoteBackgroundDownloads {
+        RemoteBackgroundDownloads(identifier: "test", fingerprint: fingerprint, folder: folder,
+                                  configuration: .ephemeral)
+    }
+
+    private func next(_ events: AsyncStream<RemoteBackgroundDownloads.Event>) async -> RemoteBackgroundDownloads.Event? {
+        var iterator = events.makeAsyncIterator()
+        return await iterator.next()
+    }
+
+    @Test("A song downloads with a token, into the kept folder, and the request has no key")
+    func downloadsWithToken() async throws {
+        try await withServer { server in
+            let client = try await server.pair()
+            let song = try #require(try await client.search("morning").song.first)
+            let token = try await client.downloadToken(songID: song.id)
+            #expect(token.expiryDate.map { $0 > Date() } == true)
+
+            let request = try client.downloadRequest(songID: song.id, token: token.token)
+            let query = request.url?.query ?? ""
+            #expect(!query.contains("apiKey"))
+            #expect(!query.contains(client.credentials.apiKey))
+            #expect(query.contains("token="))
+
+            let folder = scratchFolder()
+            defer { folder.removeAll() }
+            let background = downloads(folder, fingerprint: server.identity.fingerprint)
+            defer { background.invalidate() }
+            let events = background.events()
+            await background.start(songID: song.id, suffix: song.suffix ?? "", request: request)
+            #expect(await next(events) == .kept(songID: song.id))
+
+            let kept = try #require(folder.file(for: RemoteTrackLocation.url(songID: song.id, suffix: song.suffix)))
+            #expect(try Data(contentsOf: kept) == server.audio)
+        }
+    }
+
+    @Test("A refused token asks for a new one")
+    func refusedToken() async throws {
+        try await withServer { server in
+            let client = try await server.pair()
+            let song = try #require(try await client.search("morning").song.first)
+            let request = try client.downloadRequest(songID: song.id, token: "v1.forged")
+            let folder = scratchFolder()
+            defer { folder.removeAll() }
+            let background = downloads(folder, fingerprint: server.identity.fingerprint)
+            defer { background.invalidate() }
+            let events = background.events()
+            await background.start(songID: song.id, suffix: song.suffix ?? "", request: request)
+            #expect(await next(events) == .needsToken(songID: song.id))
+            #expect(folder.songIDs().isEmpty)
+        }
+    }
+
+    @Test("Another certificate is refused before anything is sent")
+    func pinned() async throws {
+        try await withServer { server in
+            let client = try await server.pair()
+            let song = try #require(try await client.search("morning").song.first)
+            let token = try await client.downloadToken(songID: song.id)
+            let request = try client.downloadRequest(songID: song.id, token: token.token)
+            let folder = scratchFolder()
+            defer { folder.removeAll() }
+            let background = downloads(folder, fingerprint: String(repeating: "0", count: 64))
+            defer { background.invalidate() }
+            let events = background.events()
+            await background.start(songID: song.id, suffix: song.suffix ?? "", request: request)
+            #expect(await next(events) == .failed(songID: song.id, .untrustedServer))
+            #expect(folder.songIDs().isEmpty)
+        }
+    }
+
+    @Test("Task descriptions carry the song and its suffix")
+    func descriptions() {
+        let text = RemoteBackgroundDownloads.describe(songID: "tr-1", suffix: "flac")
+        #expect(RemoteBackgroundDownloads.parse(text)?.songID == "tr-1")
+        #expect(RemoteBackgroundDownloads.parse(text)?.suffix == "flac")
+        #expect(RemoteBackgroundDownloads.parse("tr-1|")?.suffix == "")
+        #expect(RemoteBackgroundDownloads.parse("nonsense") == nil)
+        #expect(RemoteBackgroundDownloads.parse("|flac") == nil)
+    }
+
+    @Test("A file that is an error envelope never reaches the kept folder")
+    func envelopes() throws {
+        let folder = scratchFolder()
+        defer { folder.removeAll() }
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try Data(#"{"subsonic-response":{"status":"failed","error":{"code":70,"message":"x"}}}"#.utf8)
+            .write(to: file)
+        let response = HTTPURLResponse(url: URL(string: "https://mac.local/rest/download")!, statusCode: 200,
+                                       httpVersion: nil, headerFields: ["Content-Type": "application/json"])
+        let event = RemoteBackgroundDownloads.finish(file, response: response,
+                                                     description: "tr-1|flac", into: folder)
+        #expect(event == .failed(songID: "tr-1", .notFound))
+        #expect(folder.songIDs().isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: file.path))
+    }
+}

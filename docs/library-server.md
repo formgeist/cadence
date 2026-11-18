@@ -116,12 +116,15 @@ a normal response with `"status": "failed"` and an `error` object. HTTP error
 statuses are used only where the request never reached an endpoint: a
 malformed request, a method other than `GET` or `HEAD`, or an unknown path.
 
-**API keys are the only way in.** The server advertises OpenSubsonic's
-`apiKeyAuthentication` extension and nothing else.
+**API keys are the only way in,** with one exception: a download token,
+for `download` alone (below). The server advertises OpenSubsonic's
+`apiKeyAuthentication` extension, and Cadence's own `cadenceDownloadTokens`.
 
 | Request carries | Answer |
 |---|---|
 | A valid `apiKey` | The endpoint's response |
+| `download` with a valid `token` for that `id`, and no key | The file |
+| `download` with a wrong, expired or revoked device's `token` | Error 50 |
 | No key, or a wrong one | Error 44, the same bytes for both |
 | A user name, password or token, and no key | Error 42 (mechanism not supported) |
 | A key together with a user name | Error 43 (conflicting mechanisms) |
@@ -130,6 +133,25 @@ A user name and password are refused as a mechanism and never checked, so
 there is no password to guess. `getOpenSubsonicExtensions` is the one endpoint
 that needs no key, as the extension requires: it is how a client learns which
 mechanisms exist.
+
+**Download tokens keep the key out of background downloads.** The iOS app
+downloads albums to keep with a background `URLSession`, whose requests the
+system stores outside the app until they finish. The key must not be in
+them. `getDownloadToken?id=<song>` (with the key) answers
+`{"downloadToken": {"token": "…", "expires": "<ISO 8601>"}}`, and
+`download?id=<song>&token=<token>` then works without the key. A token is
+`v1.<device>.<expiry>.<HMAC-SHA256>` over the device, the song and the expiry:
+
+- one song, one device, six hours (`Configuration.downloadTokenLifetime`);
+- refused once the device is revoked, checked on every use;
+- refused everywhere but `download`, `stream` included;
+- stateless: the secret is made at launch and kept in memory, so quitting
+  Cadence ends every token. The app asks for new ones (`needsToken`) when it
+  next runs;
+- a wrong token counts towards the failed sign-in limit, like a wrong key.
+
+The tests are `DownloadTokenTests` (minting, expiry, tampering) and
+`DownloadTokenServerTests` (each refusal above, revocation, throttling).
 
 **Keys are compared by digest.** The server holds a SHA-256 of each key, never
 the key.

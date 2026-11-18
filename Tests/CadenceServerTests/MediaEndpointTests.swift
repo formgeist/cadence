@@ -83,7 +83,7 @@ private func same(_ a: Data, _ b: Data) -> Bool {
 }
 
 /// A library whose tracks are real files with known contents.
-private struct MediaFixture {
+struct MediaFixture {
     let server: TestServer
     let library: TestLibrary
     /// 300,000 bytes, so a full read spans several of the listener's chunks.

@@ -181,3 +181,12 @@ struct AnyKey: CodingKey {
 struct ArtistsPayload: Decodable { var index: [RemoteArtistIndex]? }
 struct AlbumListPayload: Decodable { var album: [RemoteAlbum]? }
 struct PlaylistsPayload: Decodable { var playlist: [RemotePlaylist]? }
+
+/// Permission to download one song without the API key, for a few hours.
+public struct RemoteDownloadToken: Decodable, Sendable, Equatable {
+    public var token: String
+    /// ISO 8601.
+    public var expires: String
+
+    public var expiryDate: Date? { try? Date(expires, strategy: .iso8601) }
+}
