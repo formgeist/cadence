@@ -50,6 +50,9 @@ struct NowPlayingPane: View {
             .animation(.easeOut(duration: 0.12), value: isHoveringArt)
             .accessibilityLabel("Artwork for \(track.albumTitle)")
             .accessibilityHint("Opens full-screen artwork")
+            // On a short window the cover shrinks to fit its height; centred,
+            // not pinned left, when it is narrower than the pane.
+            .frame(maxWidth: .infinity)
             .padding(.horizontal, Tokens.Space.paneInset)
             .padding(.top, Tokens.Space.xl)
 

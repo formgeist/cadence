@@ -364,6 +364,19 @@ enum Snapshot {
             container.model.tab = .albums
         },
 
+        // The smallest window with a long sidebar and a track playing. Twenty
+        // playlists are taller than the window: the list has to scroll, not
+        // push the title bar and the Home row off the top.
+        Shot(name: "12b-minimum-window-many-playlists", size: Tokens.Layout.minWindow,
+             store: { PreviewData.store(playlists: (1...20).map {
+                 Playlist(name: "Playlist \($0)", trackIDs: [], duration: 0)
+             }) }) { container in
+            container.model.tab = .genres
+            if let album = container.model.albums.first {
+                container.playback.play(album)
+            }
+        },
+
         // The command palette, mid-search.
         Shot(name: "16-search-results", size: Tokens.Layout.defaultWindow) { container in
             container.model.isSearching = true
