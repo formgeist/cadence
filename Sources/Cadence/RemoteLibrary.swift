@@ -138,8 +138,9 @@ final class RemoteLibrarySession {
     /// one fails.
     let tracks: any TrackSource
     private let downloads: RemoteTrackSource
-    /// Listening history, memories and Last.fm answers, kept on this Mac in
-    /// a database of their own, since the paired library cannot hold them.
+    /// Listening history and Last.fm answers, kept on this Mac in a database
+    /// of their own, since the paired library cannot hold them. Memories are
+    /// not offered for a paired library; see `AppModel.visibleTabs`.
     let history: SQLiteLibraryStore
     private(set) var connection: RemoteConnection.State = .idle
 

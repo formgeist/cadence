@@ -217,8 +217,9 @@ final class AppContainer {
             playLogStore = remote.history
             similarCache = remote.history
             // No artwork store: covers can be read but not set, which is
-            // what hides the image editors.
-            model = AppModel(store: remote.library, settings: settings, memories: remote.history)
+            // what hides the image editors. No memories either: they are
+            // hidden for a paired library, so none are read.
+            model = AppModel(store: remote.library, settings: settings)
             model.pairedMacName = remote.macName
             importer = LibraryImporter(scanner: nil, bookmarks: scoped)
             artworkLoader = ArtworkLoader(store: remote.artwork)
@@ -570,6 +571,7 @@ struct CadenceCommands: Commands {
                 .keyboardShortcut("6", modifiers: .command)
             Button("Memories") { container.model.show(.library); container.model.tab = .memories }
                 .keyboardShortcut("7", modifiers: .command)
+                .disabled(!container.model.canEditLibrary)
 
             Divider()
 

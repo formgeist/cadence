@@ -119,7 +119,10 @@ struct AlbumDetailView: View {
     @ViewBuilder
     private func memoryButton(_ proxy: ScrollViewProxy) -> some View {
         let count = model.memories(aboutAlbum: album.key).count
-        if count > 0 {
+        if !model.canEditLibrary {
+            // Another Mac's record: no memories to jump to or add.
+            EmptyView()
+        } else if count > 0 {
             CapsuleButton(title: count == 1 ? "1 Memory" : "\(count) Memories",
                           systemImage: PlaylistMenu.Symbol.memory,
                           accessibilityLabel: count == 1
@@ -505,7 +508,8 @@ private struct TrackRow: View {
                                  isAvailable: model.hasMemory(track)) {
                 model.readingMemory = model.memories(about: track).first
             }
-            .accessibilityAction(named: "Add memory", isAvailable: !model.hasMemory(track)) {
+            .accessibilityAction(named: "Add memory",
+                                 isAvailable: !model.hasMemory(track) && model.canEditLibrary) {
                 model.editingMemory = .create(Memory.Subject(track: track))
             }
             // The heart is swallowed by `.ignore` too, and only shows on hover.
@@ -603,12 +607,19 @@ private struct TrackRow: View {
 /// same on every track list. Both are solid and always there once set, a
 /// hover-only outline until then.
 struct TrackMarks: View {
+    @Environment(AppModel.self) private var model
     var track: Track
     var isRowHovered: Bool
 
     var body: some View {
         HStack(spacing: 2) {
-            MemoryButton(track: track, isRowHovered: isRowHovered)
+            if model.canEditLibrary {
+                MemoryButton(track: track, isRowHovered: isRowHovered)
+            } else {
+                // The same width, so the column still lines up with the
+                // header's.
+                Color.clear.frame(width: MemoryButton.side, height: MemoryButton.side)
+            }
             LikeButton(track: track, isRowHovered: isRowHovered)
         }
     }
@@ -622,7 +633,8 @@ extension View {
             .accessibilityAction(named: "Read memory", isAvailable: model.hasMemory(track)) {
                 model.readingMemory = model.memories(about: track).first
             }
-            .accessibilityAction(named: "Add memory", isAvailable: !model.hasMemory(track)) {
+            .accessibilityAction(named: "Add memory",
+                                 isAvailable: !model.hasMemory(track) && model.canEditLibrary) {
                 model.editingMemory = .create(Memory.Subject(track: track))
             }
             .accessibilityAction(named: model.isLiked(track)

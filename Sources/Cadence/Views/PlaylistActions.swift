@@ -257,6 +257,8 @@ enum PlaylistMenu {
     /// offering a blank editor for a song that has a memory reads as though
     /// the memory were lost — and another can still be added beside it.
     static func memoryItems(_ subject: Memory.Subject, model: AppModel) -> [MenuItem] {
+        // Another Mac's library takes no memories; see `AppModel.visibleTabs`.
+        guard model.canEditLibrary else { return [] }
         guard let newest = model.memories(about: subject).first else {
             return [.action("Add Memory…", Symbol.memory) {
                 model.editingMemory = .create(subject)

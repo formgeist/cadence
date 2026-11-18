@@ -784,7 +784,7 @@ cannot reopen itself and says so.
 **What the paired library is built from.** `AppContainer` puts
 `RemoteLibraryStore` under `AppModel`, `RemoteArtworkStore` under the artwork
 loader and Now Playing, and `RemoteTrackSource` under `SFBPlayerEngine`.
-Listening history, memories and Last.fm answers are kept on this Mac, in
+Listening history and Last.fm answers are kept on this Mac, in
 `Application Support/Cadence/Remote/<fingerprint>/history.sqlite`, since the
 paired library cannot hold them. Metadata, covers and downloaded tracks are in
 `Caches/Cadence/Remote/<fingerprint>/`. Forgetting the Mac removes both.
@@ -795,9 +795,11 @@ keys for the paired library, so switching back finds this Mac's queue where
 it was. Volume, scrobbling and sort orders are shared.
 
 **Read-only.** `AppModel.canEditLibrary` is false for a paired library, and
-hides what would change it: new playlists and folders, playlist and track
-edits, likes, Remove from Library, catalogs, artist and playlist images,
-imports and folders. Liked tracks keep their heart. The store refuses every
+hides what would change or add to it: new playlists and folders, playlist
+and track edits, likes, Remove from Library, catalogs, artist and playlist
+images, imports and folders. Liked tracks keep their heart. Memories are
+hidden too, Memories tab and all: a note written here would stay on this Mac
+and never appear beside the music on the Mac it is about. The store refuses every
 write as well, and a refusal reaches the banner as `RemoteError.readOnly`'s
 sentence. The Sharing section is hidden: this Mac shares only its own
 library.

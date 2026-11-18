@@ -405,12 +405,24 @@ final class AppModel {
 
     /// The name of the Mac whose library this is, when it is another Mac's.
     /// Nil for this Mac's own library.
-    var pairedMacName: String?
+    var pairedMacName: String? {
+        // A paired library has no Memories tab, so a session left there
+        // opens on Home.
+        didSet { if !canEditLibrary, tab == .memories { tab = .home } }
+    }
 
     /// False for another Mac's library, which this app can browse and play
-    /// but not change: no playlist edits, likes, imports or removals. The
-    /// store refuses them too; this is what hides the controls.
+    /// but not change or add to: no playlist edits, likes, memories, imports
+    /// or removals. The store refuses library writes too; this is what hides
+    /// the controls.
     var canEditLibrary: Bool { pairedMacName == nil }
+
+    /// The sidebar's tabs. Memories are left out for another Mac's library:
+    /// a note written here would stay on this Mac, and never be seen beside
+    /// the music on the Mac it belongs to.
+    var visibleTabs: [Tab] {
+        canEditLibrary ? Tab.allCases : Tab.allCases.filter { $0 != .memories }
+    }
     /// The last write that failed under the user's hand — creating a playlist,
     /// so far. Shown in the banner and dismissible, because a silent no-op
     /// looks like the button is broken.
@@ -1031,6 +1043,7 @@ final class AppModel {
     /// a note does, wherever the note is shown. The field is cleared so the
     /// whole group shows, not whatever was last typed.
     func showMemories(taggedWith key: String) {
+        guard canEditLibrary else { return }
         memoryQuery = ""
         memoryTagFilter = key
         show(.library)

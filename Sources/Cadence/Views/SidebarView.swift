@@ -22,7 +22,7 @@ struct SidebarView: View {
                 .padding(.bottom, 6)
 
             VStack(spacing: Tokens.Space.xxs) {
-                ForEach(AppModel.Tab.allCases) { tab in
+                ForEach(model.visibleTabs) { tab in
                     NavigationRow(tab: tab, isSelected: isSelected(tab)) {
                         model.show(.library)
                         model.tab = tab
@@ -197,44 +197,59 @@ private struct PlaylistSection: View {
                     ?? false
             } isTargeted: { isTargeted = $0 }
 
-            // Always first and always there, even with nothing liked yet: it
-            // is where the heart on a track row sends things, and an empty
-            // one says how to fill it. Not in a folder and not draggable — it
-            // is the library's own list, not one the user made.
-            LikedSongsRow(isSelected: model.screen == .likedSongs)
-                .padding(.horizontal, 10)
-                .padding(.bottom, 1)
+            // The rows scroll under the heading. Without a scroll view a long
+            // list made the sidebar taller than the window, and SwiftUI then
+            // spilled the whole window off the top and bottom: the title bar
+            // and the Home row went first.
+            GeometryReader { viewport in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        // Always first and always there, even with nothing liked yet: it
+                        // is where the heart on a track row sends things, and an empty
+                        // one says how to fill it. Not in a folder and not draggable — it
+                        // is the library's own list, not one the user made.
+                        LikedSongsRow(isSelected: model.screen == .likedSongs)
+                            .padding(.horizontal, 10)
+                            .padding(.bottom, 1)
 
-            if !model.playlists.isEmpty || !model.playlistFolders.isEmpty {
-                // Folders first, then the loose playlists: the folders are
-                // the structure, and a folder sandwiched between playlists
-                // reads as one more playlist until you spot the chevron.
-                VStack(spacing: 1) {
-                    ForEach(model.playlistFolders) { folder in
-                        FolderGroup(folder: folder)
+                        if !model.playlists.isEmpty || !model.playlistFolders.isEmpty {
+                            // Folders first, then the loose playlists: the folders are
+                            // the structure, and a folder sandwiched between playlists
+                            // reads as one more playlist until you spot the chevron.
+                            VStack(spacing: 1) {
+                                ForEach(model.playlistFolders) { folder in
+                                    FolderGroup(folder: folder)
+                                }
+                                ForEach(model.playlists(in: nil)) { playlist in
+                                    PlaylistRow(playlist: playlist,
+                                                isSelected: model.screen == .playlist(playlist.id))
+                                }
+                            }
+                            .padding(.horizontal, 10)
+                        }
+
+                        // The empty space under the list is a top-level target too: it
+                        // is the obvious place to let go of a playlist being pulled out
+                        // of a folder. A sibling of the rows, not a wrapper around them —
+                        // see `AppModel.handleDrop(_:on:)`.
+                        Color.clear
+                            .frame(maxWidth: .infinity, minHeight: Tokens.Space.l, maxHeight: .infinity)
+                            .contentShape(Rectangle())
+                            .overlay(alignment: .top) {
+                                if isTailTargeted { insertionLine }
+                            }
+                            .dropDestination(for: PlaylistMoveItem.self) { items, _ in
+                                items.first.map { model.handleDrop(.playlist($0.playlistID), on: .topLevel) }
+                                    ?? false
+                            } isTargeted: { isTailTargeted = $0 }
                     }
-                    ForEach(model.playlists(in: nil)) { playlist in
-                        PlaylistRow(playlist: playlist,
-                                    isSelected: model.screen == .playlist(playlist.id))
-                    }
+                    // At least the viewport's height, so the empty space under
+                    // a short list still fills the sidebar and takes drops.
+                    .frame(minHeight: viewport.size.height, alignment: .top)
                 }
-                .padding(.horizontal, 10)
+                .scrollIndicators(.automatic)
+                .scrollBounceBehavior(.basedOnSize)
             }
-
-            // The empty space under the list is a top-level target too: it
-            // is the obvious place to let go of a playlist being pulled out
-            // of a folder. A sibling of the rows, not a wrapper around them —
-            // see `AppModel.handleDrop(_:on:)`.
-            Color.clear
-                .frame(maxWidth: .infinity, minHeight: Tokens.Space.l, maxHeight: .infinity)
-                .contentShape(Rectangle())
-                .overlay(alignment: .top) {
-                    if isTailTargeted { insertionLine }
-                }
-                .dropDestination(for: PlaylistMoveItem.self) { items, _ in
-                    items.first.map { model.handleDrop(.playlist($0.playlistID), on: .topLevel) }
-                        ?? false
-                } isTargeted: { isTailTargeted = $0 }
         }
     }
 
