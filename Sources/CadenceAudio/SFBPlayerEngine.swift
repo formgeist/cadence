@@ -14,6 +14,20 @@ import CadenceCore
 /// itself and reports it through `nowPlayingChanged`. The controller follows
 /// that report rather than driving the change — driving it is what produces a
 /// gap.
+///
+/// **Tracks that are not files yet.** A track from another Mac's library is
+/// known by a `cadence-remote://` location, and its `TrackSource` downloads
+/// it before there is a file to decode. For those, `play` and `prepareNext`
+/// return at once and the work happens in a task: the controller already
+/// shows a track as loading until `.started` arrives, and a download that
+/// fails arrives as `.failed`, which it handles like any bad file. Events
+/// name the location the controller asked for, never the downloaded file.
+/// A file URL skips all of this and is played as before, so the Mac's own
+/// library is untouched by it.
+///
+/// Every `play` starts a new generation. A download that finishes after the
+/// listener has moved on belongs to an older one and is dropped, so a slow
+/// file can never start over the track chosen after it.
 @MainActor
 public final class SFBPlayerEngine: NSObject, PlayerEngine {
 
@@ -35,6 +49,17 @@ public final class SFBPlayerEngine: NSObject, PlayerEngine {
     private var pendingGain: [URL: Double] = [:]
     private var currentURL: URL?
 
+    // MARK: Tracks fetched by the source
+
+    private let source: any TrackSource
+    private var generation = 0
+    private var loading: Task<Void, Never>?
+    private var preparing: Task<Void, Never>?
+    /// The location `preparing` is fetching, so asking twice fetches once.
+    private var preparingLocation: URL?
+    /// Downloaded file → the location the controller knows it by.
+    private var locations: [URL: URL] = [:]
+
     // MARK: Output sample rate — #34
 
     private var matchesSampleRate = false
@@ -50,12 +75,15 @@ public final class SFBPlayerEngine: NSObject, PlayerEngine {
     /// less than a redraw of the whole view tree would cost.
     private static let tickInterval = Duration.milliseconds(100)
 
-    public override convenience init() {
-        self.init(rateMatcher: OutputRateMatcher())
+    /// - Parameter source: Turns a track's location into a file. The default
+    ///   accepts only files, which is all the Mac's own library holds.
+    public convenience init(source: any TrackSource = LocalTrackSource()) {
+        self.init(rateMatcher: OutputRateMatcher(), source: source)
     }
 
-    init(rateMatcher: OutputRateMatcher) {
+    init(rateMatcher: OutputRateMatcher, source: any TrackSource = LocalTrackSource()) {
         self.rateMatcher = rateMatcher
+        self.source = source
         (events, eventSink) = AsyncStream.makeStream()
         (positions, positionSink) = AsyncStream.makeStream()
         super.init()
@@ -83,21 +111,92 @@ public final class SFBPlayerEngine: NSObject, PlayerEngine {
     }
 
     public func play(url: URL, duration: TimeInterval, gain: Double) throws {
+        generation += 1
+        loading?.cancel()
+        cancelPreparing()
+        locations.removeAll()
+
+        guard !url.isFileURL else {
+            try start(file: url, gain: gain)
+            return
+        }
+
+        // The listener chose another track: the old one stops now, not when
+        // the new one has arrived.
+        player.stop()
+        currentURL = nil
         pendingGain.removeAll()
-        currentURL = url
+
+        let current = generation
+        let source = source
+        loading = Task { [weak self] in
+            let outcome: Result<URL, PlaybackError>
+            do {
+                outcome = .success(try await source.fileURL(for: url))
+            } catch is CancellationError {
+                return
+            } catch {
+                outcome = .failure(error as? PlaybackError ?? .engine(error.localizedDescription))
+            }
+            // The controller ignores play and pause while a track loads, so
+            // nothing but a newer `play` or a `stop` can have intervened.
+            guard let self, self.generation == current else { return }
+            do {
+                let file = try outcome.get()
+                self.locations[file] = url
+                try self.start(file: file, gain: gain)
+            } catch {
+                self.eventSink.yield(.failed(error as? PlaybackError ?? .engine(error.localizedDescription)))
+            }
+        }
+    }
+
+    /// Plays a file that is on disk.
+    private func start(file: URL, gain: Double) throws {
+        pendingGain.removeAll()
+        currentURL = file
         trackGain = gain
         applyVolume()
-        matchOutputRate(to: url)
+        matchOutputRate(to: file)
 
         do {
-            try player.play(url)
+            try player.play(file)
         } catch {
-            throw Self.translate(error, url: url)
+            throw Self.translate(error, url: file)
         }
         startTicking()
     }
 
     public func prepareNext(url: URL, duration: TimeInterval, gain: Double) throws {
+        guard !url.isFileURL else {
+            try enqueueNext(file: url, gain: gain)
+            return
+        }
+        guard preparingLocation != url else { return }
+        cancelPreparing()
+        preparingLocation = url
+
+        let current = generation
+        let source = source
+        preparing = Task { [weak self] in
+            // A failed download is not an error here. When the current track
+            // ends with nothing queued, the controller starts the next one
+            // with `play`, and that attempt reports the failure.
+            guard let file = try? await source.fileURL(for: url) else { return }
+            guard let self, self.generation == current, self.preparingLocation == url,
+                  self.currentURL != nil, !Task.isCancelled else { return }
+            self.locations[file] = url
+            try? self.enqueueNext(file: file, gain: gain)
+        }
+    }
+
+    private func cancelPreparing() {
+        preparing?.cancel()
+        preparing = nil
+        preparingLocation = nil
+    }
+
+    private func enqueueNext(file url: URL, gain: Double) throws {
         // The device cannot change rate under a running stream, and a gapless
         // handoff is exactly a running stream. Where the next file needs a
         // different rate the two cannot both hold, and this picks the rate: the
@@ -118,6 +217,7 @@ public final class SFBPlayerEngine: NSObject, PlayerEngine {
     }
 
     public func clearNext() {
+        cancelPreparing()
         player.clearQueue()
         pendingGain.removeAll()
     }
@@ -140,6 +240,11 @@ public final class SFBPlayerEngine: NSObject, PlayerEngine {
     }
 
     public func stop() {
+        generation += 1
+        loading?.cancel()
+        loading = nil
+        cancelPreparing()
+        locations.removeAll()
         player.stop()
         if rateMatcher.restore() { expectConfigChange() }
         positionTimer?.cancel()
@@ -240,7 +345,8 @@ extension SFBPlayerEngine: AudioPlayer.Delegate {
         Task { @MainActor [weak self] in
             guard let self else { return }
             if let url { self.currentURL = url }
-            self.eventSink.yield(.started(url ?? URL(fileURLWithPath: "/")))
+            let location = url.map { self.locations[$0] ?? $0 }
+            self.eventSink.yield(.started(location ?? URL(fileURLWithPath: "/")))
         }
     }
 
@@ -268,7 +374,11 @@ extension SFBPlayerEngine: AudioPlayer.Delegate {
                 self.trackGain = gain
                 self.applyVolume()
             }
-            self.eventSink.yield(.advancedToNext(url))
+            let location = self.locations[url] ?? url
+            // Only the file playing now can be reported again.
+            self.locations = self.locations.filter { $0.key == url }
+            self.preparingLocation = nil
+            self.eventSink.yield(.advancedToNext(location))
         }
     }
 

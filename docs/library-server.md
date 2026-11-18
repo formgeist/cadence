@@ -715,6 +715,17 @@ it, the files used longest ago are removed, never the ones handed out most
 recently, which an engine may have open. Failures reach the engine as
 `PlaybackError.engine` with `RemoteError.message`, a sentence for the listener.
 
+On the Mac, `SFBPlayerEngine` takes a `TrackSource` too. A file URL plays
+as it always has, without asking the source, so the Mac's own library is
+untouched. Any other location is fetched in a task: `play` returns at once,
+the controller shows the track as loading, and a failed download arrives as
+`.failed`. Every `play` and `stop` starts a new generation, so a download that
+lands after the listener has moved on is dropped. The next track is fetched
+as soon as the controller asks for it and queued for SFB's gapless handoff.
+Events name the location the controller asked for, never the cached file.
+`Cadence --play <folder> --remote` runs the same files through this path
+with a stand-in source.
+
 **Browsing without the Mac.** `RemoteMetadataCache` keeps the last answer to
 each browse request as a file, keyed by a digest of the endpoint and its
 parameters, as the recon note chose: no database, so GRDB stays off the
