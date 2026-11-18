@@ -573,6 +573,21 @@ struct RemoteDownloadsTests {
         #expect(kept.cover(id: "../escape") == nil)
     }
 
+    @Test("A cover goes with the last album or playlist that uses it")
+    func coverRemoval() throws {
+        let (_, kept, root) = folders("keep-cover-removal")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let art = String(repeating: "cd", count: 32)
+        try kept.save(cover: Data([9]), id: art)
+        try kept.save(album: RemoteAlbum(id: "al-one", name: "One", coverArt: art, songCount: 0, duration: 0))
+        try kept.save(playlist: RemotePlaylist(id: "pl-mix", name: "Mix", songCount: 0, duration: 0,
+                                               coverArt: art))
+        kept.removeAlbum(id: "al-one")
+        #expect(kept.cover(id: art) != nil)
+        kept.removePlaylist(id: "pl-mix")
+        #expect(kept.cover(id: art) == nil)
+    }
+
     @Test("Ids that could not be the server's never become file names")
     func unsafeIDs() {
         let (_, kept, root) = folders("keep-unsafe")

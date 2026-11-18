@@ -104,22 +104,22 @@ public struct RemoteDownloads: Sendable {
         record(Self.playlists, id: id).flatMap(read)
     }
 
-    /// Forgets a downloaded album and removes its songs, except those another
-    /// downloaded album or playlist lists.
+    /// Forgets a downloaded album and removes its songs and cover, except
+    /// those another downloaded album or playlist still uses.
     public func removeAlbum(id: String) {
         guard let file = record(Self.albums, id: id) else { return }
-        let songs = read(file).map { (album: RemoteAlbum) in album.song ?? [] } ?? []
+        let album: RemoteAlbum? = read(file)
         try? FileManager.default.removeItem(at: file)
-        removeSongs(songs.map(\.id))
+        removeUnused(songs: (album?.song ?? []).map(\.id), cover: album?.coverArt)
     }
 
-    /// Forgets a downloaded playlist and removes its songs, except those
-    /// another downloaded album or playlist lists.
+    /// Forgets a downloaded playlist and removes its songs and cover, except
+    /// those another downloaded album or playlist still uses.
     public func removePlaylist(id: String) {
         guard let file = record(Self.playlists, id: id) else { return }
-        let songs = read(file).map { (playlist: RemotePlaylist) in playlist.entry ?? [] } ?? []
+        let playlist: RemotePlaylist? = read(file)
         try? FileManager.default.removeItem(at: file)
-        removeSongs(songs.map(\.id))
+        removeUnused(songs: (playlist?.entry ?? []).map(\.id), cover: playlist?.coverArt)
     }
 
     // MARK: - Covers
@@ -232,12 +232,23 @@ public struct RemoteDownloads: Sendable {
         try JSONEncoder().encode(value).write(to: file, options: .atomic)
     }
 
-    /// Removes kept songs that no remaining album or playlist lists.
-    private func removeSongs(_ ids: [String]) {
+    /// Removes kept songs, and a cover, that no remaining album or playlist
+    /// uses.
+    private func removeUnused(songs ids: [String], cover: String?) {
         var wanted = Set<String>()
-        for album in albums() { wanted.formUnion((album.song ?? []).map(\.id)) }
-        for playlist in playlists() { wanted.formUnion((playlist.entry ?? []).map(\.id)) }
+        var covers = Set<String>()
+        for album in albums() {
+            wanted.formUnion((album.song ?? []).map(\.id))
+            if let art = album.coverArt { covers.insert(art) }
+        }
+        for playlist in playlists() {
+            wanted.formUnion((playlist.entry ?? []).map(\.id))
+            if let art = playlist.coverArt { covers.insert(art) }
+        }
         for id in Set(ids).subtracting(wanted) { remove(songID: id) }
+        if let cover, !covers.contains(cover), let file = coverFile(id: cover) {
+            try? FileManager.default.removeItem(at: file)
+        }
     }
 
     private func coverFile(id: String) -> URL? {
