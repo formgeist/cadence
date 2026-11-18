@@ -14,6 +14,7 @@ final class LiveServer: Sendable {
     let devices: PairedDeviceStore
     let pairing: PairingSession
     let store: SQLiteLibraryStore
+    let artwork: DiskArtworkStore
     let listener: HTTPListener
     let port: UInt16
     /// The bytes of the one song's file.
@@ -49,10 +50,12 @@ final class LiveServer: Sendable {
                   dateAdded: Date(timeIntervalSince1970: 1_700_000_000)),
         ])
 
+        artwork = try DiskArtworkStore(root: directory.appendingPathComponent("artwork"))
         devices = try PairedDeviceStore(fileURL: directory.appendingPathComponent("devices.json"))
         pairing = PairingSession(devices: devices)
         let server = LibraryServer(configuration: .init(serverVersion: "9.8.7"),
-                                   authenticator: devices, library: store, pairing: pairing)
+                                   authenticator: devices, library: store, artwork: artwork,
+                                   pairing: pairing)
         listener = try HTTPListener.tls(identity: identity, loopbackOnly: true) {
             await server.respond(to: $0)
         }

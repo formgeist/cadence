@@ -56,10 +56,11 @@ extension Track {
     /// on both devices.
     ///
     /// - Parameter albumArtist: The album's artist, when the song came with
-    ///   its album. A song on its own names only its own artist and the id
-    ///   of its album artist, not the album artist's name, so the track
-    ///   artist stands in. That puts a compilation track under its performer
-    ///   until its album is loaded; `albumKey` is then not the album's.
+    ///   its album. A song on its own carries the album artist's name in
+    ///   `displayAlbumArtist`. A server too old to send it names only the
+    ///   song's own artist, which then stands in: that puts a compilation
+    ///   track under its performer until its album is loaded, and
+    ///   `albumKey` is then not the album's.
     public init?(remote song: RemoteSong, albumArtist: String? = nil) {
         guard let id = RemoteIDs.uuid(song.id, prefix: "tr-") else { return nil }
         let artist = song.artist ?? ""
@@ -68,7 +69,7 @@ extension Track {
             url: RemoteTrackLocation.url(songID: song.id, suffix: song.suffix),
             title: song.title,
             artist: artist,
-            albumArtist: albumArtist ?? artist,
+            albumArtist: albumArtist ?? song.displayAlbumArtist ?? artist,
             albumTitle: song.album ?? "",
             genre: song.genre,
             year: song.year,
