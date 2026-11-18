@@ -55,4 +55,21 @@ struct PairedLibraryTests {
         await model.load()
         #expect(!model.librarySummary.contains("B"))
     }
+
+    @Test("Another Mac's library has no Memories tab, and a session left there opens on Home")
+    func noMemories() {
+        let settings = InMemorySettingsStore()
+        settings.set(AppModel.Tab.memories.rawValue, forKey: .tab)
+        let model = AppModel(store: PreviewData.store(), settings: settings)
+        #expect(model.tab == .memories)
+        #expect(model.visibleTabs.contains(.memories))
+
+        model.pairedMacName = "Studio Mac"
+        #expect(model.tab == .home)
+        #expect(!model.visibleTabs.contains(.memories))
+
+        model.showMemories(taggedWith: "summer")
+        #expect(model.tab == .home)
+        #expect(PlaylistMenu.memoryItems(.album(PreviewData.tracks[0].albumKey), model: model).isEmpty)
+    }
 }
