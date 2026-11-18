@@ -133,6 +133,10 @@ struct SongItem: Encodable, Sendable {
     /// The album artist's id: artists are listed by album artist, so that is
     /// the artist a client can open.
     var artistId: String
+    /// The album artist's name, an OpenSubsonic field. Without it a client
+    /// listing songs on their own, as the Mac client does to build its
+    /// library, would file each compilation track under its performer.
+    var displayAlbumArtist: String
     var track: Int?
     var discNumber: Int?
     var year: Int?
@@ -159,6 +163,7 @@ struct SongItem: Encodable, Sendable {
         albumId = track.albumKey.stableID
         artist = track.artist
         artistId = StableID.artist(named: track.albumArtist)
+        displayAlbumArtist = track.albumArtist
         self.track = track.trackNumber
         discNumber = track.discNumber
         year = track.year

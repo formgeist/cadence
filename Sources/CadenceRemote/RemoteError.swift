@@ -35,6 +35,9 @@ public enum RemoteError: Error, Equatable, Sendable {
     case invalidResponse
     /// Asked for from the cache only, and the cache has no answer to it.
     case notCached
+    /// A change to a library that lives on another Mac. The server is
+    /// read-only, so the client refuses before asking.
+    case readOnly
 }
 
 extension RemoteError {
@@ -63,6 +66,8 @@ extension RemoteError {
             "The Mac sent an answer this app could not read."
         case .notCached:
             "This has not been opened while the Mac was reachable, so it is not available offline."
+        case .readOnly:
+            "This library is on another Mac and cannot be changed from here."
         }
     }
 

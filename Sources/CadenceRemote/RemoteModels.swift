@@ -50,6 +50,8 @@ public struct RemoteSong: Decodable, Sendable, Equatable, Identifiable {
     public var albumId: String?
     public var artist: String?
     public var artistId: String?
+    /// The album artist's name. Older servers leave it out.
+    public var displayAlbumArtist: String?
     public var track: Int?
     public var discNumber: Int?
     public var year: Int?
