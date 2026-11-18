@@ -161,14 +161,16 @@ struct SFBPlayerEngineSourceTests {
     func gapless() async throws {
         let source = ScriptedSource()
         let a = location("a"), b = location("b")
-        await source.serve(a, file: try silence(seconds: 0.6, in: directory, named: "a.wav"))
+        // Track a leaves room for b's fetch even on a busy CI runner. At 0.6 s
+        // it sometimes ended before b was queued, and the test failed.
+        await source.serve(a, file: try silence(seconds: 2, in: directory, named: "a.wav"))
         await source.serve(b, file: try silence(seconds: 2, in: directory, named: "b.wav"),
                            after: .milliseconds(100))
         let engine = SFBPlayerEngine(source: source)
         let log = EventLog(engine)
         defer { engine.stop() }
 
-        try engine.play(url: a, duration: 0.6, gain: 1)
+        try engine.play(url: a, duration: 2, gain: 1)
         #expect(await log.wait { $0 == .wantsNextTrack })
         try engine.prepareNext(url: b, duration: 2, gain: 1)
         // Asked twice, as the controller may; fetched once.
