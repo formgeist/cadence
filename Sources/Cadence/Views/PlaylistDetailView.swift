@@ -337,7 +337,7 @@ struct PlaylistDetailView: View {
     /// the same call the old `onMove` handler made.
     private func drop(_ items: [PlaylistReorderItem], before destination: Int) -> Bool {
         dropTarget = nil
-        guard let dragged = items.first,
+        guard model.canEditLibrary, let dragged = items.first,
               let source = entries.firstIndex(where: { $0.id == dragged.entryID })
         else { return false }
         // Dropping a row on itself or on the gap right behind it is not a move.

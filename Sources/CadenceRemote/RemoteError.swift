@@ -40,6 +40,12 @@ public enum RemoteError: Error, Equatable, Sendable {
     case readOnly
 }
 
+/// So that an app showing `localizedDescription`, as the Mac app's banners
+/// do, shows the sentence rather than the case name.
+extension RemoteError: LocalizedError {
+    public var errorDescription: String? { message }
+}
+
 extension RemoteError {
     /// One sentence for the listener.
     public var message: String {

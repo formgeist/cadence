@@ -34,6 +34,9 @@ public actor RemoteLibraryStore: LibraryStore {
     /// The last full listing, for the reads that are worked out from it.
     private var snapshot: [Track]?
     private var byID: [Track.ID: Track] = [:]
+    /// The listing being fetched now. The app asks for tracks and artists at
+    /// the same moment, and both need the listing: they share one fetch.
+    private var listingTask: Task<[Track], Error>?
 
     /// - Parameter pageSize: Songs per request. Smaller only in tests, so a
     ///   small library can span several pages.
@@ -45,9 +48,13 @@ public actor RemoteLibraryStore: LibraryStore {
     // MARK: - Tracks
 
     public func allTracks() async throws -> [Track] {
-        let tracks = try await Self.fallingBack { source in
-            try await self.listing(from: source)
+        if let running = listingTask { return try await running.value }
+        let task = Task {
+            try await Self.fallingBack { source in try await self.listing(from: source) }
         }
+        listingTask = task
+        defer { listingTask = nil }
+        let tracks = try await task.value
         snapshot = tracks
         byID = Dictionary(tracks.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         return tracks
@@ -70,8 +77,10 @@ public actor RemoteLibraryStore: LibraryStore {
         }
     }
 
-    /// The listing, read once and reused.
+    /// The listing, read once and reused. A fetch under way is newer than
+    /// what was kept, so it is waited for.
     private func tracks() async throws -> [Track] {
+        if let running = listingTask { return try await running.value }
         if let snapshot { return snapshot }
         return try await allTracks()
     }

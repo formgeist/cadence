@@ -22,26 +22,36 @@ struct EmptyLibraryView: View {
             .accessibilityHidden(true)
 
             VStack(spacing: Tokens.Space.s) {
-                Text("No music yet")
+                Text(model.pairedMacName.map { "Nothing from \($0) yet" } ?? "No music yet")
                     .font(Tokens.Typography.sans(22, .heavy))
                     .tracking(-0.4)
                     .foregroundStyle(Tokens.Palette.textPrimary)
 
-                Text("Point Cadence at a folder of FLAC files and it will read the tags,\nextract the artwork, and build your library.")
+                Text(message)
                     .font(Tokens.Typography.caption)
                     .foregroundStyle(Tokens.Palette.textTertiary)
                     .multilineTextAlignment(.center)
                     .lineSpacing(3)
             }
 
-            CapsuleButton(title: "Choose Music Folder…",
-                          systemImage: "folder", kind: .filled) {
-                guard let folder = importer.chooseFolder() else { return }
-                importer.importFolders([folder]) {
-                    Task { await model.load() }
+            if model.canEditLibrary {
+                CapsuleButton(title: "Choose Music Folder…",
+                              systemImage: "folder", kind: .filled) {
+                    guard let folder = importer.chooseFolder() else { return }
+                    importer.importFolders([folder]) {
+                        Task { await model.load() }
+                    }
                 }
+                .padding(.top, Tokens.Space.xs)
+            } else {
+                HStack(spacing: Tokens.Space.s) {
+                    CapsuleButton(title: "Try Again") { Task { await model.load() } }
+                    CapsuleButton(title: "Open Preferences", kind: .filled) {
+                        model.show(.settings)
+                    }
+                }
+                .padding(.top, Tokens.Space.xs)
             }
-            .padding(.top, Tokens.Space.xs)
 
             if let failure = model.storeFailure {
                 Text(failure)
@@ -54,5 +64,16 @@ struct EmptyLibraryView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Tokens.Palette.surface)
+    }
+
+    private var message: String {
+        guard let name = model.pairedMacName else {
+            return "Point Cadence at a folder of FLAC files and it will read the tags,\n"
+                + "extract the artwork, and build your library."
+        }
+        // An empty library from a Mac that did answer is a library with
+        // nothing in it; one that did not answer is the usual case.
+        if let error = model.loadError { return error }
+        return "\(name) has no music in its library yet."
     }
 }

@@ -113,9 +113,20 @@ cat > "$APP/Contents/Info.plist" <<PLIST
          the server announces itself under; it must be declared here for the
          announcement to be allowed. -->
     <key>NSLocalNetworkUsageDescription</key>
-    <string>Cadence uses the local network to share your library with your paired iPhone and iPad, when you turn sharing on.</string>
+    <string>Cadence uses the local network to share your library with your paired devices when you turn sharing on, and to play another Mac's library when you pair with one.</string>
     <key>NSBonjourServices</key>
     <array><string>_cadence._tcp</string></array>
+
+    <!-- cadence://pair links: the pairing link another Mac's Sharing pane
+         copies, opened here from Messages, Mail or Safari. -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>     <string>com.formgeist.cadence.pairing</string>
+            <key>CFBundleURLSchemes</key>
+            <array><string>cadence</string></array>
+        </dict>
+    </array>
 
     <!-- The drag type for tracks moving onto a playlist. Declared so the
          identifier UTType(exportedAs:) forms in PlaylistActions.swift is a

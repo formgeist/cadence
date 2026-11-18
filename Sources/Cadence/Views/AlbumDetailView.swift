@@ -628,7 +628,7 @@ extension View {
             .accessibilityAction(named: model.isLiked(track)
                                  ? "Remove from \(AppModel.likedSongsName)"
                                  : "Add to \(AppModel.likedSongsName)",
-                                 isAvailable: includeLike) {
+                                 isAvailable: includeLike && model.canEditLibrary) {
                 Task { await model.toggleLike(track) }
             }
     }
@@ -650,6 +650,21 @@ struct LikeButton: View {
 
     var body: some View {
         let liked = model.isLiked(track)
+        if model.canEditLibrary {
+            button(liked: liked)
+        } else {
+            // Another Mac's likes are shown, not changed: a liked track keeps
+            // its heart, and there is nothing to click.
+            CadenceIcon("heart.fill", size: glyphSize)
+                .foregroundStyle(Tokens.Palette.accent)
+                .frame(width: Self.side, height: Self.side)
+                .opacity(liked ? 1 : 0)
+                .accessibilityHidden(!liked)
+                .accessibilityLabel("In \(AppModel.likedSongsName)")
+        }
+    }
+
+    private func button(liked: Bool) -> some View {
         Button {
             Task { await model.toggleLike(track) }
         } label: {

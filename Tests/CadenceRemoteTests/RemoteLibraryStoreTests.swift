@@ -181,3 +181,21 @@ struct RemoteArtworkStoreTests {
         }
     }
 }
+
+@Suite("Remote store listing fetch", .serialized)
+struct RemoteListingSharingTests {
+
+    @Test("Tracks and artists asked for at once both answer")
+    func sharedListing() async throws {
+        try await withServer { server in
+            // Pages of one, so the listing spans several requests while the
+            // second caller waits on it.
+            let store = RemoteLibraryStore(client: try await server.pair(), pageSize: 1)
+            async let tracks = store.allTracks()
+            async let artists = store.artists()
+            let (listed, named) = try await (tracks, artists)
+            #expect(listed.count == 2)
+            #expect(named.map(\.name) == ["Vera Lindqvist"])
+        }
+    }
+}
