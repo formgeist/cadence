@@ -8,8 +8,8 @@ import Foundation
 /// and the audio has to be fetched, with that machine's credentials and
 /// pinned certificate, before anything can decode it.
 ///
-/// The answer is always a local file rather than a stream, for two reasons
-/// found in `docs/server-ios-recon.md`: neither engine Cadence uses can decode
+/// The answer is always a local file rather than a stream, for two reasons:
+/// neither engine Cadence uses can decode
 /// from a network connection it does not own, and gapless playback needs the
 /// next track on disk before the current one ends.
 ///

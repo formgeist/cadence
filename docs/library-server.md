@@ -93,7 +93,7 @@ nothing about sockets, so every endpoint is tested by calling it directly.
 ## Decisions
 
 **No dependency.** The listener is Network.framework, and the HTTP parser is
-ours. The reasoning is in [server-ios-recon.md](server-ios-recon.md), section 4.
+ours.
 
 **The library is read-only by construction, at three levels.** Everything
 under `/rest/` is reached with `GET` or `HEAD` only; the router refuses `POST`

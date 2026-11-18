@@ -5,7 +5,7 @@ import CryptoKit
 /// the library shows at once on launch and stays browsable while the Mac is
 /// asleep.
 ///
-/// As `docs/server-ios-recon.md` chose: one file per request in the Caches
+/// One file per request in the Caches
 /// directory, holding the response exactly as it arrived, keyed by endpoint
 /// and parameters. No database, so GRDB stays out of the phone. Search is
 /// not cached: it goes to the server, where the full-text index is.

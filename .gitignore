@@ -14,3 +14,6 @@ Sources/Cadence/LastFMCredentials.swift
 # Generated, and carries the Spotify client id — see
 # Scripts/gen-spotify-credentials.sh.
 Sources/Cadence/SpotifyCredentials.swift
+
+# Local working notes and build plans, kept out of the repository.
+notes/

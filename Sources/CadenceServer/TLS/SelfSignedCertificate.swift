@@ -15,8 +15,8 @@ import Security
 /// was shown.
 ///
 /// Apple's frameworks can generate a key and sign with it but have no public
-/// way to build a certificate, and adding a dependency for that is what
-/// `docs/server-ios-recon.md` decided against. This file is therefore a small
+/// way to build a certificate, and Cadence takes no dependency for that.
+/// This file is therefore a small
 /// DER encoder for exactly one shape of X.509 certificate: version 3, a P-256
 /// key, signed with ECDSA and SHA-256. It cannot produce anything else.
 public struct SelfSignedCertificate: Sendable, Equatable {
