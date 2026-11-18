@@ -12,6 +12,11 @@ import MediaPlayer
 /// reaching the second track without the controller restarting it proves the
 /// gapless handshake fires on real files. Whether the seam is *audible* still
 /// needs ears — put on headphones and run this against a live album.
+///
+/// `--remote` plays the same files as if they were on another Mac: each is
+/// given a `cadence-remote://` location and handed over by a source that
+/// waits a moment first, as a download would. That runs the engine's fetch
+/// path through the real controller without a server.
 @MainActor
 enum PlayHarness {
 
@@ -20,6 +25,8 @@ enum PlayHarness {
         /// How close to the end of the first track to start, so the handoff
         /// happens within seconds rather than minutes.
         var lead: TimeInterval
+        /// Play the files through a stand-in for another Mac's library.
+        var remote: Bool
     }
 
     static func parse(_ arguments: [String]) -> Options? {
@@ -39,7 +46,8 @@ enum PlayHarness {
         return Options(
             target: URL(fileURLWithPath:
                 (arguments[next] as NSString).expandingTildeInPath),
-            lead: lead)
+            lead: lead,
+            remote: arguments.contains("--remote"))
     }
 
     static func run(_ options: Options) async throws -> Int32 {
@@ -71,7 +79,7 @@ enum PlayHarness {
                 stored[url] ?? tracks.first { $0.url == url }
             }
         }
-        guard let first = tracks.first else {
+        guard !tracks.isEmpty else {
             print("Could not read metadata for \(files[0].lastPathComponent)")
             return 1
         }
@@ -82,7 +90,17 @@ enum PlayHarness {
         }
         print("")
 
-        let controller = PlaybackController(engine: SFBPlayerEngine())
+        let engine: SFBPlayerEngine
+        if options.remote {
+            let source = StandInRemoteSource(tracks)
+            tracks = source.tracks
+            engine = SFBPlayerEngine(source: source)
+            print("  as remote tracks, each arriving after \(StandInRemoteSource.delay)\n")
+        } else {
+            engine = SFBPlayerEngine()
+        }
+        let first = tracks[0]
+        let controller = PlaybackController(engine: engine)
 
         // Attached so the same run exercises phase 5's system integration.
         // There is no public way to read Now Playing back from another
@@ -190,5 +208,32 @@ enum PlayHarness {
         case .paused: "paused"
         case .failed: "failed"
         }
+    }
+}
+
+/// Hands the engine local files for made-up remote locations, after a
+/// short wait, for `--play --remote`.
+private struct StandInRemoteSource: TrackSource {
+    static let delay = Duration.milliseconds(300)
+
+    let tracks: [Track]
+    private let files: [URL: URL]
+
+    init(_ tracks: [Track]) {
+        var files: [URL: URL] = [:]
+        self.tracks = tracks.map { track in
+            var remote = track
+            remote.url = URL(string: "cadence-remote://song/tr-\(track.id.uuidString.lowercased())"
+                             + "?suffix=\(track.url.pathExtension.lowercased())")!
+            files[remote.url] = track.url
+            return remote
+        }
+        self.files = files
+    }
+
+    func fileURL(for location: URL) async throws -> URL {
+        try await Task.sleep(for: Self.delay)
+        guard let file = files[location] else { throw PlaybackError.engine("Unknown track") }
+        return file
     }
 }
