@@ -137,6 +137,9 @@ struct BonjourTests {
         _ = try await silent.start()
         defer { silent.stop() }
         try await Task.sleep(for: .seconds(2))
-        #expect(watcher.names() == before)
+        // Nothing new, rather than nothing changed: a server an earlier test
+        // advertised can still be withdrawing, and leaving the list then is
+        // not this server's doing.
+        #expect(watcher.names().subtracting(before).isEmpty)
     }
 }
