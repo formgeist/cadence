@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import CoreImage
 import CoreImage.CIFilterBuiltins
@@ -13,6 +14,18 @@ struct SharingSettings: View {
     @Environment(SharingController.self) private var sharing: SharingController?
 
     @State private var pendingRemoval: SharedDevice?
+    @State private var linkCopied = false
+
+    /// Puts the pairing link on the pasteboard, for a Mac that has no camera
+    /// to scan the code with. Marked concealed, so clipboard managers that
+    /// honour the convention do not keep the token in their history.
+    static func copy(_ link: String) {
+        let board = NSPasteboard.general
+        board.clearContents()
+        board.declareTypes([.string, .init("org.nspasteboard.ConcealedType")], owner: nil)
+        board.setString(link, forType: .string)
+        board.setString("", forType: .init("org.nspasteboard.ConcealedType"))
+    }
 
     var body: some View {
         if let sharing {
@@ -102,18 +115,27 @@ struct SharingSettings: View {
                     Text("Scan with Cadence on your iPhone or iPad")
                         .font(Tokens.Typography.sans(13, .semibold))
                         .foregroundStyle(Tokens.Palette.textPrimary)
-                    Text("The code pairs one device, once. It stops working at "
+                    Text("To pair another Mac, copy the link and open it there. "
+                         + "The code pairs one device, once. It stops working at "
                          + pairing.expiresAt.formatted(date: .omitted, time: .shortened)
-                         + ", or when you close it. Anyone who can see it can pair, "
-                         + "so show it only to your own device.")
+                         + ", or when you close it. Anyone who has it can pair, "
+                         + "so send it only to your own device.")
                         .font(Tokens.Typography.caption)
                         .foregroundStyle(Tokens.Palette.textTertiary)
                         .fixedSize(horizontal: false, vertical: true)
-                    CapsuleButton(title: "Close Code") {
-                        Task { await sharing.cancelPairing() }
+                    HStack(spacing: Tokens.Space.s) {
+                        CapsuleButton(title: linkCopied ? "Copied" : "Copy Link") {
+                            Self.copy(pairing.link)
+                            linkCopied = true
+                        }
+                        CapsuleButton(title: "Close Code") {
+                            Task { await sharing.cancelPairing() }
+                        }
                     }
                     .padding(.top, Tokens.Space.xs)
                 }
+                // A new code starts with the button reading "Copy Link" again.
+                .onChange(of: pairing.link) { linkCopied = false }
             }
         } else {
             SettingsRow(
