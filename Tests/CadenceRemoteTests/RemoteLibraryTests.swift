@@ -523,6 +523,251 @@ struct RemoteDownloadsTests {
     }
 }
 
+// MARK: - Download queue
+
+/// Keeps songs on command: each keep waits until it is finished, failed or
+/// cancelled, so a test decides the order things happen in. An answer given
+/// before its keep arrives is held for it.
+private actor FakeKeeper {
+    private(set) var started: [String] = []
+    private(set) var peak = 0
+    private var gates: [String: CheckedContinuation<Result<URL, any Error>, Never>] = [:]
+    private var early: [String: Result<URL, any Error>] = [:]
+
+    var active: Int { gates.count }
+
+    func keep(_ location: URL) async throws -> URL {
+        let id = RemoteTrackLocation.parse(location)!.songID
+        started.append(id)
+        let result = await withTaskCancellationHandler {
+            await withCheckedContinuation { open(id, $0) }
+        } onCancel: {
+            Task { await self.end(id, .failure(CancellationError()), holding: false) }
+        }
+        return try result.get()
+    }
+
+    func finish(_ id: String) { end(id, .success(URL(fileURLWithPath: "/kept/\(id)")), holding: true) }
+    func fail(_ id: String, _ error: RemoteError) { end(id, .failure(error), holding: true) }
+
+    private func open(_ id: String, _ gate: CheckedContinuation<Result<URL, any Error>, Never>) {
+        if let result = early.removeValue(forKey: id) {
+            gate.resume(returning: result)
+            return
+        }
+        // Cancelled before it got here: the handler has already run.
+        if Task.isCancelled {
+            gate.resume(returning: .failure(CancellationError()))
+            return
+        }
+        gates[id] = gate
+        peak = max(peak, gates.count)
+    }
+
+    private func end(_ id: String, _ result: Result<URL, any Error>, holding: Bool) {
+        if let gate = gates.removeValue(forKey: id) {
+            gate.resume(returning: result)
+        } else if holding {
+            early[id] = result
+        }
+    }
+}
+
+@Suite("Download queue", .serialized)
+struct RemoteDownloadQueueTests {
+
+    private func songs(_ numbers: ClosedRange<Int>) -> [URL] {
+        numbers.map { RemoteTrackLocation.url(songID: "tr-song-\($0)", suffix: "flac") }
+    }
+
+    private func id(_ n: Int) -> String { "tr-song-\(n)" }
+
+    /// Waits until the queue's state passes `condition`, or fails after a second.
+    private func until(_ queue: RemoteDownloadQueue,
+                       _ condition: @escaping (RemoteDownloadQueue.Snapshot) -> Bool) async throws {
+        for _ in 0..<200 {
+            if condition(await queue.snapshot) { return }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        Issue.record("The queue never reached the expected state: \(await queue.snapshot)")
+    }
+
+    /// Lets the queue's tasks reach the keeper.
+    private func settle() async throws { try await Task.sleep(for: .milliseconds(30)) }
+
+    private func makeQueue(_ keeper: FakeKeeper, paused: Bool = false) -> RemoteDownloadQueue {
+        RemoteDownloadQueue(concurrency: 2, paused: paused) { try await keeper.keep($0) }
+    }
+
+    @Test("Songs are kept in order, two at a time")
+    func order() async throws {
+        let keeper = FakeKeeper()
+        let queue = makeQueue(keeper)
+        await queue.enqueue(group: "album:1", locations: songs(1...4))
+        try await settle()
+        #expect(await keeper.started == [id(1), id(2)])
+
+        await keeper.finish(id(1))
+        try await until(queue) { $0.songs[id(1)] == .kept && $0.songs[id(3)] == .downloading }
+        await keeper.finish(id(2))
+        await keeper.finish(id(3))
+        try await settle()
+        await keeper.finish(id(4))
+        try await until(queue) { $0.isFinished("album:1") }
+
+        #expect(await keeper.started == [id(1), id(2), id(3), id(4)])
+        #expect(await keeper.peak == 2)
+        let progress = await queue.snapshot.progress(of: "album:1")
+        #expect(progress.kept == 4 && progress.total == 4)
+    }
+
+    @Test("A song in two groups is kept once and wanted until both are cancelled")
+    func sharedSong() async throws {
+        let keeper = FakeKeeper()
+        let queue = makeQueue(keeper)
+        await queue.enqueue(group: "album:1", locations: songs(1...2))
+        await queue.enqueue(group: "playlist:1", locations: songs(2...2))
+        try await settle()
+
+        await queue.cancel(group: "album:1")
+        try await settle()
+        // Song 1 was only the album's: stopped and dropped. Song 2 carries on.
+        let snapshot = await queue.snapshot
+        #expect(snapshot.songs[id(1)] == nil)
+        #expect(snapshot.songs[id(2)] == .downloading)
+        #expect(snapshot.groups["playlist:1"] == [id(2)])
+
+        await keeper.finish(id(2))
+        try await until(queue) { $0.songs[id(2)] == .kept }
+        #expect(await keeper.started.filter { $0 == id(2) }.count == 1)
+    }
+
+    @Test("Cancelling a group stops its running songs and drops its queued ones")
+    func cancelGroup() async throws {
+        let keeper = FakeKeeper()
+        let queue = makeQueue(keeper)
+        await queue.enqueue(group: "album:1", locations: songs(1...3))
+        await queue.enqueue(group: "album:2", locations: songs(4...4))
+        try await settle()
+        await queue.cancel(group: "album:1")
+        try await settle()
+
+        // The other album takes the free places.
+        #expect(await keeper.started == [id(1), id(2), id(4)])
+        #expect(await keeper.active == 1)
+        let snapshot = await queue.snapshot
+        #expect(snapshot.groups.keys.sorted() == ["album:2"])
+        #expect(snapshot.songs.keys.sorted() == [id(4)])
+    }
+
+    @Test("A failed song stays failed while the rest go on, until retried")
+    func failure() async throws {
+        let keeper = FakeKeeper()
+        let queue = makeQueue(keeper)
+        await queue.enqueue(group: "album:1", locations: songs(1...3))
+        try await settle()
+        await keeper.fail(id(1), .notFound)
+        try await until(queue) { $0.songs[id(3)] == .downloading }
+        #expect(await queue.snapshot.songs[id(1)] == .failed(message: RemoteError.notFound.message))
+
+        await keeper.finish(id(2))
+        await keeper.finish(id(3))
+        try await until(queue) { $0.isFinished("album:1") }
+        #expect(await queue.snapshot.progress(of: "album:1").kept == 2)
+
+        await queue.retryFailed(in: "album:1")
+        try await until(queue) { $0.songs[id(1)] == .downloading }
+        await keeper.finish(id(1))
+        try await until(queue) { $0.progress(of: "album:1").kept == 3 }
+    }
+
+    @Test("Pausing puts running songs back in front, and resuming starts them again")
+    func pauseAndResume() async throws {
+        let keeper = FakeKeeper()
+        let queue = makeQueue(keeper)
+        await queue.enqueue(group: "album:1", locations: songs(1...3))
+        try await settle()
+        await queue.pause()
+        try await settle()
+        #expect(await keeper.active == 0)
+        let paused = await queue.snapshot
+        #expect(paused.paused)
+        #expect(paused.songs.values.allSatisfy { $0 == .queued })
+
+        await queue.resume()
+        try await settle()
+        #expect(await keeper.started == [id(1), id(2), id(1), id(2)])
+    }
+
+    @Test("Losing the Mac pauses the queue instead of failing every song")
+    func connectionLost() async throws {
+        let keeper = FakeKeeper()
+        let queue = makeQueue(keeper)
+        await queue.enqueue(group: "album:1", locations: songs(1...3))
+        try await settle()
+        await keeper.fail(id(1), .unreachable)
+        try await until(queue) { $0.paused }
+        try await settle()
+
+        let snapshot = await queue.snapshot
+        #expect(snapshot.songs.values.allSatisfy { $0 == .queued })
+        #expect(await keeper.active == 0)
+        #expect(await keeper.started == [id(1), id(2)])
+
+        await queue.resume()
+        try await settle()
+        #expect(await keeper.started.count == 4)
+    }
+
+    @Test("A queue created paused starts nothing until resumed")
+    func startsPaused() async throws {
+        let keeper = FakeKeeper()
+        let queue = makeQueue(keeper, paused: true)
+        await queue.enqueue(group: "album:1", locations: songs(1...2))
+        try await settle()
+        #expect(await keeper.started.isEmpty)
+        await queue.resume()
+        try await settle()
+        #expect(await keeper.started == [id(1), id(2)])
+    }
+
+    @Test("Cancelling everything empties the queue")
+    func cancelAll() async throws {
+        let keeper = FakeKeeper()
+        let queue = makeQueue(keeper)
+        await queue.enqueue(group: "album:1", locations: songs(1...3))
+        await queue.enqueue(group: "playlist:1", locations: songs(4...5))
+        try await settle()
+        await queue.cancelAll()
+        try await settle()
+        #expect(await keeper.active == 0)
+        #expect(await queue.snapshot == RemoteDownloadQueue.Snapshot())
+    }
+
+    @Test("Snapshots arrive as the queue changes")
+    func snapshots() async throws {
+        let keeper = FakeKeeper()
+        let queue = makeQueue(keeper)
+        let stream = await queue.snapshots()
+        var states = stream.makeAsyncIterator()
+        #expect(await states.next() == RemoteDownloadQueue.Snapshot())
+        await queue.enqueue(group: "album:1", locations: songs(1...1))
+        let queued = await states.next()
+        #expect(queued?.songs[id(1)] == .downloading)
+        await keeper.finish(id(1))
+        let kept = await states.next()
+        #expect(kept?.songs[id(1)] == .kept)
+    }
+
+    @Test("Anything that is not a remote track is ignored")
+    func ignoresOtherLocations() async throws {
+        let queue = makeQueue(FakeKeeper(), paused: true)
+        await queue.enqueue(group: "album:1", locations: [URL(fileURLWithPath: "/tmp/x.flac")])
+        #expect(await queue.snapshot.groups["album:1"] == [])
+        #expect(await queue.snapshot.songs.isEmpty)
+    }
+}
+
 // MARK: - Metadata cache
 
 @Suite("Remote metadata cache", .serialized)
