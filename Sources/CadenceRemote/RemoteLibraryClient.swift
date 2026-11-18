@@ -104,9 +104,12 @@ public final class RemoteLibraryClient: Sendable {
 
     /// Artists, albums and songs matching `query`. An empty query is the
     /// whole library, a page at a time.
+    ///
+    /// Only the empty query is cached: its pages are the library listing a
+    /// client needs offline, while a real search is worth nothing stale.
     public func search(
         _ query: String, artistCount: Int = 20, albumCount: Int = 20, songCount: Int = 20,
-        songOffset: Int = 0
+        songOffset: Int = 0, source: RemoteReadSource = .network
     ) async throws -> RemoteSearchResult {
         try await payload("search3", "searchResult3", [
             .init(name: "query", value: query),
@@ -114,7 +117,7 @@ public final class RemoteLibraryClient: Sendable {
             .init(name: "albumCount", value: String(albumCount)),
             .init(name: "songCount", value: String(songCount)),
             .init(name: "songOffset", value: String(songOffset)),
-        ], cacheable: false)
+        ], source: query.isEmpty ? source : .network, cacheable: query.isEmpty)
     }
 
     /// Every playlist, without its songs, in the Mac's sidebar order.

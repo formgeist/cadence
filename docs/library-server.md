@@ -663,6 +663,8 @@ phone.
 | `RemotePairing.pair` | Trades a scanned `PairingPayload` for `RemoteCredentials` |
 | `RemoteLibraryClient` | One method per endpoint: browse, search, playlists, likes, `download`, `coverArt` |
 | `RemoteError` | Every failure, in terms the app can act on |
+| `RemoteLibraryStore` | Another Mac's library as a `LibraryStore`, for the Mac app as a client |
+| `RemoteArtworkStore` | That library's covers as an `ArtworkStore`, kept on disk |
 
 **The pin is checked on every request, by that request.** Each request passes
 its own task delegate, which compares the SHA-256 of the leaf certificate
@@ -730,6 +732,22 @@ certificate or a version mismatch is `.needsAttention` and is not retried
 until the app calls `retryNow()`, since only the user can fix it. A request
 that fails with `.unreachable` while connected is reported with
 `connectionLost(_:)`, which starts reconnecting.
+
+**The Mac as a client.** The Mac app loads its whole library at once and
+works out albums, artists and genres from `allTracks()`. So rather than teach
+its screens to page through a server, `RemoteLibraryStore` lists every song
+once, 500 at a time through an empty `search3`, and answers the other reads
+from that listing. Songs carry OpenSubsonic's `displayAlbumArtist`, so a
+compilation track listed on its own still groups under its album; a server
+too old to send it falls back to the song's artist. Playlists are fetched one
+at a time, since the list answer has no songs. Each read goes to the network
+first and to the metadata cache when the Mac is offline, unreachable or busy;
+with nothing cached, the network's error is thrown. Only the empty `search3`
+is cached, as it is the library listing. Playlist folders, catalogs, custom
+artist images and the library's size are not part of the protocol and read
+as empty. Every write throws `RemoteError.readOnly` without asking the Mac.
+`RemoteArtworkStore` fetches covers by the id a track already holds and keeps
+each answer on disk under a digest of the id and size.
 
 ## Testing
 
