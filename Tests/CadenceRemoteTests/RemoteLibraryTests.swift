@@ -841,6 +841,20 @@ struct RemoteDownloadQueueTests {
         #expect(await keeper.started.count == 4)
     }
 
+    @Test("Pausing gives back every song not yet kept, in order, for a background session")
+    func queuedForBackground() async throws {
+        let keeper = FakeKeeper()
+        let queue = makeQueue(keeper)
+        await queue.enqueue(group: "album:1", locations: songs(1...4))
+        try await settle()
+        await keeper.finish(id(1))
+        try await until(queue) { $0.songs[id(1)] == .kept && $0.songs[id(3)] == .downloading }
+        await queue.pause()
+        let ids = await queue.queuedLocations().compactMap { RemoteTrackLocation.parse($0)?.songID }
+        // 2 and 3 were running and went back in front of 4; 1 is kept.
+        #expect(ids == [id(2), id(3), id(4)])
+    }
+
     @Test("A queue created paused starts nothing until resumed")
     func startsPaused() async throws {
         let keeper = FakeKeeper()

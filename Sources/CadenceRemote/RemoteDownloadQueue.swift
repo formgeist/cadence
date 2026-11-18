@@ -179,6 +179,16 @@ public actor RemoteDownloadQueue {
         changed()
     }
 
+    /// The locations of songs waiting their turn, next first. For handing
+    /// them to a background session when the app is about to be suspended;
+    /// pause first, so the ones running are among them.
+    public func queuedLocations() -> [URL] {
+        order.compactMap { id in
+            guard let entry = entries[id], entry.state == .queued else { return nil }
+            return entry.location
+        }
+    }
+
     // MARK: - Running
 
     /// Publishes the state and starts what may start.
