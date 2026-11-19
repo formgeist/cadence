@@ -19,6 +19,7 @@ struct SettingsView: View {
     @Environment(PlaybackController.self) private var playback
     @Environment(ScrobbleController.self) private var scrobble
     @Environment(\.openURL) private var openURL
+    @Environment(AgentAccessController.self) private var agents: AgentAccessController?
 
     var body: some View {
         @Bindable var playback = playback
@@ -80,6 +81,14 @@ struct SettingsView: View {
                     if model.canEditLibrary {
                         SettingsSection("Sharing") {
                             SharingSettings()
+                        }
+                    }
+
+                    // Agents write to this Mac's own library only; with a
+                    // paired Mac's library showing there is no controller.
+                    if model.canEditLibrary, agents != nil {
+                        SettingsSection("Agents") {
+                            AgentAccessSettings()
                         }
                     }
                 }
