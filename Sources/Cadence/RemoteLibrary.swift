@@ -147,8 +147,19 @@ final class RemoteLibrarySession {
     /// Called when the Mac answers again after not answering, so the app
     /// can load what it could not while the Mac was away.
     var onReconnected: (() -> Void)?
+    /// Called when the Mac reports that its library has changed: songs
+    /// added or retagged, playlists edited, likes. The app reads it again.
+    var onLibraryChanged: (() -> Void)?
+
+    /// How often the Mac is asked whether its library has changed, while it
+    /// answers. One small request: a `ping`.
+    static let changeCheckInterval: Duration = .seconds(30)
 
     private let monitor: RemoteConnection
+    private let revisions: LibraryRevisionWatcher
+    private var poller: Task<Void, Never>?
+    private var activation: Task<Void, Never>?
+    private var isCheckingForChanges = false
     private let cacheRoot: URL
     private var watcher: Task<Void, Never>?
 
@@ -178,6 +189,7 @@ final class RemoteLibrarySession {
         history = try SQLiteLibraryStore(url: historyURL.appendingPathComponent("history.sqlite"))
         let monitor = RemoteConnection(client: client)
         self.monitor = monitor
+        revisions = LibraryRevisionWatcher(client: client)
         tracks = CheckingTrackSource(downloads: downloads, monitor: monitor)
     }
 
@@ -198,6 +210,9 @@ final class RemoteLibrarySession {
                 case .connected:
                     if wasAway { self.onReconnected?() }
                     wasAway = false
+                    // Whatever the app reads now is the baseline the next
+                    // check compares with.
+                    Task { await self.revisions.reset(); await self.checkForChanges() }
                 case .offline, .unreachable, .needsAttention:
                     wasAway = true
                 case .idle, .connecting:
@@ -206,6 +221,38 @@ final class RemoteLibrarySession {
             }
         }
         Task { await monitor.start() }
+
+        poller = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: Self.changeCheckInterval)
+                guard let self else { return }
+                await self.checkForChanges()
+            }
+        }
+        // Coming back to the app is when a change is most likely to be
+        // wanted on screen, so it does not wait for the next check.
+        activation = Task { [weak self] in
+            for await _ in NotificationCenter.default.notifications(
+                named: NSApplication.didBecomeActiveNotification) {
+                guard let self else { return }
+                await self.checkForChanges()
+            }
+        }
+    }
+
+    /// Asks the Mac whether its library has changed, and has the app read it
+    /// again if so. Only while connected: reconnecting reads it anyway.
+    func checkForChanges() async {
+        guard case .connected = connection, !isCheckingForChanges else { return }
+        isCheckingForChanges = true
+        defer { isCheckingForChanges = false }
+        do {
+            if try await revisions.check() { onLibraryChanged?() }
+        } catch let error as RemoteError {
+            report(error)
+        } catch {
+            // Cancellation.
+        }
     }
 
     func retry() {

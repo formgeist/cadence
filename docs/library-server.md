@@ -836,6 +836,16 @@ in the tooltip and in Preferences. A failed download has the connection
 check, since it is often the first sign the other Mac has gone to sleep.
 When the Mac answers again, the library loads again.
 
+**Changes on the other Mac.** `ping` answers with `cadenceLibraryRevision`, a
+number kept in the library database (`libraryRevision`, migration v16).
+Triggers on `track`, `playlist`, `playlistItem` and `likedTrack` move it on
+every insert, update and delete, so the scanner, the app and agents all move
+it without each remembering to. Plays do not. While connected, the client
+pings every 30 seconds and whenever the app comes to the front;
+`LibraryRevisionWatcher` compares the number with the last one, and a
+different one reloads the library. A Mac too old to send it is never
+reported as changed.
+
 ## Testing
 
 - **Parser**: accepted and refused inputs case by case, plus two seeded fuzz

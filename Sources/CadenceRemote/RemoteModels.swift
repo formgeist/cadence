@@ -141,6 +141,8 @@ struct Envelope: Decodable {
         var status: String
         var serverVersion: String?
         var cadenceProtocolVersion: Int?
+        /// Only on `ping`, and only from a Mac new enough to send it.
+        var cadenceLibraryRevision: Int64?
         var error: Failure?
     }
     struct Failure: Decodable {

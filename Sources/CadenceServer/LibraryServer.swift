@@ -123,8 +123,11 @@ public struct LibraryServer: Sendable {
         do {
             switch endpoint {
             case .ping:
-                return SubsonicResponse.ok(serverVersion: configuration.serverVersion)
-                    .httpResponse()
+                // Cadence's own addition: the library's revision, so a
+                // paired device can tell with one cheap request whether
+                // anything it shows has changed. Other clients ignore it.
+                let revision = try await endpoints.library.libraryRevision()
+                return ok("cadenceLibraryRevision", revision)
             case .getOpenSubsonicExtensions:
                 return ok("openSubsonicExtensions",
                           [Extension(name: "apiKeyAuthentication", versions: [1]),

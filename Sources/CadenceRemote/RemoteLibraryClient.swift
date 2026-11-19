@@ -68,6 +68,13 @@ public final class RemoteLibraryClient: Sendable {
         return ServerInfo(serverVersion: body.serverVersion ?? "unknown", protocolVersion: version)
     }
 
+    /// A number the Mac moves whenever songs, playlists or likes change.
+    /// Compare it with the last one seen: a different value means the library
+    /// should be read again. Nil from a Mac too old to report it.
+    public func libraryRevision() async throws -> Int64? {
+        try await envelope("ping", []).cadenceLibraryRevision
+    }
+
     // MARK: - Browsing
 
     /// Every artist, grouped under index letters, in the server's order.

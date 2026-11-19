@@ -298,6 +298,9 @@ final class AppContainer {
             remote.onReconnected = { [weak model = self.model] in
                 Task { await model?.load() }
             }
+            remote.onLibraryChanged = { [weak model = self.model] in
+                Task { await model?.load() }
+            }
             remote.start()
         }
 
