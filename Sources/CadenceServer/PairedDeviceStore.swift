@@ -105,6 +105,10 @@ public actor PairedDeviceStore: Authenticator {
         return id
     }
 
+    public func isPaired(_ device: PairedDevice.ID) async -> Bool {
+        devices[device] != nil
+    }
+
     // MARK: - Pairing and revoking
 
     /// Adds a device and returns the key it must present from now on. This is

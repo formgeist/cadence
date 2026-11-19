@@ -159,6 +159,25 @@ public final class RemoteLibraryClient: Sendable {
         }
     }
 
+    // MARK: - Background downloads
+
+    /// Short-lived permission to download one song without the API key, for
+    /// a request handed to the system to carry out in the background. The
+    /// system keeps that request outside the app, so the key must not be in
+    /// it. Throws `.notFound` for an unknown song, and `.server` from a Mac
+    /// too old to issue tokens.
+    public func downloadToken(songID: String) async throws -> RemoteDownloadToken {
+        try await payload("getDownloadToken", "downloadToken", [.init(name: "id", value: songID)],
+                          cacheable: false)
+    }
+
+    /// A `download` request signed with a download token instead of the API
+    /// key. Nothing else in it is secret.
+    public func downloadRequest(songID: String, token: String) throws -> URLRequest {
+        try request("download", [.init(name: "id", value: songID), .init(name: "token", value: token)],
+                    withKey: false)
+    }
+
     /// Cover art, as image bytes. With `size`, a thumbnail at least that
     /// many pixels on its long side; without, the full image.
     public func coverArt(id: String, size: Int? = nil) async throws -> Data {
@@ -173,13 +192,14 @@ public final class RemoteLibraryClient: Sendable {
 
     // MARK: - Requests
 
-    private func request(_ endpoint: String, _ parameters: [URLQueryItem]) throws -> URLRequest {
+    private func request(_ endpoint: String, _ parameters: [URLQueryItem],
+                         withKey: Bool = true) throws -> URLRequest {
         guard let base = credentials.server.baseURL,
               var components = URLComponents(url: base, resolvingAgainstBaseURL: false)
         else { throw RemoteError.invalidResponse }
         components.path = "/rest/\(endpoint)"
-        components.queryItems = parameters + [
-            .init(name: "apiKey", value: credentials.apiKey),
+        let key: [URLQueryItem] = withKey ? [.init(name: "apiKey", value: credentials.apiKey)] : []
+        components.queryItems = parameters + key + [
             .init(name: "f", value: "json"),
             .init(name: "c", value: "Cadence"),
             .init(name: "v", value: Self.apiVersion),
