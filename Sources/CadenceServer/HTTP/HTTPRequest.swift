@@ -7,9 +7,10 @@ public struct HTTPRequest: Sendable, Equatable {
     public enum Method: String, Sendable {
         case get = "GET"
         case head = "HEAD"
-        /// Accepted by the parser for one route only, pairing. The router
-        /// refuses it everywhere else, so no library endpoint can be reached
-        /// with a method that carries a body.
+        /// `LibraryServer` takes it for one route only, pairing, and refuses
+        /// it everywhere else, so no library endpoint can be reached with a
+        /// method that carries a body. `MCPServer`, on its own loopback-only
+        /// listener, takes nothing else.
         case post = "POST"
     }
 

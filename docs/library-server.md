@@ -207,7 +207,9 @@ to a directory. Files will be reached only through library ids.
 **No plain HTTP in a release build.** The only public way to create a listener
 is `HTTPListener.loopback`, which binds to 127.0.0.1 and is compiled in debug
 builds only. A release build of `CadenceServer` contains no code that can
-start a listener; Phase 3 adds the TLS one.
+start a listener; Phase 3 adds the TLS one. (Later: `HTTPListener.mcp`, a
+loopback-only plain-HTTP listener for the MCP endpoint, which takes an
+`MCPServer` rather than a handler and so can never serve the library.)
 
 ## Pairing
 
@@ -384,8 +386,10 @@ goes with unpairing every device.
 **TLS 1.3 only.** Both ends are Cadence on current systems, so there is no
 older client to allow for. A test reads the negotiated version.
 
-**A release build has this listener and no other.** The plain-HTTP loopback
-listener is still compiled into debug builds only.
+**A release build has this listener for the library and no other.** The
+plain-HTTP `loopback` listener is still compiled into debug builds only. The
+one plain-HTTP listener in a release build, `HTTPListener.mcp`, binds to
+127.0.0.1 and serves `MCPServer` alone.
 
 **What a client must do** is shown by the tests, which connect with
 `URLSession` the way the iOS app will:

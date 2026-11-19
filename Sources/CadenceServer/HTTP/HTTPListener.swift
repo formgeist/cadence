@@ -3,11 +3,12 @@ import Network
 
 /// Accepts connections and turns each into one request and one response.
 ///
-/// The only way to make one from outside this module is `loopback`, and that
-/// exists in debug builds only. A release build therefore contains no way to
-/// start a plain-HTTP listener at all, which is the guarantee the build plan
-/// asks for: release traffic is TLS or nothing. The TLS listener that Phase 3
-/// adds goes through the same initialiser with different parameters.
+/// Library traffic is TLS or nothing. A release build can start a plain-HTTP
+/// listener in one way only, `mcp(server:port:)`, and that listener is bound
+/// to the loopback interface and serves `MCPServer` and nothing else: no
+/// handler can be passed to it, so the library server can never be put
+/// behind it. `loopback`, which takes any handler, exists in debug builds
+/// only.
 public final class HTTPListener: @unchecked Sendable {
 
     public struct Limits: Sendable {
@@ -107,6 +108,27 @@ public final class HTTPListener: @unchecked Sendable {
         return try HTTPListener(parameters: parameters, limits: limits, handler: handler)
     }
     #endif
+
+    /// Plain HTTP on the loopback interface, serving the MCP endpoint for
+    /// agents on this Mac.
+    ///
+    /// Not TLS because nothing leaves the machine, and because MCP clients
+    /// would refuse the server's self-signed certificate. Bound to 127.0.0.1
+    /// and accepting local connections only, so nothing on the network can
+    /// connect. It takes an `MCPServer` rather than a handler so that this is
+    /// all a release build can serve without TLS.
+    ///
+    /// - Parameter port: A fixed port, so an agent's configuration keeps
+    ///   working across launches. Nil lets the system choose one.
+    public static func mcp(server: MCPServer, port: UInt16?) throws -> HTTPListener {
+        let parameters = NWParameters.tcp
+        let endpointPort = port.flatMap(NWEndpoint.Port.init(rawValue:)) ?? .any
+        parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: endpointPort)
+        parameters.acceptLocalOnly = true
+        return try HTTPListener(parameters: parameters, limits: MCPServer.listenerLimits) {
+            await server.respond(to: $0)
+        }
+    }
 
     /// Starts listening and returns the port once the listener is ready.
     public func start() async throws -> UInt16 {
