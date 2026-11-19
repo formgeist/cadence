@@ -219,6 +219,18 @@ struct AgentAccessControllerTests {
         harness.controller.shutDown()
     }
 
+    @Test("Settings builds the Claude Code command and describes the last change")
+    func settingsText() {
+        #expect(AgentAccessSettings.command(url: "http://127.0.0.1:47474/mcp", key: "k")
+                == #"claude mcp add --transport http cadence http://127.0.0.1:47474/mcp --header "Authorization: Bearer k""#)
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        let fresh = AgentAccessController.Change(summary: "Created the playlist “Drive”", date: now)
+        #expect(AgentAccessSettings.describe(fresh, now: now)
+                == "Last change: an agent created the playlist “Drive”, just now.")
+        let older = AgentAccessController.Change(summary: "Liked 2 tracks", date: now - 600)
+        #expect(AgentAccessSettings.describe(older, now: now).hasPrefix("Last change: an agent liked 2 tracks, "))
+    }
+
     @Test("Notices put the agent first")
     func notices() {
         #expect(AgentAccessController.notice(for: "Liked 2 tracks") == "An agent liked 2 tracks")

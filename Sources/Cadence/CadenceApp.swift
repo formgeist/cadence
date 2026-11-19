@@ -386,6 +386,7 @@ struct CadenceApp: App {
                 .environment(container.discovery)
                 .environment(container.spotify)
                 .environment(container.sharing)
+                .environment(container.agents)
                 .environment(container.library)
                 // A `cadence://pair` link, opened from Messages or Safari.
                 // Preferences asks before pairing: a link is input from
