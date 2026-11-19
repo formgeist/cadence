@@ -588,6 +588,28 @@ struct RemoteDownloadsTests {
         #expect(kept.cover(id: art) == nil)
     }
 
+    @Test("Pruning removes songs and covers no downloaded album or playlist lists any more")
+    func prune() async throws {
+        let (cache, kept, root) = folders("keep-prune")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = RemoteTrackSource(downloader: FakeDownloader(), directory: cache, downloads: kept)
+        for n in 1...3 { _ = try await source.keep(location(n)) }
+        let oldCover = String(repeating: "aa", count: 32), newCover = String(repeating: "bb", count: 32)
+        try kept.save(cover: Data([1]), id: oldCover)
+        try kept.save(cover: Data([2]), id: newCover)
+        try kept.save(playlist: RemotePlaylist(id: "pl-mix", name: "Mix", songCount: 3, duration: 0,
+                                               coverArt: oldCover, entry: [song(1), song(2), song(3)]))
+
+        // The Mac took song 3 off the playlist and gave it a new cover.
+        try kept.save(playlist: RemotePlaylist(id: "pl-mix", name: "Mix", songCount: 2, duration: 0,
+                                               coverArt: newCover, entry: [song(1), song(2)]))
+        #expect(kept.prune() == ["tr-song-3"])
+        #expect(kept.songIDs() == ["tr-song-1", "tr-song-2"])
+        #expect(kept.cover(id: oldCover) == nil)
+        #expect(kept.cover(id: newCover) != nil)
+        #expect(kept.prune().isEmpty)
+    }
+
     @Test("Ids that could not be the server's never become file names")
     func unsafeIDs() {
         let (_, kept, root) = folders("keep-unsafe")
