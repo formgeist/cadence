@@ -40,6 +40,7 @@ or read outside input:
 | The Mac app as a client: pairing links, the stored key | `Sources/Cadence/RemoteLibrary.swift` |
 | Reading tags and audio from files in the library | `Sources/CadenceLibrary`, `Sources/CadenceAudio` |
 | Stored credentials (Last.fm, Spotify) | `Sources/Cadence/KeychainStore.swift` |
+| Agent access: the MCP endpoint and its tools | `Sources/CadenceServer/MCP`, `Sources/Cadence/AgentAccessController.swift` |
 
 Third-party code (GRDB, SFBAudioEngine and the decoders it bundles) is in
 scope where Cadence's use of it is the problem. A flaw in the library itself
@@ -138,3 +139,36 @@ Mac's screen.
 
 The decisions behind each of these, and the tests that hold them, are
 recorded in [docs/library-server.md](docs/library-server.md).
+
+## Threat model for agent access
+
+Agent access lets AI agents on the Mac (any MCP client) read the library and
+edit playlists, playlist folders, catalogs, memories and likes. It is a
+separate server from library sharing, on a separate listener, with a
+separate key.
+
+- **Off until switched on.** Nothing listens until the user turns it on.
+- **This Mac only.** The listener binds to 127.0.0.1 and accepts local
+  connections only. It is plain HTTP because nothing leaves the machine.
+- **Nothing without the key.** Every request needs the key as
+  `Authorization: Bearer`. It is 256 bits from the system generator, kept in
+  the Keychain, and replacing it locks out the old one at once. Failures are
+  throttled by address.
+- **Not from a web page.** A request whose `Origin` is not this machine is
+  refused before the key is looked at, so a page in a browser cannot reach
+  the endpoint through the user's own loopback.
+- **Bounded edits.** The tools cannot remove a track from the library, touch
+  music folders, rescan, or reach sharing and pairing. Every delete names an
+  id. Paths never leave the library. Each change shows in the window as a
+  notice saying an agent made it.
+- **This Mac's own library.** While Cadence shows a paired Mac's library,
+  agent access is not available at all.
+
+**Out of scope**
+
+- Another program running as the same user. It can read the key from the
+  Keychain or the agent's configuration, as it could any of the user's
+  files. Agent access does not try to stand between programs the user runs.
+- What an agent does with the access it is given. A prompt-injected agent
+  with the key can do anything the tools allow, which is why they allow
+  little that cannot be undone.

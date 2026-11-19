@@ -35,6 +35,10 @@ final class AppContainer {
     /// The library server's switch, state and paired devices. Starts nothing
     /// by being built: see `SharingController.resumeIfEnabled`.
     let sharing: SharingController
+    /// The MCP endpoint for agents on this Mac. Nil unless this Mac's own
+    /// library opened: an agent never writes to a paired Mac's library or
+    /// the preview one. Starts nothing by being built.
+    let agents: AgentAccessController?
     /// Which library is showing, the paired Mac, and pairing with one.
     let library: LibrarySourceController
     /// Whether a text field has the keyboard, so the menu bar can get out of
@@ -204,6 +208,8 @@ final class AppContainer {
         // The server reads the real database and nothing else. Until that
         // has opened there is nothing to share.
         var sharingBackend: any SharingBackend = UnavailableSharingBackend()
+        // Only for the local database, made once the model exists.
+        var agentsController: AgentAccessController?
 
         switch mode {
         case .live where remote != nil:
@@ -242,6 +248,9 @@ final class AppContainer {
                     store: store, artwork: artwork, router: Self.metadataRouter)
                 model = AppModel(store: store, settings: settings, artwork: artwork,
                                  memories: store)
+                agentsController = AgentAccessController(
+                    library: store, model: model, settings: settings,
+                    keychain: KeychainStore(service: AgentAccessController.keychainService))
                 // Removing a track from the library can orphan its cover the
                 // same way a deleted file does — see pruneOrphanedArtwork's
                 // own reasoning (#40). AppModel only knows the store
@@ -305,6 +314,8 @@ final class AppContainer {
             sharing.resumeIfEnabled()
         }
         AppDelegate.sharing = sharing
+        agents = agentsController
+        AppDelegate.agents = agentsController
 
         // Play history is recorded here, not inside `PlaybackController`,
         // which knows nothing about `AppModel` or persistence — see #72. The
@@ -612,6 +623,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @MainActor static weak var scrobble: ScrobbleController?
     /// Lets a normal launch start the library server if sharing was left on.
     @MainActor static weak var sharing: SharingController?
+    /// Lets a normal launch start the MCP endpoint if it was left on.
+    @MainActor static weak var agents: AgentAccessController?
 
     /// Held for the process lifetime — an unretained monitor is removed
     /// immediately. See `applicationDidFinishLaunching`.
@@ -850,6 +863,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Only here, on a normal launch. Every headless mode above has
         // returned by now, so none of them starts the server.
         AppDelegate.sharing?.resumeIfEnabled()
+        AppDelegate.agents?.resumeIfEnabled()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -863,5 +877,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AppDelegate.playback?.flushQueueState()
         AppDelegate.playback?.releaseOutput()
         AppDelegate.scrobble?.flushOnTermination()
+        AppDelegate.agents?.shutDown()
     }
 }

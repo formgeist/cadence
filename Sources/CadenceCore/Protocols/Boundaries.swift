@@ -269,6 +269,10 @@ public enum SettingsKey: String, Sendable {
     /// unless the listener turns it on: on, the Mac listens on the local
     /// network.
     case librarySharingEnabled
+    /// Whether the MCP endpoint for agents on this Mac runs. Off unless the
+    /// listener turns it on: on, an agent with the key can edit playlists,
+    /// catalogs, memories and likes.
+    case agentAccessEnabled
 }
 
 /// Small pieces of state that should survive a relaunch — volume, mute,

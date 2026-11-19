@@ -1685,6 +1685,47 @@ final class AppModel {
                      forKey: .collapsedPlaylistFolders)
     }
 
+    // MARK: Changes made elsewhere
+
+    /// Parts of the library something other than this window changed.
+    struct LibraryParts: OptionSet {
+        let rawValue: Int
+        static let playlists = LibraryParts(rawValue: 1 << 0)
+        static let folders = LibraryParts(rawValue: 1 << 1)
+        static let catalogs = LibraryParts(rawValue: 1 << 2)
+        static let memories = LibraryParts(rawValue: 1 << 3)
+        static let likes = LibraryParts(rawValue: 1 << 4)
+    }
+
+    /// Re-reads what an agent changed through the MCP endpoint, and says so
+    /// in the banner: an edit nobody can see is one nobody can check.
+    ///
+    /// Unlike the window's own edits it opens nothing. The user is looking
+    /// at whatever they chose to; an agent making a playlist must not take
+    /// them to it. The one move it makes is off the screen of a playlist or
+    /// catalog that no longer exists, the same move deleting one here makes.
+    func applyChange(_ parts: LibraryParts, notice: String) async {
+        do {
+            if parts.contains(.playlists) { playlists = try await store.playlists() }
+            if parts.contains(.folders) { playlistFolders = try await store.playlistFolders() }
+            if parts.contains(.catalogs) { setCatalogs(try await store.catalogs()) }
+            if parts.contains(.memories) { setMemories(try await memoryStore.memories()) }
+            if parts.contains(.likes) { setLikedTrackIDs(try await store.likedTrackIDs()) }
+        } catch {
+            actionError = "The library changed, but could not be read again: "
+                + error.localizedDescription
+        }
+        if case .playlist(let id) = screen, playlist(id: id) == nil {
+            show(.library)
+            tab = .playlists
+        }
+        if case .catalog(let id) = screen, catalog(id: id) == nil {
+            show(.library)
+            tab = .catalogs
+        }
+        self.notice = notice
+    }
+
     // MARK: Removing from the library
 
     /// The track (or every track in an album) leaves the library outright,
