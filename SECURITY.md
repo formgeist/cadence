@@ -91,8 +91,10 @@ Mac's screen.
   the same token. A link opened from outside Cadence is shown for the user to
   confirm before anything is sent.
 - **Encrypted and pinned.** All traffic is TLS 1.3 to a certificate the phone
-  pinned at pairing. Release builds contain no plain-HTTP listener. A client
-  that does not pin cannot connect at all.
+  pinned at pairing. A client that does not pin cannot connect at all. The
+  one plain-HTTP listener in a release build is the MCP endpoint for agents
+  on the Mac itself: bound to 127.0.0.1, accepting local connections only,
+  and serving nothing but `MCPServer`, never the library server.
 - **Keys are per device, random and revocable.** 256 bits from the system
   generator. The Mac stores only their SHA-256, in a file only the user can
   read. The client library never writes a key anywhere; the iOS app and a

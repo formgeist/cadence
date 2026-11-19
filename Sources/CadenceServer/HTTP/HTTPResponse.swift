@@ -10,8 +10,10 @@ public struct HTTPStatus: Sendable, Equatable {
     }
 
     public static let ok = HTTPStatus(200, "OK")
+    public static let accepted = HTTPStatus(202, "Accepted")
     public static let partialContent = HTTPStatus(206, "Partial Content")
     public static let badRequest = HTTPStatus(400, "Bad Request")
+    public static let unauthorized = HTTPStatus(401, "Unauthorized")
     public static let forbidden = HTTPStatus(403, "Forbidden")
     public static let notFound = HTTPStatus(404, "Not Found")
     public static let methodNotAllowed = HTTPStatus(405, "Method Not Allowed")
