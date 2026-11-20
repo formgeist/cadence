@@ -24,18 +24,13 @@ ICONSET="${ICONSET:-Icon/AppIcon.iconset}"
 # so the keychain access group can be team-prefixed.
 #
 # Ad-hoc identity is the hash of the exact binary, so every rebuild is a new app
-# to the keychain and the Last.fm session key prompts for a password again. A
-# self-signed code-signing certificate (see CONTRIBUTING.md) gives rebuilds a
-# stable identity instead, so when one named LOCAL_IDENTITY is in the keychain
-# it is the default. Otherwise the build signs ad-hoc; SIGN_IDENTITY=- forces
-# that. The self-signed certificate is untrusted, so it is listed without -v.
-LOCAL_IDENTITY="${LOCAL_IDENTITY:-Cadence Local Signing}"
+# to the keychain: the Last.fm session key prompts again, and the pairing with
+# another Mac and the server's TLS key can no longer be read. A stable
+# certificate fixes that; signing-identity.sh picks one (a self-signed
+# "Cadence Local Signing", then an Apple Development certificate), falling back
+# to ad-hoc. SIGN_IDENTITY=- forces ad-hoc.
 if [ -z "${SIGN_IDENTITY:-}" ]; then
-    if security find-identity -p codesigning 2>/dev/null | grep -qF "\"$LOCAL_IDENTITY\""; then
-        SIGN_IDENTITY="$LOCAL_IDENTITY"
-    else
-        SIGN_IDENTITY="-"
-    fi
+    SIGN_IDENTITY=$("$(dirname "$0")/signing-identity.sh")
 fi
 TEAM_ID="${TEAM_ID:-}"
 
