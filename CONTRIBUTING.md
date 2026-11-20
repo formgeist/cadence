@@ -29,21 +29,31 @@ those with `make app` and the assembled bundle, not `make run`.
 ### A stable signature for local builds
 
 Without a certificate, `make app` signs ad-hoc. An ad-hoc signature is the hash of the exact
-binary, so after every rebuild the keychain treats Cadence as a new app and asks
-for your login password before handing over the Last.fm session key. "Always
-Allow" only lasts until the next build.
+binary, so after every rebuild the keychain treats Cadence as a new app. It asks
+for your login password before handing over the Last.fm session key, and it
+loses the pairing with another Mac — on either side, since the library server's
+TLS key is in the keychain too. "Always Allow" only lasts until the next build.
 
-A self-signed code-signing certificate gives every build the same identity, so
-"Always Allow" sticks. Create one once:
+A real code-signing certificate gives every build the same identity, so
+"Always Allow" sticks and pairings survive updates.
+[`Scripts/signing-identity.sh`](Scripts/signing-identity.sh) picks one, in this
+order:
+
+1. A self-signed certificate named `Cadence Local Signing` (below).
+2. An **Apple Development** certificate — you have one if you are signed in to
+   Xcode with an Apple ID. Nothing to set up.
+3. Ad-hoc, when there is neither.
+
+To make the self-signed certificate instead, once:
 
 1. Open **Keychain Access** (`/System/Library/CoreServices/Applications/`).
 2. Choose **Keychain Access → Certificate Assistant → Create a Certificate…**
 3. Name it `Cadence Local Signing`, set **Identity Type** to *Self Signed Root*
    and **Certificate Type** to *Code Signing*, then create it.
 
-`make app` and `make dmg` sign with it automatically whenever it is in your
-keychain — the build's first line says which identity it used. Pass
-`SIGN_IDENTITY=-` to force an ad-hoc build.
+`make app` and `make dmg` sign with the chosen identity automatically — the
+build's first line says which one it used. Pass `SIGN_IDENTITY=-` to force an
+ad-hoc build.
 
 The `make` targets that run the unbundled binary — `run`, `scan`, `serve`,
 `a11y`, `shots` and `bench` — sign it with the same certificate, through
@@ -54,10 +64,13 @@ hangs with no output. A bare `swift run Cadence …` is still signed ad-hoc and
 can still do that; to pass other arguments, use `Scripts/run-dev.sh …` in its
 place.
 
-The first launch after switching prompts once more; choose "Always Allow".
-Leave `TEAM_ID` unset — a self-signed certificate has no team, and the
-team-prefixed keychain access group would stop the app launching. A build
-signed this way still runs only on your own Mac.
+The first launch after switching prompts once more; choose "Always Allow". A
+pairing made by an ad-hoc build cannot be read by the newly signed one, so pair
+again once on each Mac; from then on it survives updates. Leave `TEAM_ID`
+unset — a self-signed certificate has no team, and the team-prefixed keychain
+access group needs a provisioning profile that a local build does not have;
+without one the app does not launch. A build signed this way still runs only on
+your own Mac.
 
 ### Last.fm credentials
 
