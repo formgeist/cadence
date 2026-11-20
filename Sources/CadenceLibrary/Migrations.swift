@@ -311,8 +311,39 @@ public enum Migrations {
             }
         }
 
+        // A number that goes up whenever what the library server shares
+        // changes: songs, playlists and their contents, and likes. A paired
+        // device asks for it and reloads when it has moved.
+        //
+        // Triggers rather than a bump in each write method, so no writer can
+        // forget it: the scanner, the app and agents all write through
+        // different paths, and some through separate connections.
+        migrator.registerMigration("v16-library-revision") { db in
+            try db.execute(sql: """
+                CREATE TABLE libraryRevision (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    value INTEGER NOT NULL)
+                """)
+            try db.execute(sql: "INSERT INTO libraryRevision (id, value) VALUES (1, 0)")
+            for table in Migrations.sharedTables {
+                for event in ["INSERT", "UPDATE", "DELETE"] {
+                    try db.execute(sql: """
+                        CREATE TRIGGER \(table)_\(event.lowercased())_revision
+                        AFTER \(event) ON \(table)
+                        BEGIN
+                            UPDATE libraryRevision SET value = value + 1 WHERE id = 1;
+                        END
+                        """)
+                }
+            }
+        }
+
         return migrator
     }
+
+    /// The tables whose changes move `libraryRevision`: the ones the library
+    /// server reads from.
+    static let sharedTables = ["track", "playlist", "playlistItem", "likedTrack"]
 
     /// Files the ids of one album and its artist. `INSERT OR IGNORE`, because
     /// every track of an album arrives with the same key.

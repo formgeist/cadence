@@ -454,3 +454,51 @@ struct RemoteBackgroundDownloadsTests {
         #expect(!FileManager.default.fileExists(atPath: file.path))
     }
 }
+
+@Suite("Library revision", .serialized)
+struct LibraryRevisionClientTests {
+
+    @Test("ping reports a revision that moves when the Mac's library changes")
+    func revisionOverTheWire() async throws {
+        try await withServer { server in
+            let client = try await server.pair()
+            let watcher = LibraryRevisionWatcher(client: client)
+            let first = try #require(try await client.libraryRevision())
+
+            // The first check only records; nothing has changed since.
+            #expect(!(try await watcher.check()))
+            #expect(!(try await watcher.check()))
+
+            try await server.store.upsert([
+                Track(url: server.directory.appendingPathComponent("03 New.flac"),
+                      title: "New", artist: "Vera Lindqvist", albumTitle: "Later", duration: 180),
+            ])
+            #expect(try await client.libraryRevision() != first)
+            #expect(try await watcher.check())
+            #expect(!(try await watcher.check()))
+        }
+    }
+
+    @Test("A Mac that reports no revision never counts as changed")
+    func olderMac() async throws {
+        let watcher = LibraryRevisionWatcher(fetch: { nil })
+        #expect(!(try await watcher.check()))
+        #expect(!(try await watcher.check()))
+    }
+
+    @Test("After a reset, the next check only records")
+    func reset() async throws {
+        let values = Revisions([1, 2, 3])
+        let watcher = LibraryRevisionWatcher(fetch: { await values.next() })
+        #expect(!(try await watcher.check()))
+        await watcher.reset()
+        #expect(!(try await watcher.check()))
+        #expect(try await watcher.check())
+    }
+}
+
+private actor Revisions {
+    private var values: [Int64]
+    init(_ values: [Int64]) { self.values = values }
+    func next() -> Int64? { values.isEmpty ? nil : values.removeFirst() }
+}

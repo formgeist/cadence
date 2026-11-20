@@ -305,6 +305,15 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
         }
     }
 
+    /// Goes up whenever songs, playlists or likes change, from any writer.
+    /// Only ever compared for equality: it says that something changed, not
+    /// what or how much.
+    public func libraryRevision() async throws -> Int64 {
+        try await pool.read { db in
+            try Int64.fetchOne(db, sql: "SELECT value FROM libraryRevision WHERE id = 1") ?? 0
+        }
+    }
+
     // MARK: - Search
 
     /// Prefix-matched FTS5. Every token gets a `*` so results appear while the
