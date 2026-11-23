@@ -264,6 +264,101 @@ struct TLSListenerTests {
     }
 }
 
+@Suite("TLS listener, large bodies", .serialized)
+struct TLSLargeBodyTests {
+
+    /// Bytes that differ from one position to the next, so a body that is
+    /// short, or has a piece missing from its middle, cannot match.
+    private static func pattern(_ count: Int) -> Data {
+        var generator = SplitMix(seed: 0xCADE)
+        return Data((0..<count).map { _ in UInt8(truncatingIfNeeded: generator.next()) })
+    }
+
+    private struct SplitMix {
+        var state: UInt64
+        init(seed: UInt64) { state = seed }
+        mutating func next() -> UInt64 {
+            state &+= 0x9E37_79B9_7F4A_7C15
+            var z = state
+            z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+            z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+            return z ^ (z >> 31)
+        }
+    }
+
+    /// A body cut short by the server closing the connection too soon shows
+    /// up on the client as "network connection lost" or as fewer bytes than
+    /// `Content-Length` promised. Both are failures here. Many requests at
+    /// once, because one at a time on an idle loopback rarely loses a byte.
+    @Test("Large in-memory and file bodies arrive in full, many at once, over TLS")
+    func largeBodiesArriveWhole() async throws {
+        let temporary = try TemporaryIdentity()
+        defer { temporary.remove() }
+
+        // About the size of the cover that came up short on the phone.
+        let memoryBody = Self.pattern(555_542)
+        let fileBody = Self.pattern(700_001)
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cadence-large-body-\(UUID().uuidString)")
+        try fileBody.write(to: fileURL)
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+
+        var limits = HTTPListener.Limits()
+        limits.connections = 256
+        let listener = try HTTPListener.tls(
+            identity: temporary.identity, loopbackOnly: true, limits: limits
+        ) { request in
+            if request.path.hasSuffix("/file") {
+                return HTTPResponse(
+                    status: .ok, contentType: "application/octet-stream",
+                    file: FileBody(url: fileURL, offset: 0, length: UInt64(fileBody.count)))
+            }
+            return HTTPResponse(status: .ok, contentType: "application/octet-stream",
+                                body: memoryBody)
+        }
+        let port = try await listener.start()
+        defer { listener.stop() }
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 30
+        configuration.httpMaximumConnectionsPerHost = 32
+        let session = URLSession(
+            configuration: configuration,
+            delegate: PinningDelegate(fingerprint: temporary.identity.fingerprint),
+            delegateQueue: nil)
+        defer { session.invalidateAndCancel() }
+
+        let memoryURL = try #require(URL(string: "https://127.0.0.1:\(port)/memory"))
+        let fileRoute = try #require(URL(string: "https://127.0.0.1:\(port)/file"))
+
+        let rounds = 160
+        let failures = await withTaskGroup(of: String?.self) { group in
+            for index in 0..<rounds {
+                let isFile = index.isMultiple(of: 2)
+                let url = isFile ? fileRoute : memoryURL
+                let expected = isFile ? fileBody : memoryBody
+                group.addTask {
+                    do {
+                        let (data, response) = try await session.data(from: url)
+                        let status = (response as? HTTPURLResponse)?.statusCode
+                        if status != 200 { return "\(url.lastPathComponent): status \(status ?? -1)" }
+                        if data != expected {
+                            return "\(url.lastPathComponent): \(data.count) of \(expected.count) bytes"
+                        }
+                        return nil
+                    } catch {
+                        return "\(url.lastPathComponent): \(error.localizedDescription)"
+                    }
+                }
+            }
+            var failures: [String] = []
+            for await failure in group { if let failure { failures.append(failure) } }
+            return failures
+        }
+        #expect(failures.isEmpty, "\(failures.count) of \(rounds) cut short: \(failures.prefix(5))")
+    }
+}
+
 /// Pins like `PinningDelegate`, and records the negotiated TLS version.
 private final class MetricsCollector: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     private let pin: PinningDelegate

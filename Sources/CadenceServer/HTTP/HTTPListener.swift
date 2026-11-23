@@ -21,6 +21,11 @@ public final class HTTPListener: @unchecked Sendable {
         /// sent. Past this the connection is closed, so a client that asks
         /// for a stream and stops reading does not hold its place for ever.
         public var stallTimeout: TimeInterval = 30
+        /// How long a finished response waits for the client to hang up
+        /// before the connection is closed anyway. The last of a body can
+        /// still be on its way when the server is done sending it; closing
+        /// at once would throw that away.
+        public var lingerTimeout: TimeInterval = 10
 
         public init() {}
     }
@@ -206,6 +211,9 @@ public final class HTTPListener: @unchecked Sendable {
         private var buffer = Data()
         private var isClosed = false
         private var isAnswering = false
+        /// The response has been sent and the connection is waiting for the
+        /// client to hang up. See `finishResponse`.
+        private var isFinishing = false
         /// The response's `onFinish`, held until the connection closes.
         private var finish: (@Sendable () -> Void)?
         /// Counts pieces of a file handed to the network, for the stall check.
@@ -282,8 +290,7 @@ public final class HTTPListener: @unchecked Sendable {
             finish = response.onFinish
             isAnswering = true
             guard let file = response.file, includingBody else {
-                raw.send(content: response.serialized(includingBody: includingBody),
-                         completion: .contentProcessed { [weak self] _ in self?.close() })
+                sendLast(response.serialized(includingBody: includingBody))
                 return
             }
 
@@ -293,8 +300,7 @@ public final class HTTPListener: @unchecked Sendable {
             guard let opened = FileSource.open(file.url),
                   opened.size >= file.offset + file.length,
                   (try? opened.handle.seek(toOffset: file.offset)) != nil else {
-                raw.send(content: HTTPResponse.empty(.internalServerError).serialized(),
-                         completion: .contentProcessed { [weak self] _ in self?.close() })
+                sendLast(HTTPResponse.empty(.internalServerError).serialized())
                 return
             }
             let source = OpenFile(opened.handle)
@@ -315,7 +321,7 @@ public final class HTTPListener: @unchecked Sendable {
         private func pump(_ source: OpenFile, remaining: UInt64) {
             guard !isClosed, remaining > 0 else {
                 source.close()
-                close()
+                finishResponse()
                 return
             }
             let count = Int(min(remaining, UInt64(Self.chunkSize)))
@@ -348,6 +354,56 @@ public final class HTTPListener: @unchecked Sendable {
                             self.pump(source, remaining: remaining - UInt64(chunk.count))
                         }
                     })
+                }
+            }
+        }
+
+        /// Sends the whole of what is left to say, then finishes the response.
+        private func sendLast(_ data: Data) {
+            raw.send(content: data, completion: .contentProcessed { [weak self] error in
+                guard let self else { return }
+                if error != nil { self.close() } else { self.finishResponse() }
+            })
+        }
+
+        /// Ends the response without cutting it short.
+        ///
+        /// `.contentProcessed` means the network stack has taken the bytes,
+        /// not that they have left the machine: with TLS some may still be
+        /// waiting to be encrypted and written. `cancel()` at that moment
+        /// discards them, and the client sees a body shorter than its
+        /// `Content-Length`. So the server says it is done instead (a final
+        /// message: TLS close_notify, then FIN, sent after everything queued
+        /// before them), reads until the client hangs up in turn, and only
+        /// then cancels. A client that never hangs up is cut off after
+        /// `lingerTimeout`.
+        ///
+        /// Reading to the end also matters on its own: closing a socket with
+        /// unread bytes from the client makes the system send a reset, which
+        /// can destroy the response before the client has read it.
+        private func finishResponse() {
+            guard !isClosed, !isFinishing else { return }
+            isFinishing = true
+            raw.send(content: nil, contentContext: .finalMessage, isComplete: true,
+                     completion: .contentProcessed { [weak self] error in
+                guard let self else { return }
+                if error != nil { self.close() } else { self.drainUntilPeerCloses() }
+            })
+            queue.asyncAfter(deadline: .now() + limits.lingerTimeout) { [weak self] in
+                self?.close()
+            }
+        }
+
+        /// Reads and throws away whatever the client still sends, until it
+        /// closes its side or the connection fails.
+        private func drainUntilPeerCloses() {
+            raw.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) {
+                [weak self] _, _, isComplete, error in
+                guard let self, !self.isClosed else { return }
+                if isComplete || error != nil {
+                    self.close()
+                } else {
+                    self.drainUntilPeerCloses()
                 }
             }
         }
