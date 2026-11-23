@@ -257,6 +257,10 @@ struct CadenceGlyph: Sendable {
         "M4.5 19.5l.8-3.9L16.6 4.3a1.8 1.8 0 0 1 2.5 0l.6.6a1.8 1.8 0 0 1 0 2.5L8.4 18.7zM14.5 6.4l3.1 3.1")])
     private static let trash = CadenceGlyph([.line(
         "M4.5 7h15M9.5 7V5a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v2M6.5 7l.8 11.2a1.8 1.8 0 0 0 1.8 1.6h5.8a1.8 1.8 0 0 0 1.8-1.6L17.5 7M10 11v5M14 11v5")])
+    /// The queue: three rows, with a solid play mark on the one playing now.
+    private static let queue = CadenceGlyph([
+        .solid("M4.4 4.6v4.8L8.4 7z", rounding: 1.5), .line("M11.5 7H20M4 12h16M4 17h16"),
+    ])
     private static let addToQueue = CadenceGlyph([.line("M4 7h12M4 12h8M4 17h6M17.5 14v6M14.5 17h6")])
     private static let waveform = CadenceGlyph([.line("M5 10v4M8.5 7v10M12 4.5v15M15.5 8v8M19 10.5v3")])
     private static let folder = CadenceGlyph([.line(
@@ -354,6 +358,7 @@ struct CadenceGlyph: Sendable {
         "minus.circle": remove,
         "pencil": rename,
         "trash": trash,
+        "list.triangle": queue,
         "text.append": addToQueue,
         "waveform": waveform,
         "folder": folder,
