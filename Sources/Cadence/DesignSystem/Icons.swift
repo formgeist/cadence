@@ -269,6 +269,10 @@ struct CadenceGlyph: Sendable {
     /// way add-to-queue and add-to-playlist make room for theirs.
     private static let newFolder = CadenceGlyph([.line(
         "M12.5 19h-7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h3.4l2 2.2h7.6a2 2 0 0 1 2 2v2.8M17.5 14v6M14.5 17h6")])
+    /// Download: an arrow down into a ring, drawn like info and remove.
+    private static let download = CadenceGlyph([.ring(12, 12, 8.5), .line("M12 7.6v8.2M8.7 12.6l3.3 3.3 3.3-3.3")])
+    /// Downloaded: the download ring with a check in it.
+    private static let downloaded = CadenceGlyph([.ring(12, 12, 8.5), .line("M8.4 12.3l2.5 2.5 4.8-5.2")])
     private static let info = CadenceGlyph([.ring(12, 12, 8.5), .line("M12 11v5.4"), .disc(12, 7.9, 0.6, width: 0.9)])
     private static let credits = CadenceGlyph([
         .rect(4, 4, 16, 16, radius: 3.5, filled: false), .ring(9.5, 10, 1.9),
@@ -371,6 +375,8 @@ struct CadenceGlyph: Sendable {
         "arrow.uturn.backward": undo,
         "checkmark": check,
         "arrow.right": arrow,
+        "arrow.down.circle": download,
+        "checkmark.circle": downloaded,
         "square.stack": stack,
         "ellipsis": more,
         "exclamationmark.triangle": warning,
