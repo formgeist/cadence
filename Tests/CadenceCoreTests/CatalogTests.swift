@@ -100,7 +100,29 @@ struct CatalogTests {
         let any = Catalog.Definition(match: .any, rules: rules, sort: .title)
         #expect(any.albums(from: [ecm70, ecm80, other]).map(\.title) == ["A", "B", "C"])
         #expect(all.completeRules.count == 2)
-        #expect(all.summary == "Label is ECM and Decade is 1970s")
+        #expect(all.summary() == "Label is ECM and Decade is 1970s")
+    }
+
+    @Test("Playlist rules take a record with any track in the playlist, by id")
+    func playlists() {
+        let borrowed = track("A")
+        let a = album(borrowed, track("A"))
+        let b = album(track("B"))
+        let mix = Playlist(name: "Late Night", trackIDs: [borrowed.id], duration: 60)
+        let context = Catalog.Context(playlists: [mix])
+        let rule = CatalogRule(field: .playlist, text: mix.id.uuidString)
+        #expect(rule.isComplete)
+        #expect(rule.matches(a, context: context))
+        #expect(!rule.matches(b, context: context))
+        let not = CatalogRule(field: .playlist, op: .isNot, text: mix.id.uuidString)
+        #expect(!not.matches(a, context: context) && not.matches(b, context: context))
+        // A deleted playlist holds nothing.
+        #expect(!rule.matches(a))
+        #expect(rule.summary(in: context) == "Playlist is Late Night")
+        #expect(rule.summary() == "Playlist is a deleted playlist")
+        let definition = Catalog.Definition(rules: [rule])
+        #expect(definition.usesPlaylists)
+        #expect(definition.albums(from: [a, b], context: context).map(\.title) == ["A"])
     }
 
     @Test("A definition with no complete rules holds nothing")

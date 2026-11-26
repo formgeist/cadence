@@ -288,7 +288,11 @@ final class AppModel {
 
     private(set) var albums: [Album] = []
     private(set) var artists: [Artist] = []
-    private(set) var playlists: [Playlist] = []
+    private(set) var playlists: [Playlist] = [] {
+        // A Playlist rule follows the playlist: adding a song to it can put
+        // a record on a catalog's shelf.
+        didSet { if catalogs.contains(where: \.definition.usesPlaylists) { setCatalogs(catalogs) } }
+    }
     private(set) var playlistFolders: [PlaylistFolder] = []
     private(set) var allTracks: [Track] = []
     private(set) var librarySize: Int64 = 0
@@ -860,7 +864,16 @@ final class AppModel {
     /// already in memory, cheap next to a keystroke.
     func previewAlbums(for definition: Catalog.Definition) -> [Album] {
         let now = Date()
-        return albums.filter { definition.matches($0, now: now) }
+        let context = catalogContext
+        return albums.filter { definition.matches($0, now: now, context: context) }
+    }
+
+    /// What catalog rules need besides the albums: the playlists.
+    var catalogContext: Catalog.Context { Catalog.Context(playlists: playlists) }
+
+    /// Playlists A–Z, for a Playlist rule to pick from.
+    var catalogPlaylists: [Playlist] {
+        playlists.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
     /// Values the editor suggests for a field: labels, artists and genres as
@@ -953,11 +966,12 @@ final class AppModel {
     /// Stores the catalogs A–Z and works out each one's albums.
     private func setCatalogs(_ fetched: [Catalog]) {
         let now = Date()
+        let context = catalogContext
         catalogs = fetched.sorted {
             $0.name.localizedStandardCompare($1.name) == .orderedAscending
         }
         albumsByCatalog = Dictionary(catalogs.map { catalog in
-            (catalog.id, catalog.definition.albums(from: albums, now: now))
+            (catalog.id, catalog.definition.albums(from: albums, now: now, context: context))
         }) { first, _ in first }
     }
 

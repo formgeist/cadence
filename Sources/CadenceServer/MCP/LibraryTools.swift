@@ -395,24 +395,27 @@ public struct LibraryTools: MCPToolHandler {
     private func listCatalogs() async throws -> MCPToolResult {
         let catalogs = try await library.catalogs()
         let albums = catalogs.isEmpty ? [] : try await library.albums()
+        let context = Catalog.Context(playlists: catalogs.isEmpty ? [] : try await library.playlists())
         let date = now()
         return MCPToolResult(
             text: "\(catalogs.count) catalogs.",
             structured: ["catalogs": .array(catalogs.map {
-                LibraryJSON.catalog($0, albumCount: $0.definition.albums(from: albums, now: date).count)
+                LibraryJSON.catalog($0, albumCount: $0.definition.albums(
+                    from: albums, now: date, context: context).count, context: context)
             })])
     }
 
     private func previewCatalog(_ arguments: MCPArguments) async throws -> MCPToolResult {
         let definition = try CatalogInput.definition(from: arguments.raw("definition"))
         let (limit, offset) = try arguments.page()
-        let matched = definition.albums(from: try await library.albums(), now: now())
+        let context = try await CatalogInput.context(for: definition, in: library)
+        let matched = definition.albums(from: try await library.albums(), now: now(), context: context)
         let page = Page(matched, limit: limit, offset: offset)
         guard case .object(var object) = page.json("albums", LibraryJSON.album) else {
             return .failure("Internal error.")
         }
-        object["definition"] = LibraryJSON.definition(definition)
-        return MCPToolResult(text: "\(definition.summary): " + page.summary("albums"),
+        object["definition"] = LibraryJSON.definition(definition, context: context)
+        return MCPToolResult(text: "\(definition.summary(in: context)): " + page.summary("albums"),
                              structured: .object(object))
     }
 

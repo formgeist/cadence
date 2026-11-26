@@ -111,6 +111,17 @@ enum MenuMetrics {
     static let iconBox: CGFloat = 16
     static let iconGap: CGFloat = 10
     static let rowInset: CGFloat = 8
+    /// Room beside the rows for the scroller when a menu scrolls.
+    static let scrollerLane: CGFloat = 12
+
+    /// How tall a surface holding `items` is when nothing caps it.
+    @MainActor static func height(of items: [MenuItem]) -> CGFloat {
+        let rows = items.reduce(CGFloat(0)) { total, item in
+            if case .separator = item.kind { return total + separatorHeight }
+            return total + rowHeight
+        }
+        return rows + rowSpacing * CGFloat(max(items.count - 1, 0)) + surfacePadding * 2
+    }
 }
 
 // MARK: - Level state
@@ -141,21 +152,20 @@ struct MenuSurface: View {
     var state: MenuLevelState
     var onFire: (MenuItem) -> Void
     var onHoverSubmenu: (MenuItem) -> Void
+    /// Taller lists than this scroll inside the surface. Nil lets the menu be
+    /// as tall as its rows, which suits the app's fixed lists of verbs; a
+    /// picker over the user's own things (playlists) can grow without end.
+    var maxHeight: CGFloat? = nil
 
     private static let space = "cadence.menu.surface"
 
     var body: some View {
-        VStack(alignment: .leading, spacing: MenuMetrics.rowSpacing) {
-            ForEach(items) { item in
-                row(for: item)
-            }
-        }
-        .padding(MenuMetrics.surfacePadding)
-        .frame(minWidth: MenuMetrics.minWidth,
-               maxWidth: MenuMetrics.maxWidth,
-               alignment: .leading)
-        .fixedSize()
-        .background {
+        content
+            .frame(minWidth: MenuMetrics.minWidth,
+                   maxWidth: MenuMetrics.maxWidth,
+                   alignment: .leading)
+            .fixedSize()
+            .background {
             RoundedRectangle(cornerRadius: Tokens.Radius.popover, style: .continuous)
                 .fill(Tokens.Palette.popover)
         }
@@ -167,6 +177,42 @@ struct MenuSurface: View {
         .onPreferenceChange(MenuRowFrameKey.self) { frames in
             // Nonisolated in Swift 6; the state it feeds is main-actor bound.
             MainActor.assumeIsolated { state.rowFrames = frames }
+        }
+    }
+
+    private var rows: some View {
+        VStack(alignment: .leading, spacing: MenuMetrics.rowSpacing) {
+            ForEach(items) { item in
+                row(for: item).id(item.id)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if let maxHeight, MenuMetrics.height(of: items) > maxHeight {
+            ScrollViewReader { proxy in
+                // Padded outside the scroll view, not inside it, so the
+                // scroller stays clear of the rounded corners and the border
+                // instead of running under them. The trailing padding leaves
+                // the scroller its own lane beside the rows.
+                ScrollView(.vertical) {
+                    rows.padding(.leading, MenuMetrics.surfacePadding)
+                        .padding(.trailing, MenuMetrics.scrollerLane)
+                }
+                .scrollIndicators(.automatic)
+                .padding(.vertical, MenuMetrics.surfacePadding)
+                .padding(.trailing, 2)
+                .frame(height: maxHeight)
+                    // The arrow keys can walk past the bottom edge; follow
+                    // them. The pointer only reaches rows already in view.
+                    .onChange(of: state.focused) { _, focused in
+                        guard state.focusFromKeyboard, let focused else { return }
+                        proxy.scrollTo(focused)
+                    }
+            }
+        } else {
+            rows.padding(MenuMetrics.surfacePadding)
         }
     }
 
@@ -427,12 +473,13 @@ final class MenuPresenter {
     func present(_ items: [MenuItem],
                  from anchor: CGRect,
                  gap: CGFloat = MenuMetrics.anchorGap,
+                 maxHeight: CGFloat? = nil,
                  in parent: NSWindow?,
                  onDismiss: @escaping () -> Void) {
         dismiss()
         self.onDismiss = onDismiss
 
-        let level = makeLevel(items)
+        let level = makeLevel(items, maxHeight: maxHeight)
         place(level.panel, below: anchor, gap: gap)
         show(level, in: parent)
         levels = [level]
@@ -466,7 +513,7 @@ final class MenuPresenter {
 
     // MARK: Levels
 
-    private func makeLevel(_ items: [MenuItem]) -> Level {
+    private func makeLevel(_ items: [MenuItem], maxHeight: CGFloat? = nil) -> Level {
         let state = MenuLevelState()
         let panel = MenuPanel(contentRect: NSRect(x: 0, y: 0, width: 100, height: 100),
                               styleMask: [.borderless, .nonactivatingPanel],
@@ -490,7 +537,8 @@ final class MenuPresenter {
             items: items,
             state: state,
             onFire: { [weak self] item in self?.fire(item) },
-            onHoverSubmenu: { [weak self] item in self?.openSubmenu(item, from: level) }
+            onHoverSubmenu: { [weak self] item in self?.openSubmenu(item, from: level) },
+            maxHeight: maxHeight
         )
 
         let hosting = MenuHostingView(rootView: surface)
@@ -818,6 +866,8 @@ private struct ScreenRectReader: NSViewRepresentable {
 /// nested inside another button.
 struct MenuAnchor<Label: View>: View {
     var items: () -> [MenuItem]
+    /// Past this the menu scrolls; see `MenuSurface.maxHeight`.
+    var maxHeight: CGFloat? = nil
     @ViewBuilder var label: (Bool, @escaping () -> Void) -> Label
 
     @State private var isOpen = false
@@ -844,7 +894,8 @@ struct MenuAnchor<Label: View>: View {
         let anchor = probe.rect
         guard anchor != .zero else { return }
         isOpen = true
-        MenuPresenter.shared.present(items(), from: anchor, in: probe.window) {
+        MenuPresenter.shared.present(items(), from: anchor, maxHeight: maxHeight,
+                                     in: probe.window) {
             isOpen = false
         }
     }

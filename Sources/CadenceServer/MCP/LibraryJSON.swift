@@ -113,20 +113,22 @@ enum LibraryJSON {
         return .object(object)
     }
 
-    static func definition(_ definition: Catalog.Definition) -> JSONValue {
+    static func definition(_ definition: Catalog.Definition,
+                           context: Catalog.Context = .empty) -> JSONValue {
         [
             "match": .string(definition.match.rawValue),
             "rules": .array(definition.rules.map(rule)),
             "sort": .string(definition.sort.rawValue),
-            "summary": .string(definition.summary),
+            "summary": .string(definition.summary(in: context)),
         ]
     }
 
-    static func catalog(_ catalog: Catalog, albumCount: Int) -> JSONValue {
+    static func catalog(_ catalog: Catalog, albumCount: Int,
+                        context: Catalog.Context = .empty) -> JSONValue {
         [
             "id": .string(catalog.id.uuidString),
             "name": .string(catalog.name),
-            "definition": definition(catalog.definition),
+            "definition": definition(catalog.definition, context: context),
             "albumCount": .integer(albumCount),
             "createdAt": date(catalog.createdAt),
             "updatedAt": date(catalog.updatedAt),
@@ -172,12 +174,14 @@ enum CatalogInput {
                 number and upperNumber with between. decade takes number, the decade's \
                 first year (1970), with is or isNot. format takes text, a codec name \
                 (FLAC, ALAC, MP3…) or lossless, lossy, hires, with is or isNot. dateAdded \
-                takes number, a count of days, with inLast or notInLast.
+                takes number, a count of days, with inLast or notInLast. playlist takes \
+                text, a playlist id from list_playlists, with is or isNot; an album \
+                matches when any of its tracks is in that playlist.
                 """),
             "items": Schema.object([
                 "field": Schema.choice("The field to test.", CatalogRule.Field.allCases.map(\.rawValue)),
                 "op": Schema.choice("The test.", CatalogRule.Operator.allCases.map(\.rawValue)),
-                "text": Schema.string("For label, artist, genre and format."),
+                "text": Schema.string("For label, artist, genre, format, and playlist (its id)."),
                 "number": Schema.integer("For year, decade and dateAdded."),
                 "upperNumber": Schema.integer("The last year, for year between."),
             ], required: ["field", "op"]),
@@ -201,6 +205,21 @@ enum CatalogInput {
             try rule(from: raw, number: index + 1)
         }
         return Catalog.Definition(match: match, rules: rules, sort: sort)
+    }
+
+    /// The playlists a definition's rules name, read only when a rule names
+    /// one. A playlist id that is not in the library is refused here rather
+    /// than saved as a rule that never matches.
+    static func context(for definition: Catalog.Definition,
+                        in library: SQLiteLibraryStore) async throws -> Catalog.Context {
+        guard definition.usesPlaylists else { return .empty }
+        let context = Catalog.Context(playlists: try await library.playlists())
+        for (index, rule) in definition.rules.enumerated() where rule.field == .playlist {
+            guard let id = rule.playlistID, context.playlists[id] != nil else {
+                throw MCPToolError("Rule \(index + 1): no playlist has the id “\(rule.text)”.")
+            }
+        }
+        return context
     }
 
     private static func rule(from value: JSONValue, number: Int) throws -> CatalogRule {
