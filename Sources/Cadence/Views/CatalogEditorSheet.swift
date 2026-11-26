@@ -52,7 +52,7 @@ struct CatalogEditorSheet: View {
                 Text(isCreating ? "New catalog" : "Edit catalog")
                     .font(Tokens.Typography.sans(16, .bold))
                     .foregroundStyle(Tokens.Palette.textPrimary)
-                Text("Gather albums by label, year, format and more. New albums that fit join on their own.")
+                Text("Gather albums by label, year, playlist and more. New albums that fit join on their own.")
                     .font(Tokens.Typography.caption)
                     .foregroundStyle(Tokens.Palette.textTertiary)
             }
@@ -122,7 +122,7 @@ struct CatalogEditorSheet: View {
                     Text(matches.count == 1 ? "1 album matches" : "\(matches.count) albums match")
                         .font(Tokens.Typography.sans(13, .semibold))
                         .foregroundStyle(Tokens.Palette.textPrimary)
-                    Text(canSave ? definition.summary : "Fill in a rule to see what it picks out.")
+                    Text(canSave ? definition.summary(in: model.catalogContext) : "Fill in a rule to see what it picks out.")
                         .font(Tokens.Typography.caption)
                         .foregroundStyle(Tokens.Palette.textTertiary)
                         .lineLimit(1)
@@ -244,6 +244,19 @@ private struct RuleRow: View {
                     items += values.dropFirst(3).map(formatChoice)
                 }
                 return items
+            }
+        case .playlist:
+            let playlists = model.catalogPlaylists
+            DropdownField(title: rule.playlistID == nil ? "Choose playlist"
+                                                        : rule.valueDescription(in: model.catalogContext),
+                          accessibilityLabel: "Playlist", minWidth: 180) {
+                playlists.isEmpty
+                    ? [.action("No playlists yet", "info.circle", enabled: false) {}]
+                    : playlists.map { playlist in
+                        .choice(playlist.name, isOn: rule.playlistID == playlist.id) {
+                            rule.text = playlist.id.uuidString
+                        }
+                    }
             }
         case .dateAdded:
             DropdownField(title: CatalogRule.spanTitle(days: rule.number ?? 30),
@@ -526,10 +539,15 @@ private struct DropdownField: View {
     var minWidth: CGFloat
     var items: () -> [MenuItem]
 
+    /// About ten rows. The playlist picker lists every playlist, and a long
+    /// list should scroll rather than run down past the sheet to the screen's
+    /// edge.
+    private static let maxMenuHeight: CGFloat = 320
+
     @State private var isHovering = false
 
     var body: some View {
-        MenuAnchor(items: items) { isOpen, toggle in
+        MenuAnchor(items: items, maxHeight: Self.maxMenuHeight) { isOpen, toggle in
             Button(action: toggle) {
                 HStack(spacing: 6) {
                     Text(title)

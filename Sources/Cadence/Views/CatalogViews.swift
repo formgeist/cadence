@@ -294,7 +294,7 @@ struct CatalogDetailView: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(catalog.definition.summary)
+                    Text(catalog.definition.summary(in: model.catalogContext))
                         .font(Tokens.Typography.sans(13.5, .semibold))
                         .foregroundStyle(Tokens.Palette.textSecondary)
                         .lineLimit(2)

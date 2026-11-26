@@ -323,6 +323,7 @@ public struct LibraryWriteTools: MCPToolHandler {
     private func saveCatalog(_ arguments: MCPArguments) async throws -> MCPToolResult {
         let name = try Self.name(arguments)
         let definition = try CatalogInput.definition(from: arguments.raw("definition"))
+        let context = try await CatalogInput.context(for: definition, in: library)
         let date = now()
         let catalog: Catalog
         let created: Bool
@@ -341,10 +342,11 @@ public struct LibraryWriteTools: MCPToolHandler {
         }
         try await library.saveCatalog(catalog)
         await onChange(.init([.catalogs], "\(created ? "Created" : "Changed") the catalog “\(name)”"))
-        let count = definition.albums(from: try await library.albums(), now: date).count
+        let count = definition.albums(from: try await library.albums(), now: date,
+                                      context: context).count
         return MCPToolResult(
-            text: "\(created ? "Created" : "Saved") “\(name)”: \(definition.summary), \(count) albums.",
-            structured: LibraryJSON.catalog(catalog, albumCount: count))
+            text: "\(created ? "Created" : "Saved") “\(name)”: \(definition.summary(in: context)), \(count) albums.",
+            structured: LibraryJSON.catalog(catalog, albumCount: count, context: context))
     }
 
     private func deleteCatalog(_ arguments: MCPArguments) async throws -> MCPToolResult {

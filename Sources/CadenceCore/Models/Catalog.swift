@@ -45,26 +45,52 @@ public struct Catalog: Identifiable, Hashable, Sendable {
         /// Whether one album belongs. Never true for a definition with no
         /// complete rules: an empty catalog is a clearer answer than one that
         /// quietly holds the whole library.
-        public func matches(_ album: Album, now: Date = Date()) -> Bool {
+        public func matches(_ album: Album, now: Date = Date(),
+                            context: Catalog.Context = .empty) -> Bool {
             let rules = completeRules
             guard !rules.isEmpty else { return false }
             switch match {
-            case .all: return rules.allSatisfy { $0.matches(album, now: now) }
-            case .any: return rules.contains { $0.matches(album, now: now) }
+            case .all: return rules.allSatisfy { $0.matches(album, now: now, context: context) }
+            case .any: return rules.contains { $0.matches(album, now: now, context: context) }
             }
         }
 
         /// The albums from `albums` that belong, in the catalog's own order.
-        public func albums(from albums: [Album], now: Date = Date()) -> [Album] {
-            sort.sorted(albums.filter { matches($0, now: now) })
+        public func albums(from albums: [Album], now: Date = Date(),
+                           context: Catalog.Context = .empty) -> [Album] {
+            sort.sorted(albums.filter { matches($0, now: now, context: context) })
         }
+
+        /// Whether any rule reads something besides the album itself, so the
+        /// catalog has to be worked out again when that changes.
+        public var usesPlaylists: Bool { rules.contains { $0.field == .playlist } }
 
         /// `Label is ECM and Decade is 1970s` — the rules as one line, for the
         /// catalog page header.
-        public var summary: String {
-            completeRules.map(\.summary)
+        public func summary(in context: Catalog.Context = .empty) -> String {
+            completeRules.map { $0.summary(in: context) }
                 .joined(separator: match == .all ? " and " : " or ")
         }
+    }
+
+    /// What a rule may need beyond the album: which tracks each playlist
+    /// holds, and what it is called. Built once per pass over the library, not
+    /// per album.
+    public struct Context: Sendable {
+        public struct PlaylistEntry: Sendable {
+            public var name: String
+            public var trackIDs: Set<Track.ID>
+        }
+
+        public var playlists: [Playlist.ID: PlaylistEntry]
+
+        public init(playlists: [Playlist] = []) {
+            self.playlists = Dictionary(playlists.map {
+                ($0.id, PlaylistEntry(name: $0.name, trackIDs: Set($0.trackIDs)))
+            }) { first, _ in first }
+        }
+
+        public static let empty = Context()
     }
 
     /// Whether an album has to pass every rule or just one.
@@ -151,7 +177,8 @@ public struct CatalogRule: Identifiable, Hashable, Sendable, Codable {
     public var id: UUID
     public var field: Field
     public var op: Operator
-    /// The label, artist or genre name; or a `FormatChoice` value.
+    /// The label, artist or genre name; a `FormatChoice` value; or a
+    /// playlist's id — by id, so renaming the playlist keeps the rule.
     public var text: String
     /// The year, the decade's first year (`1970`), or a number of days.
     public var number: Int?
@@ -169,7 +196,7 @@ public struct CatalogRule: Identifiable, Hashable, Sendable, Codable {
     }
 
     public enum Field: String, CaseIterable, Identifiable, Hashable, Sendable, Codable {
-        case label, artist, genre, year, decade, format, dateAdded
+        case label, artist, genre, year, decade, format, dateAdded, playlist
 
         public var id: String { rawValue }
 
@@ -182,6 +209,7 @@ public struct CatalogRule: Identifiable, Hashable, Sendable, Codable {
             case .decade: "Decade"
             case .format: "Format"
             case .dateAdded: "Date Added"
+            case .playlist: "Playlist"
             }
         }
 
@@ -191,7 +219,7 @@ public struct CatalogRule: Identifiable, Hashable, Sendable, Codable {
             switch self {
             case .label, .artist, .genre: [.is, .isNot, .contains, .doesNotContain]
             case .year: [.is, .between, .before, .after]
-            case .decade, .format: [.is, .isNot]
+            case .decade, .format, .playlist: [.is, .isNot]
             case .dateAdded: [.inLast, .notInLast]
             }
         }
@@ -271,7 +299,7 @@ public struct CatalogRule: Identifiable, Hashable, Sendable, Codable {
     /// Whether the rule says enough to test an album against.
     public var isComplete: Bool {
         switch field {
-        case .label, .artist, .genre, .format:
+        case .label, .artist, .genre, .format, .playlist:
             return !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         case .year:
             return op == .between ? number != nil && upperNumber != nil : number != nil
@@ -283,12 +311,15 @@ public struct CatalogRule: Identifiable, Hashable, Sendable, Codable {
     }
 
     /// `Label is ECM`, `Year is between 1965 and 1975`.
-    public var summary: String {
-        "\(field.title) \(op.title) \(valueDescription)"
+    public func summary(in context: Catalog.Context = .empty) -> String {
+        "\(field.title) \(op.title) \(valueDescription(in: context))"
     }
 
-    public var valueDescription: String {
+    public func valueDescription(in context: Catalog.Context = .empty) -> String {
         switch field {
+        case .playlist:
+            guard let id = playlistID else { return "…" }
+            return context.playlists[id]?.name ?? "a deleted playlist"
         case .label, .artist, .genre:
             return text.trimmingCharacters(in: .whitespacesAndNewlines)
         case .format:
@@ -314,7 +345,14 @@ public struct CatalogRule: Identifiable, Hashable, Sendable, Codable {
         if !(wasText && field.isText) { text = "" }
         if field == .decade, let year = number { number = year / 10 * 10 }
         if field == .dateAdded { number = Self.dateAddedSpans[1] }
-        if [.label, .artist, .genre, .format].contains(field) { number = nil; upperNumber = nil }
+        if [.label, .artist, .genre, .format, .playlist].contains(field) {
+            number = nil; upperNumber = nil
+        }
+    }
+
+    /// The playlist a Playlist rule names.
+    public var playlistID: Playlist.ID? {
+        field == .playlist ? UUID(uuidString: text) : nil
     }
 
     // MARK: Matching
@@ -325,12 +363,13 @@ public struct CatalogRule: Identifiable, Hashable, Sendable, Codable {
             .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
     }
 
-    public func matches(_ album: Album, now: Date = Date()) -> Bool {
-        let result = matchesPositive(album, now: now)
+    public func matches(_ album: Album, now: Date = Date(),
+                        context: Catalog.Context = .empty) -> Bool {
+        let result = matchesPositive(album, now: now, context: context)
         return op.isNegated ? !result : result
     }
 
-    private func matchesPositive(_ album: Album, now: Date) -> Bool {
+    private func matchesPositive(_ album: Album, now: Date, context: Catalog.Context) -> Bool {
         switch field {
         case .label:
             return matchesText(album.tracks.compactMap(\.label))
@@ -358,6 +397,12 @@ public struct CatalogRule: Identifiable, Hashable, Sendable, Codable {
         case .dateAdded:
             guard let days = number else { return false }
             return album.dateAdded >= now.addingTimeInterval(-Double(days) * 86_400)
+        case .playlist:
+            // Any track will do: a playlist that borrows one song from a
+            // record is enough to put the record on the shelf. A deleted
+            // playlist holds nothing.
+            guard let id = playlistID, let entry = context.playlists[id] else { return false }
+            return album.tracks.contains { entry.trackIDs.contains($0.id) }
         }
     }
 
