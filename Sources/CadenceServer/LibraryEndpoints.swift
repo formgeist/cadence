@@ -57,17 +57,19 @@ struct LibraryEndpoints: Sendable {
     }
 
     /// Every artist, in the store's order, each with the picture the Mac app
-    /// shows: the one the user chose, else a cover from one of their albums.
+    /// shows: the one the user chose, else an `artist.jpg` from their folder,
+    /// else a cover from one of their albums.
     private func artistItems() async throws -> [ArtistItem] {
         let artists = try await library.artists()
         let custom = try await library.customArtistImages()
+        let folder = try await library.folderArtistImages()
         var covers: [String: Artwork.ID] = [:]
         for summary in try await library.albumSummaries().sorted(by: Self.byYear) {
             guard let artwork = summary.artworkID,
                   covers[summary.key.albumArtist] == nil else { continue }
             covers[summary.key.albumArtist] = artwork
         }
-        return artists.map { ArtistItem($0, coverArt: custom[$0.name] ?? covers[$0.name]) }
+        return artists.map { ArtistItem($0, coverArt: custom[$0.name] ?? folder[$0.name] ?? covers[$0.name]) }
     }
 
     static func indexLetter(for name: String) -> String {
@@ -88,12 +90,13 @@ struct LibraryEndpoints: Sendable {
         let summaries = try await library.albumSummaries(byArtist: name)
         // The id table remembers artists whose music has left the library.
         guard !summaries.isEmpty else { throw EndpointFailure.notFound }
-        let custom = try await library.customArtistImages()[name]
+        let chosen = try await library.customArtistImages()[name]
+        let folder = try await library.folderArtistImages()[name]
         let albums = summaries.sorted(by: Self.byYear)
         let artist = Artist(name: name, albumCount: summaries.count,
                             trackCount: summaries.reduce(0) { $0 + $1.trackCount }, formats: [])
         return ArtistItem(artist,
-                          coverArt: custom ?? albums.compactMap(\.artworkID).first,
+                          coverArt: chosen ?? folder ?? albums.compactMap(\.artworkID).first,
                           albums: albums.map(AlbumItem.init))
     }
 

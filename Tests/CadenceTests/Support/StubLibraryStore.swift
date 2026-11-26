@@ -57,6 +57,10 @@ actor StubLibraryStore: LibraryStore {
         try await inner.customArtistImages()
     }
 
+    func folderArtistImages() async throws -> [String: Artwork.ID] {
+        try await inner.folderArtistImages()
+    }
+
     func setCustomArtistImage(_ id: Artwork.ID?, forArtist name: String) async throws {
         try await inner.setCustomArtistImage(id, forArtist: name)
     }

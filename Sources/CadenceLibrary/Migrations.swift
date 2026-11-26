@@ -338,6 +338,32 @@ public enum Migrations {
             }
         }
 
+        // Artist pictures found on disk — an `artist.jpg` in the artist's
+        // folder — kept apart from `artistImage` so a rescan can rewrite them
+        // freely without ever touching a picture the user chose. Keyed by the
+        // image's path: one artist can have a folder in more than one watched
+        // root, and a scan only replaces the rows under the root it scanned.
+        // `fingerprint` (size and mtime) lets a rescan skip re-reading an image
+        // that has not changed. Triggers as in v16, so a paired device sees a
+        // new picture without anything else in the library changing.
+        migrator.registerMigration("v17-folder-artist-images") { db in
+            try db.create(table: "folderArtistImage") { t in
+                t.primaryKey("path", .text)
+                t.column("artistName", .text).notNull()
+                t.column("artworkID", .text).notNull()
+                t.column("fingerprint", .text).notNull()
+            }
+            for event in ["INSERT", "UPDATE", "DELETE"] {
+                try db.execute(sql: """
+                    CREATE TRIGGER folderArtistImage_\(event.lowercased())_revision
+                    AFTER \(event) ON folderArtistImage
+                    BEGIN
+                        UPDATE libraryRevision SET value = value + 1 WHERE id = 1;
+                    END
+                    """)
+            }
+        }
+
         return migrator
     }
 

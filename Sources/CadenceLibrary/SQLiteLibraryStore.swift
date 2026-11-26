@@ -629,6 +629,8 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
             ids.formUnion(try String.fetchAll(
                 db, sql: "SELECT DISTINCT artworkID FROM artistImage"))
             ids.formUnion(try String.fetchAll(
+                db, sql: "SELECT DISTINCT artworkID FROM folderArtistImage"))
+            ids.formUnion(try String.fetchAll(
                 db, sql: "SELECT DISTINCT artworkID FROM playlist WHERE artworkID IS NOT NULL"))
             return ids
         }
@@ -655,6 +657,91 @@ public final class SQLiteLibraryStore: LibraryStore, Sendable {
             } else {
                 try db.execute(sql: "DELETE FROM artistImage WHERE artistName = ?",
                                arguments: [name])
+            }
+        }
+    }
+
+    // MARK: - Folder artist images
+
+    /// One `artist.jpg` the scanner found on disk and the artist it belongs to.
+    public struct FolderArtistImage: Sendable, Equatable {
+        public var path: URL
+        public var artistName: String
+        public var artworkID: Artwork.ID
+        public var fingerprint: String
+
+        public init(path: URL, artistName: String, artworkID: Artwork.ID, fingerprint: String) {
+            self.path = path
+            self.artistName = artistName
+            self.artworkID = artworkID
+            self.fingerprint = fingerprint
+        }
+    }
+
+    /// Artist name → the picture found in that artist's folder. When an artist
+    /// has more than one (a folder in each of two watched roots), the first by
+    /// path wins, so the answer does not change from one call to the next.
+    public func folderArtistImages() async throws -> [String: Artwork.ID] {
+        try await pool.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT artistName, artworkID FROM folderArtistImage ORDER BY path
+                """)
+                .reduce(into: [String: Artwork.ID]()) { result, row in
+                    let name: String = row["artistName"]
+                    if result[name] == nil { result[name] = row["artworkID"] }
+                }
+        }
+    }
+
+    /// Every folder image on file, by path, so the scanner can skip re-reading
+    /// one whose size and mtime have not changed.
+    public func folderArtistImageRecords() async throws -> [URL: FolderArtistImage] {
+        try await pool.read { db in
+            try Row.fetchAll(db, sql: "SELECT * FROM folderArtistImage")
+                .reduce(into: [URL: FolderArtistImage]()) { result, row in
+                    guard let url = URL(string: row["path"]) else { return }
+                    result[url] = FolderArtistImage(
+                        path: url, artistName: row["artistName"],
+                        artworkID: row["artworkID"], fingerprint: row["fingerprint"])
+                }
+        }
+    }
+
+    /// Replaces the folder images under `root` with `images`, leaving those of
+    /// every other watched root alone. Rows that come back unchanged are not
+    /// rewritten, so an idle rescan does not move the library revision.
+    public func replaceFolderArtistImages(under root: URL, with images: [FolderArtistImage]) async throws {
+        let existing = try await folderArtistImageRecords()
+        let wanted = Dictionary(images.map { ($0.path, $0) }) { first, _ in first }
+        try await pool.write { db in
+            for (url, _) in existing
+            where LibraryScanner.isDescendant(url, of: root) && wanted[url] == nil {
+                try db.execute(sql: "DELETE FROM folderArtistImage WHERE path = ?",
+                               arguments: [url.absoluteString])
+            }
+            for image in images where existing[image.path] != image {
+                try db.execute(sql: """
+                    INSERT INTO folderArtistImage (path, artistName, artworkID, fingerprint)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(path) DO UPDATE SET
+                        artistName = excluded.artistName,
+                        artworkID = excluded.artworkID,
+                        fingerprint = excluded.fingerprint
+                    """, arguments: [image.path.absoluteString, image.artistName,
+                                     image.artworkID, image.fingerprint])
+            }
+        }
+    }
+
+    /// Path and album artist of every track under `root` — what the scanner
+    /// needs to tie an `artist.jpg` to an artist, including for the tracks it
+    /// skipped as unchanged.
+    public func albumArtists(under root: URL) async throws -> [(url: URL, albumArtist: String)] {
+        try await pool.read { db in
+            try Row.fetchAll(db, sql: "SELECT url, albumArtist FROM track").compactMap { row in
+                guard let url = URL(string: row["url"]),
+                      LibraryScanner.isDescendant(url, of: root) else { return nil }
+                return (url, row["albumArtist"])
             }
         }
     }

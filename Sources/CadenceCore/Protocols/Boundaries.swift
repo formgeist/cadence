@@ -190,6 +190,10 @@ public protocol LibraryStore: Sendable {
     /// themselves live in the `ArtworkStore`; this only records which id an
     /// artist points at.
     func setCustomArtistImage(_ id: Artwork.ID?, forArtist name: String) async throws
+    /// Artist name → the `artist.jpg` the scanner found in that artist's
+    /// folder. Ranks below `customArtistImages` and above the album-cover
+    /// default. Empty by default, for stores that never scan a folder.
+    func folderArtistImages() async throws -> [String: Artwork.ID]
 
     /// Every catalog, in the order they were made. Only the rules come back:
     /// which albums each holds is worked out against the library by the
@@ -218,6 +222,7 @@ extension LibraryStore {
     public func setPlaylistImage(_ id: Artwork.ID?, forPlaylist playlistID: Playlist.ID) async throws {}
     public func customArtistImages() async throws -> [String: Artwork.ID] { [:] }
     public func setCustomArtistImage(_ id: Artwork.ID?, forArtist name: String) async throws {}
+    public func folderArtistImages() async throws -> [String: Artwork.ID] { [:] }
 }
 
 // MARK: - Settings
