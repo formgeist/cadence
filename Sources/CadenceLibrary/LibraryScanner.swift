@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import CadenceCore
 
 /// Imports a folder into the store.
@@ -239,6 +240,12 @@ public actor LibraryScanner {
             progress.removed = removed.count
         }
 
+        // After the tracks, so the artist each picture belongs to is worked
+        // out from the library as it now stands. Runs on every scan, not just
+        // a forced one: no audio file changes when a picture is dropped in.
+        try Task.checkCancellation()
+        try await refreshFolderArtistImages(under: root)
+
         progress.currentFile = nil
         onProgress?(progress)
 
@@ -270,6 +277,86 @@ public actor LibraryScanner {
         let data = LocalArtworkFinder.artwork(in: folder)
         localArtworkCache[folder] = data
         return data
+    }
+
+    // MARK: - Folder artist images
+
+    /// The names an artist's own picture goes by, in order of preference.
+    static let artistImageNames = ["artist.jpg", "artist.jpeg", "artist.png"]
+
+    /// Finds an `artist.jpg` for each artist under `root` and records it.
+    ///
+    /// A picture belongs to the folder it sits in and everything below it, so
+    /// each track looks up from its own folder to the root for the nearest
+    /// one. That covers `Artist/Album/` and `Artist/Album/CD1/` alike without
+    /// assuming how deep a library is laid out. The picture then goes to the
+    /// album artist holding more than half the tracks under it. A single
+    /// collaboration album in an artist's folder does not take the picture
+    /// away, and one at the top of a mixed folder goes to nobody rather than
+    /// to whichever artist sorts first.
+    ///
+    /// The image is read only when its size or mtime has changed since the
+    /// last scan, so an idle rescan costs one `stat` per folder.
+    private func refreshFolderArtistImages(under root: URL) async throws {
+        guard let artwork else { return }
+        let tracks = try await store.albumArtists(under: root)
+        let known = try await store.folderArtistImageRecords()
+        let rootDepth = root.pathComponents.count
+
+        var imageInFolder: [URL: URL?] = [:]
+        var artistsByImage: [URL: [String: Int]] = [:]
+        for (url, artist) in tracks {
+            var folder = url.deletingLastPathComponent()
+            while folder.pathComponents.count >= rootDepth {
+                let image: URL?
+                if let cached = imageInFolder[folder] {
+                    image = cached
+                } else {
+                    image = Self.artistImage(in: folder)
+                    imageInFolder[folder] = image
+                }
+                if let image {
+                    artistsByImage[image, default: [:]][artist, default: 0] += 1
+                    break
+                }
+                folder = folder.deletingLastPathComponent()
+            }
+        }
+
+        var images: [SQLiteLibraryStore.FolderArtistImage] = []
+        for (path, counts) in artistsByImage.sorted(by: { $0.key.path < $1.key.path }) {
+            let total = counts.values.reduce(0, +)
+            guard let (artist, count) = counts.max(by: { $0.value < $1.value }),
+                  count * 2 > total,
+                  let fingerprint = FLACMetadataReader.fingerprint(for: path) else { continue }
+
+            if var previous = known[path], previous.fingerprint == fingerprint {
+                previous.artistName = artist
+                images.append(previous)
+                continue
+            }
+            guard let data = try? Data(contentsOf: path), Self.decodesAsImage(data),
+                  let id = try? await artwork.store(data) else { continue }
+            images.append(.init(path: path, artistName: artist, artworkID: id,
+                                fingerprint: fingerprint))
+        }
+        try await store.replaceFolderArtistImages(under: root, with: images)
+    }
+
+    private static func artistImage(in folder: URL) -> URL? {
+        let manager = FileManager.default
+        for name in artistImageNames {
+            let candidate = folder.appendingPathComponent(name)
+            if manager.fileExists(atPath: candidate.path) { return candidate }
+        }
+        return nil
+    }
+
+    /// A half-copied or mislabelled file must not replace a working cover with
+    /// a blank one.
+    private static func decodesAsImage(_ data: Data) -> Bool {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return false }
+        return CGImageSourceGetCount(source) > 0
     }
 
     // MARK: - Moved files

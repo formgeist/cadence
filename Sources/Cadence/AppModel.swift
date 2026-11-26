@@ -302,6 +302,9 @@ final class AppModel {
     /// Artist name → the image the user set for them, which wins over
     /// `artistArtwork`'s first-album-cover default. Loaded in `load()`.
     private var customArtistImages: [String: Artwork.ID] = [:]
+    /// Artist name → the `artist.jpg` found in that artist's folder on the
+    /// last scan. Between the user's own choice and the album-cover default.
+    private var folderArtistImages: [String: Artwork.ID] = [:]
     /// An artist has no `dateAdded` of its own — it is an aggregate the store
     /// hands back, not a row with tracks attached — so "recently added" is the
     /// latest addition among everything credited to them, computed once here
@@ -537,6 +540,7 @@ final class AppModel {
             async let foldersFetch = store.playlistFolders()
             async let librarySizeFetch = store.librarySize()
             async let customArtistImagesFetch = store.customArtistImages()
+            async let folderArtistImagesFetch = store.folderArtistImages()
             async let catalogsFetch = store.catalogs()
             async let likedFetch = store.likedTrackIDs()
             async let memoriesFetch = memoryStore.memories()
@@ -552,6 +556,7 @@ final class AppModel {
                 result[album.albumArtist] = result[album.albumArtist] ?? artworkID
             }
             customArtistImages = try await customArtistImagesFetch
+            folderArtistImages = try await folderArtistImagesFetch
             artistDateAdded = Dictionary(grouping: allTracks, by: \.albumArtist)
                 .mapValues { tracks in tracks.map(\.dateAdded).max() ?? .distantPast }
             tracksByID = Dictionary(allTracks.map { ($0.id, $0) }) { first, _ in first }
@@ -671,11 +676,11 @@ final class AppModel {
         somethingPlayed += 1
     }
 
-    /// An artist has no picture of their own. The user's own choice wins;
-    /// failing that, the first cover they released stands in, which is what
-    /// every other music app does too.
+    /// The user's own choice wins; then an `artist.jpg` from the artist's
+    /// folder; failing both, the first cover they released stands in, which
+    /// is what every other music app does too.
     func artworkID(forArtist name: String) -> Artwork.ID? {
-        customArtistImages[name] ?? artistArtwork[name]
+        customArtistImages[name] ?? folderArtistImages[name] ?? artistArtwork[name]
     }
 
     /// Whether the user has set an image for this artist, as opposed to the
