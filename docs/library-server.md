@@ -571,8 +571,11 @@ works the rules out, so a client never has to: the list gives each catalog's
 name, its rules as the one line the Mac shows (`summary`), its album count
 and up to four covers; `getCadenceCatalog` adds the albums, in the catalog's
 own order, as list entries without songs. The rules themselves are not sent,
-since nothing can edit them from a client. A Mac from before this answers
-"Unknown endpoint.", which the client turns into `newerServerNeeded`.
+since nothing can edit them from a client.
+
+A Mac from before 0.4.1 answers `getGenres` and both catalog endpoints with
+"Unknown endpoint.", which the client turns into `newerServerNeeded`, so the
+app can say to update Cadence on the Mac.
 
 **Cost.** Album lists are built from one grouped query over the track table
 and never load tracks. `getAlbum` and `getArtist` read only the rows they

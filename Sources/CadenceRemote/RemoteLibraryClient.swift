@@ -143,16 +143,19 @@ public final class RemoteLibraryClient: Sendable {
         try await payload("getStarred2", "starred2", [], source: source)
     }
 
-    /// Every genre, A–Z, with how many albums each holds.
+    /// Every genre, A–Z, with how many albums each holds. Throws
+    /// `.newerServerNeeded` from a Mac too old to share genres.
     public func genres(source: RemoteReadSource = .network) async throws -> [RemoteGenre] {
-        try await payload("getGenres", "genres", [], as: GenresPayload.self,
-                          source: source).genre ?? []
+        try await Self.needingNewerServer {
+            try await payload("getGenres", "genres", [], as: GenresPayload.self,
+                              source: source).genre ?? []
+        }
     }
 
     /// Every catalog on the Mac, without its albums. Throws
     /// `.newerServerNeeded` from a Mac too old to share catalogs.
     public func catalogs(source: RemoteReadSource = .network) async throws -> [RemoteCatalog] {
-        try await Self.needingCatalogs {
+        try await Self.needingNewerServer {
             try await payload("getCadenceCatalogs", "cadenceCatalogs", [], as: CatalogsPayload.self,
                               source: source).catalog ?? []
         }
@@ -160,21 +163,28 @@ public final class RemoteLibraryClient: Sendable {
 
     /// A catalog with its albums, in the catalog's own order.
     public func catalog(id: String, source: RemoteReadSource = .network) async throws -> RemoteCatalog {
-        try await Self.needingCatalogs {
+        try await Self.needingNewerServer {
             try await payload("getCadenceCatalog", "cadenceCatalog", [.init(name: "id", value: id)],
                               source: source)
         }
     }
 
-    /// A Mac from before catalogs were shared answers "Unknown endpoint",
-    /// which is the protocol's generic error and says nothing the listener
-    /// can act on.
-    private static func needingCatalogs<Value>(_ read: () async throws -> Value) async throws -> Value {
+    /// A Mac from before genres and catalogs were shared answers "Unknown
+    /// endpoint", which is the protocol's generic error and says nothing
+    /// the listener can act on.
+    private static func needingNewerServer<Value>(_ read: () async throws -> Value) async throws -> Value {
         do {
             return try await read()
-        } catch RemoteError.server(code: 0, let message) where message == "Unknown endpoint." {
-            throw RemoteError.newerServerNeeded
+        } catch {
+            throw olderServerMapped(error)
         }
+    }
+
+    static func olderServerMapped(_ error: any Error) -> any Error {
+        if case RemoteError.server(code: 0, "Unknown endpoint.") = error {
+            return RemoteError.newerServerNeeded
+        }
+        return error
     }
 
     // MARK: - Files
