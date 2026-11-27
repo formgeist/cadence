@@ -158,6 +158,8 @@ struct RemoteClientTests {
             #expect(try await client.search("").song.count == 2)
 
             #expect(try await client.playlists().isEmpty)
+            #expect(try await client.genres().map(\.value) == ["Ambient"])
+            #expect(try await client.catalogs().isEmpty)
             let starred = try await client.starred()
             #expect(starred.song.isEmpty && starred.album.isEmpty && starred.artist.isEmpty)
         }

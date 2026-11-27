@@ -103,6 +103,36 @@ public struct RemoteStarred: Decodable, Sendable, Equatable {
 
 public typealias RemoteSearchResult = RemoteStarred
 
+/// A genre, grouped the way the Mac's Genres screen groups them: each album
+/// under the tag most of its tracks carry.
+public struct RemoteGenre: Decodable, Sendable, Equatable, Identifiable {
+    /// The genre's name, which is also what `albums(.byGenre(_:))` takes.
+    public var value: String
+    public var songCount: Int?
+    public var albumCount: Int?
+    /// Up to four covers from the genre's albums. Older servers leave it out.
+    public var cadenceCoverArt: [String]?
+
+    public var id: String { value }
+}
+
+/// A catalog on the Mac: a shelf of albums picked out by rules, worked out
+/// on the Mac.
+public struct RemoteCatalog: Decodable, Sendable, Equatable, Identifiable {
+    public var id: String
+    public var name: String
+    /// The rules as one line: `Label is ECM and Decade is 1970s`.
+    public var summary: String?
+    public var albumCount: Int
+    /// Up to four covers from the catalog's albums, for a tile.
+    public var coverArt: [String]?
+    /// ISO 8601. When the catalog's rules last changed.
+    public var changed: String?
+    /// Present from `catalog(id:)`, absent in the list. In the catalog's own
+    /// order.
+    public var album: [RemoteAlbum]?
+}
+
 /// Which albums `albums(_:)` lists, and in what order. The ones the server
 /// answers; it has no ratings or play counts by album, so the protocol's
 /// "recent", "frequent" and "highest" lists are not offered.
@@ -183,6 +213,8 @@ struct AnyKey: CodingKey {
 struct ArtistsPayload: Decodable { var index: [RemoteArtistIndex]? }
 struct AlbumListPayload: Decodable { var album: [RemoteAlbum]? }
 struct PlaylistsPayload: Decodable { var playlist: [RemotePlaylist]? }
+struct GenresPayload: Decodable { var genre: [RemoteGenre]? }
+struct CatalogsPayload: Decodable { var catalog: [RemoteCatalog]? }
 
 /// Permission to download one song without the API key, for a few hours.
 public struct RemoteDownloadToken: Decodable, Sendable, Equatable {

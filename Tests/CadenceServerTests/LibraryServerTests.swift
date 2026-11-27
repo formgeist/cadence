@@ -92,14 +92,14 @@ struct LibraryServerTests {
 
     // MARK: getOpenSubsonicExtensions
 
-    @Test("Extensions are readable without a key, and name API-key authentication and download tokens")
+    @Test("Extensions are readable without a key, and name API-key authentication, download tokens and catalogs")
     func extensions() async throws {
         let response = await get("/rest/getOpenSubsonicExtensions")
         let body = try envelope(response)
         #expect(body["status"] as? String == "ok")
         let extensions = try #require(body["openSubsonicExtensions"] as? [[String: Any]])
         #expect(extensions.compactMap { $0["name"] as? String }
-                == ["apiKeyAuthentication", "cadenceDownloadTokens"])
+                == ["apiKeyAuthentication", "cadenceDownloadTokens", "cadenceCatalogs"])
         #expect(extensions.allSatisfy { $0["versions"] as? [Int] == [1] })
     }
 

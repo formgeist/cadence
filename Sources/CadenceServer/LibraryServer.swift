@@ -77,6 +77,10 @@ public struct LibraryServer: Sendable {
         case getPlaylists
         case getPlaylist
         case getStarred2
+        case getGenres
+        /// Cadence's own: the Mac's catalogs, worked out on the Mac.
+        case getCadenceCatalogs
+        case getCadenceCatalog
         /// Cadence's own: a short-lived token for downloading one song in the
         /// background, so the API key stays out of the system's copy of the
         /// request. See `DownloadTokens`.
@@ -131,7 +135,8 @@ public struct LibraryServer: Sendable {
             case .getOpenSubsonicExtensions:
                 return ok("openSubsonicExtensions",
                           [Extension(name: "apiKeyAuthentication", versions: [1]),
-                           Extension(name: "cadenceDownloadTokens", versions: [1])])
+                           Extension(name: "cadenceDownloadTokens", versions: [1]),
+                           Extension(name: "cadenceCatalogs", versions: [1])])
             case .getMusicFolders:
                 return ok("musicFolders", endpoints.musicFolders())
             case .getArtists:
@@ -152,6 +157,12 @@ public struct LibraryServer: Sendable {
                 return ok("playlist", try await endpoints.playlist(request))
             case .getStarred2:
                 return ok("starred2", try await endpoints.starred())
+            case .getGenres:
+                return ok("genres", try await endpoints.genres())
+            case .getCadenceCatalogs:
+                return ok("cadenceCatalogs", try await endpoints.catalogs(now: configuration.now()))
+            case .getCadenceCatalog:
+                return ok("cadenceCatalog", try await endpoints.catalog(request, now: configuration.now()))
             case .getDownloadToken:
                 // Only for a song that exists, so a token is never issued for
                 // an id nothing answers to.
