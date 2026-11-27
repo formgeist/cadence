@@ -429,6 +429,7 @@ struct CadenceApp: App {
 /// transport on the keyboard.
 struct CadenceCommands: Commands {
     let container: AppContainer
+    @AppStorage(NowPlayingLayout.usesMiniPlayerKey) private var usesMiniPlayer = false
 
     var body: some Commands {
         // Preferences is a page in the window now, not a separate `Settings`
@@ -600,6 +601,11 @@ struct CadenceCommands: Commands {
             .keyboardShortcut("k", modifiers: .command)
 
             Divider()
+
+            Button(usesMiniPlayer ? "Show Now Playing Panel" : "Use Mini Player") {
+                usesMiniPlayer.toggle()
+            }
+            .keyboardShortcut("p", modifiers: [.command, .option])
 
             Button("Full-Screen Artwork") { container.model.isImmersive.toggle() }
                 .keyboardShortcut("f", modifiers: [.command, .control])

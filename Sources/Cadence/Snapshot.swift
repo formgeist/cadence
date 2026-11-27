@@ -115,6 +115,14 @@ enum Snapshot {
         }
     }
 
+    /// Its own defaults, so the one shot that uses the mini player leaves
+    /// the panel in place for every other.
+    private static let miniPlayerDefaults: UserDefaults = {
+        let defaults = UserDefaults(suiteName: "com.formgeist.cadence.snapshot.mini-player")!
+        defaults.set(true, forKey: NowPlayingLayout.usesMiniPlayerKey)
+        return defaults
+    }()
+
     static let shots: [Shot] = [
         Shot(name: "01-library-artists", size: Tokens.Layout.defaultWindow) { _ in },
 
@@ -215,6 +223,15 @@ enum Snapshot {
         Shot(name: "10b-immersive-minimum", size: Tokens.Layout.minWindow) { container in
             open(container, album: "Sound of the Slow Hours", year: 2023)
             container.model.isImmersive = true
+        },
+
+        // The mini player in place of the Now Playing panel: the library
+        // takes the full width, the playing track floats in the corner.
+        Shot(name: "10c-mini-player", size: Tokens.Layout.defaultWindow,
+             makeRoot: { _ in AnyView(RootView().defaultAppStorage(miniPlayerDefaults)) }) { container in
+            open(container, album: "Sound of the Slow Hours", year: 2023)
+            container.model.show(.library)
+            container.model.tab = .albums
         },
 
         // Nothing playing — the state the app actually launches in.
