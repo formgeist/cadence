@@ -322,6 +322,19 @@ struct RemoteAnswerTests {
         #expect(code(10) == .server(code: 10, message: "m"))
     }
 
+    @Test("A Mac too old for genres and catalogs says to update it")
+    func olderServer() {
+        // What a Mac from before 0.4.1 sends for getGenres and the catalog
+        // endpoints: a 404 with the protocol's generic error.
+        let unknown = RemoteLibraryClient.failure(response(404), body: envelope(
+            #""status":"failed","cadenceProtocolVersion":1,"error":{"code":0,"message":"Unknown endpoint."}"#))
+        #expect(RemoteLibraryClient.olderServerMapped(unknown) as? RemoteError == .newerServerNeeded)
+        // Other failures pass through unchanged.
+        #expect(RemoteLibraryClient.olderServerMapped(RemoteError.unreachable) as? RemoteError == .unreachable)
+        #expect(RemoteLibraryClient.olderServerMapped(RemoteError.server(code: 0, message: "Other."))
+                as? RemoteError == .server(code: 0, message: "Other."))
+    }
+
     @Test("Too many requests says how long to wait")
     func busy() {
         #expect(RemoteLibraryClient.failure(response(429, headers: ["Retry-After": "7"]),
