@@ -52,7 +52,7 @@ struct GenreDetailView: View {
 
         return
         HStack(alignment: .bottom, spacing: 32) {
-            GenreArtwork(genre: genre, cornerRadius: Tokens.Radius.card, displaySize: 320)
+            GenreArtwork(genre: genre, displaySize: 320)
                 .frame(width: Tokens.Layout.artistHeaderArt,
                        height: Tokens.Layout.artistHeaderArt)
                 .shadow(color: .black.opacity(0.55), radius: 25, y: 12)

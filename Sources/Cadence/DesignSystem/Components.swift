@@ -50,10 +50,9 @@ struct ArtworkView: View {
     @Environment(ArtworkLoader.self) private var loader
 
     var artworkID: Artwork.ID?
-    var cornerRadius: CGFloat = Tokens.Radius.thumb
-    /// Artists are round in the design. A continuous RoundedRectangle at half
-    /// the side length is a squircle, not a circle — it reads as an octagon at
-    /// avatar sizes — so round artwork gets an actual Circle.
+    /// Cover art has square corners everywhere. Artists are round in the
+    /// design, and get an actual Circle: a continuous RoundedRectangle at half
+    /// the side length is a squircle that reads as an octagon at avatar sizes.
     var isCircular: Bool = false
     var caption: String?
     var captionSize: CGFloat = 9.5
@@ -61,7 +60,7 @@ struct ArtworkView: View {
     private var shape: AnyShape {
         isCircular
             ? AnyShape(Circle())
-            : AnyShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            : AnyShape(Rectangle())
     }
 
     /// Longest edge in points. Drives which cached thumbnail is asked for, so
@@ -356,7 +355,7 @@ extension View {
     /// A cover rising slightly under the pointer, its shadow deepening with
     /// it — the cue that the artwork is a thing to click, not a picture.
     /// Only the hovered card animates, so a grid of thousands pays nothing.
-    func coverLift(_ isLifted: Bool, cornerRadius: CGFloat = Tokens.Radius.control) -> some View {
+    func coverLift(_ isLifted: Bool, cornerRadius: CGFloat = 0) -> some View {
         modifier(CoverLift(isLifted: isLifted, cornerRadius: cornerRadius))
     }
 }
@@ -797,7 +796,6 @@ struct CapsuleButton: View {
 /// their own, so both borrow their albums'.
 struct CoverMosaic: View {
     var artworkIDs: [Artwork.ID]
-    var cornerRadius: CGFloat = Tokens.Radius.control
     var caption: String?
     var captionSize: CGFloat = 9.5
     var stripe: CGFloat = 5
@@ -812,16 +810,15 @@ struct CoverMosaic: View {
                     GridRow {
                         ForEach(0..<2, id: \.self) { column in
                             ArtworkView(artworkID: artworkIDs[row * 2 + column],
-                                        cornerRadius: 0, displaySize: max(displaySize / 2, 1))
+                                        displaySize: max(displaySize / 2, 1))
                                 .aspectRatio(1, contentMode: .fit)
                         }
                     }
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .clipped()
         } else {
-            ArtworkView(artworkID: artworkIDs.first, cornerRadius: cornerRadius,
-                        caption: caption, captionSize: captionSize, stripe: stripe,
+            ArtworkView(artworkID: artworkIDs.first, caption: caption, captionSize: captionSize, stripe: stripe,
                         displaySize: displaySize)
         }
     }

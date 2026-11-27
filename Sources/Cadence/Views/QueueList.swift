@@ -123,8 +123,7 @@ struct QueueRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            ArtworkView(artworkID: track.artworkID, cornerRadius: Tokens.Radius.thumb,
-                        stripe: 4, displaySize: 40)
+            ArtworkView(artworkID: track.artworkID, stripe: 4, displaySize: 40)
                 .frame(width: 32, height: 32)
             VStack(alignment: .leading, spacing: 1) {
                 Text(track.title)

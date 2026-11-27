@@ -130,7 +130,6 @@ private struct AlbumOfTheDayCard: View {
         HStack(spacing: Tokens.Space.xl) {
             Button { model.show(.album(pick.album.key)) } label: {
                 ArtworkView(artworkID: pick.album.artworkID,
-                            cornerRadius: Tokens.Radius.control,
                             caption: "COVER ART")
                     .frame(width: 96, height: 96)
             }
@@ -219,7 +218,6 @@ private struct MemoryOfTheDayCard: View {
         HStack(spacing: Tokens.Space.xl) {
             Button { model.show(.album(key)) } label: {
                 ArtworkView(artworkID: album?.artworkID,
-                            cornerRadius: Tokens.Radius.control,
                             caption: "COVER ART")
                     .frame(width: 96, height: 96)
             }

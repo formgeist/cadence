@@ -153,8 +153,7 @@ struct MemoryReaderSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.Space.xl) {
             HStack(alignment: .top, spacing: Tokens.Space.l) {
-                ArtworkView(artworkID: album?.artworkID, cornerRadius: Tokens.Radius.control,
-                            caption: album == nil ? "NOT IN LIBRARY" : nil, displaySize: 160)
+                ArtworkView(artworkID: album?.artworkID, caption: album == nil ? "NOT IN LIBRARY" : nil, displaySize: 160)
                     .frame(width: 72, height: 72)
                 VStack(alignment: .leading, spacing: Tokens.Space.xs) {
                     HStack(spacing: 6) {
@@ -302,8 +301,7 @@ struct MemoryCard: View {
         Group {
             HStack(alignment: .top, spacing: Tokens.Space.m) {
                 if showsArtwork {
-                    ArtworkView(artworkID: artworkID, cornerRadius: Tokens.Radius.thumb,
-                                stripe: 4, displaySize: 96)
+                    ArtworkView(artworkID: artworkID, stripe: 4, displaySize: 96)
                         .frame(width: 48, height: 48)
                 }
                 VStack(alignment: .leading, spacing: Tokens.Space.s) {
@@ -719,8 +717,7 @@ private struct MemoryGridCard: View {
     }
 
     private var artwork: some View {
-        ArtworkView(artworkID: album?.artworkID, cornerRadius: Tokens.Radius.control,
-                    caption: album == nil ? "NOT IN LIBRARY" : nil, displaySize: 320)
+        ArtworkView(artworkID: album?.artworkID, caption: album == nil ? "NOT IN LIBRARY" : nil, displaySize: 320)
             .aspectRatio(1, contentMode: .fit)
             // Only while hovered, as on `PlaylistCard`.
             .overlay {
@@ -737,8 +734,7 @@ private struct MemoryGridCard: View {
                 if !hovering { isHoveringPlay = false }
             }
             .keyboardFocusRing(isKeyboardFocused,
-                              in: RoundedRectangle(cornerRadius: Tokens.Radius.control,
-                                                   style: .continuous))
+                              in: Rectangle())
     }
 
     /// The note, the album page's card in miniature: bubble, words, date.

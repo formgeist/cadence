@@ -98,7 +98,6 @@ struct ImmersiveView: View {
 
             ArtworkView(
                 artworkID: playback.currentTrack?.artworkID,
-                cornerRadius: 12,
                 caption: "ALBUM ARTWORK\n1400 × 1400",
                 captionSize: 11,
                 stripe: 10,

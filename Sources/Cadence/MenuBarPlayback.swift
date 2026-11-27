@@ -105,14 +105,13 @@ struct MenuBarPlaybackView: View {
     private var cover: some View {
         if let track = playback.currentTrack {
             ArtworkView(artworkID: track.artworkID,
-                        cornerRadius: Tokens.Radius.card,
                         displaySize: Int(Self.coverSide))
                 .frame(width: Self.coverSide, height: Self.coverSide)
                 .shadow(color: .black.opacity(0.45), radius: 14, y: 6)
         } else {
             ArtworkPlaceholder()
                 .frame(width: Self.coverSide, height: Self.coverSide)
-                .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous))
+                .clipped()
         }
     }
 

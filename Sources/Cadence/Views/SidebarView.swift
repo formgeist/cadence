@@ -448,11 +448,10 @@ private struct LikedSongsRow: View {
 struct LikedSongsBadge: View {
     var side: CGFloat
     var glyphSize: CGFloat
-    var cornerRadius: CGFloat = Tokens.Radius.thumb
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            Rectangle()
                 .fill(LinearGradient(colors: [Tokens.Palette.accent, Color(hex: 0x8E2A36)],
                                      startPoint: .topLeading, endPoint: .bottomTrailing))
             CadenceIcon("heart.fill", size: glyphSize)
@@ -497,7 +496,7 @@ private struct PlaylistRow: View {
     var body: some View {
         HStack(spacing: 10) {
             CoverMosaic(artworkIDs: model.coverIDs(forPlaylist: playlist),
-                        cornerRadius: Tokens.Radius.thumb, stripe: 4, displaySize: 32)
+                        stripe: 4, displaySize: 32)
                 .frame(width: 18, height: 18)
             Text(playlist.name)
                 .font(Tokens.Typography.sans(12.5, .medium))

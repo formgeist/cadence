@@ -94,19 +94,17 @@ struct PlaylistImageSheet: View {
                     Image(nsImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
-                        .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card,
-                                                    style: .continuous))
+                        .clipped()
                 } else {
-                    ArtworkView(artworkID: nil, cornerRadius: Tokens.Radius.card,
-                                displaySize: 132)
+                    ArtworkView(artworkID: nil, displaySize: 132)
                 }
             case .remove:
                 // What removing lands on: the tiled album covers.
                 CoverMosaic(artworkIDs: model.coverIDs(forPlaylist: defaultCover),
-                            cornerRadius: Tokens.Radius.card, displaySize: 132)
+                            displaySize: 132)
             case .unchanged:
                 CoverMosaic(artworkIDs: model.coverIDs(forPlaylist: current),
-                            cornerRadius: Tokens.Radius.card, displaySize: 132)
+                            displaySize: 132)
             }
         }
         .shadow(color: .black.opacity(0.45), radius: 16, y: 8)
