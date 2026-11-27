@@ -209,6 +209,11 @@ struct CadenceGlyph: Sendable {
     private static let back = CadenceGlyph([.line("M14.5 6l-6 6 6 6")])
     private static let forward = CadenceGlyph([.line("M9.5 6l6 6-6 6")])
     private static let expand = CadenceGlyph([.line("M14 4h6v6M10 20H4v-6M20 4l-6.5 6.5M4 20l6.5-6.5")])
+    /// A window with a panel down its right side: the Now Playing panel.
+    private static let sidebarRight = CadenceGlyph([
+        .rect(3.5, 5, 17, 14, radius: 2.2, filled: false),
+        .line("M14.5 5v14"),
+    ])
     private static let grid = CadenceGlyph([
         .rect(4, 4, 6.5, 6.5, radius: 1.8, filled: false),
         .rect(13.5, 4, 6.5, 6.5, radius: 1.8, filled: false),
@@ -355,6 +360,7 @@ struct CadenceGlyph: Sendable {
         "chevron.right": forward,
         "arrow.up.left.and.arrow.down.right": expand,
         "square.grid.2x2": grid,
+        "sidebar.right": sidebarRight,
         "list.bullet": list,
         "music.note": track,
         "headphones": headphones,

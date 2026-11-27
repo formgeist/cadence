@@ -8,6 +8,7 @@ import CadenceCore
 struct TitleBarView: View {
     @Environment(AppModel.self) private var model
     @Environment(PlaybackController.self) private var playback
+    @AppStorage(NowPlayingLayout.usesMiniPlayerKey) private var usesMiniPlayer = false
 
     var body: some View {
         @Bindable var model = model
@@ -37,13 +38,19 @@ struct TitleBarView: View {
                 Spacer(minLength: 0)
                 SharingIndicator()
                 PairedLibraryIndicator()
+                // Lit while the panel is the way the playing track shows.
+                IconButton(systemImage: "sidebar.right",
+                           label: usesMiniPlayer ? "Show Now Playing Panel" : "Use Mini Player",
+                           glyphSize: 13, side: 26, isActive: !usesMiniPlayer) {
+                    usesMiniPlayer.toggle()
+                }
                 IconButton(systemImage: "gearshape", label: "Preferences",
                            glyphSize: 13, side: 26,
                            isActive: model.screen == .settings) {
                     if model.screen != .settings { model.show(.settings) }
                 }
             }
-            .frame(width: 92)
+            .frame(width: 122)
         }
         .padding(.horizontal, Tokens.Space.l)
         .frame(height: Tokens.Layout.titleBarHeight)

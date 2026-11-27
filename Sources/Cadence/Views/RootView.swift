@@ -11,6 +11,7 @@ struct RootView: View {
     /// in the snapshot and a11y harnesses, which host this view without an app
     /// scene.
     @Environment(\.openSettings) private var openSettings
+    @AppStorage(NowPlayingLayout.usesMiniPlayerKey) private var usesMiniPlayer = false
 
     var body: some View {
         @Bindable var model = model
@@ -22,10 +23,22 @@ struct RootView: View {
                 HStack(spacing: 0) {
                     SidebarView()
                     content
+                        // Room under the library for the mini player, so its
+                        // last rows scroll clear of it.
+                        .safeAreaInset(edge: .bottom, spacing: 0) {
+                            Color.clear.frame(height: showsMiniPlayer ? FloatingMiniPlayer.clearance : 0)
+                        }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .overlay(alignment: .bottomTrailing) {
+                            if showsMiniPlayer {
+                                FloatingMiniPlayer()
+                                    .padding(FloatingMiniPlayer.margin)
+                                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                            }
+                        }
                     // Nothing to show and nothing coming up — an empty pane
                     // just narrows the library for no reason (issue #75).
-                    if hasNowPlayingContent {
+                    if hasNowPlayingContent && !usesMiniPlayer {
                         NowPlayingPane()
                             .transition(.move(edge: .trailing).combined(with: .opacity))
                     }
@@ -54,6 +67,8 @@ struct RootView: View {
         .ignoresSafeArea(.container, edges: .top)
         .animation(.easeInOut(duration: 0.2), value: model.isImmersive)
         .animation(.easeInOut(duration: 0.2), value: hasNowPlayingContent)
+        .animation(.easeInOut(duration: 0.2), value: usesMiniPlayer)
+        .animation(.easeInOut(duration: 0.2), value: showsMiniPlayer)
         .animation(.easeOut(duration: 0.15), value: model.isSearching)
         .animation(.easeOut(duration: 0.2), value: playback.notice)
         .animation(.easeOut(duration: 0.2), value: model.actionError)
@@ -166,6 +181,12 @@ struct RootView: View {
     /// or something queued up behind it.
     private var hasNowPlayingContent: Bool {
         playback.currentTrack != nil || !playback.upNext.isEmpty
+    }
+
+    /// The mini player has only the playing track to show; the queue
+    /// alone is the panel's.
+    private var showsMiniPlayer: Bool {
+        usesMiniPlayer && playback.currentTrack != nil
     }
 
     private var deletionPrompt: String {

@@ -413,6 +413,9 @@ struct IconButton: View {
     /// Held lit while the thing it toggles is showing — e.g. the title bar's
     /// gear while Preferences is the open screen.
     var isActive: Bool = false
+    /// The glyph's colour at rest. Grey, so a row of these recedes; the
+    /// mini player's transport is the subject there, so it rests white.
+    var restingColor: Color = Color(hex: 0x6E6E78)
     var action: () -> Void
 
     @State private var isHovering = false
@@ -421,7 +424,7 @@ struct IconButton: View {
         Button(action: action) {
             CadenceIcon(systemImage, size: glyphSize)
                 .foregroundStyle(isHovering || isActive
-                                 ? Color(hex: 0xEDEDF2) : Color(hex: 0x6E6E78))
+                                 ? Color(hex: 0xEDEDF2) : restingColor)
                 .frame(width: side, height: side)
                 .background {
                     RoundedRectangle(cornerRadius: Tokens.Radius.control,
