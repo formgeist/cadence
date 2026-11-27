@@ -118,7 +118,8 @@ malformed request, a method other than `GET` or `HEAD`, or an unknown path.
 
 **API keys are the only way in,** with one exception: a download token,
 for `download` alone (below). The server advertises OpenSubsonic's
-`apiKeyAuthentication` extension, and Cadence's own `cadenceDownloadTokens`.
+`apiKeyAuthentication` extension, and Cadence's own `cadenceDownloadTokens`
+and `cadenceCatalogs`.
 
 | Request carries | Answer |
 |---|---|
@@ -503,6 +504,7 @@ to the wrong endpoint fails to parse instead of finding something else.
 | Album | `al-` and 32 hex characters | `StableID`, a digest of artist, title and year |
 | Artist | `ar-` and 32 hex characters | `StableID`, a digest of the album-artist name |
 | Playlist | `pl-` and a lowercase UUID | The playlist's stored id |
+| Catalog | `ca-` and a lowercase UUID | The catalog's stored id |
 | Cover art | 64 hex characters | The artwork's content address |
 
 An id that is malformed, of the wrong kind, never issued or no longer in the
@@ -523,7 +525,7 @@ library is presented as one music folder named "Library".
 |---|---|
 | `alphabeticalByName`, `alphabeticalByArtist`, `newest`, `random` | Supported |
 | `byYear` | Needs `fromYear` and `toYear`; a reversed range lists newest first |
-| `byGenre` | Needs `genre`; matches ignoring case and accents |
+| `byGenre` | Needs `genre`; matches ignoring case and accents, grouped as `getGenres` groups |
 | `recent`, `frequent`, `highest`, `starred` | Answered with an empty list |
 
 The last row is deliberate. The protocol defines those lists over play counts
@@ -555,6 +557,22 @@ only in this answer; `getSong`, `getAlbum` and the rest do not report it.
 
 Both are read-only, like everything else: there is no endpoint to create or
 change a playlist, or to like a song.
+
+**Genres are `getGenres`,** grouped the way the Mac's Genres screen groups
+them: an album sits under the tag most of its tracks carry, with case and
+accents folded, and the name is the spelling the library uses most. So one
+stray track does not put a record under a second genre, and `byGenre` lists
+the same albums the genre's `albumCount` counts. Each genre also carries
+`cadenceCoverArt`, up to four covers for a tile, which other clients ignore.
+
+**Catalogs are Cadence's own `getCadenceCatalogs` and `getCadenceCatalog`,**
+advertised as `cadenceCatalogs`. The protocol has nothing like them. The Mac
+works the rules out, so a client never has to: the list gives each catalog's
+name, its rules as the one line the Mac shows (`summary`), its album count
+and up to four covers; `getCadenceCatalog` adds the albums, in the catalog's
+own order, as list entries without songs. The rules themselves are not sent,
+since nothing can edit them from a client. A Mac from before this answers
+"Unknown endpoint.", which the client turns into `newerServerNeeded`.
 
 **Cost.** Album lists are built from one grouped query over the track table
 and never load tracks. `getAlbum` and `getArtist` read only the rows they

@@ -152,8 +152,13 @@ struct LibraryEndpoints: Sendable {
             // The protocol reads a reversed range as "newest first".
             if from > to { summaries.reverse() }
         case "byGenre":
-            let genre = Self.fold(try Self.required("genre", in: request))
-            summaries = summaries.filter { $0.genres.contains { Self.fold($0) == genre } }
+            // The albums the Mac files under the genre, so the list agrees
+            // with `getGenres`' count: an album sits under the tag most of
+            // its tracks carry, not under every tag one track has.
+            let name = try Self.required("genre", in: request)
+            let ids = Set(try await genreGrouping().albumsByGenre[Genre.key(for: name) ?? ""]?
+                .map(\.stableID) ?? [])
+            summaries = summaries.filter { ids.contains($0.key.stableID) }
             summaries.sort(by: Self.byTitle)
         case "random":
             summaries.shuffle()
@@ -169,6 +174,44 @@ struct LibraryEndpoints: Sendable {
 
         return AlbumList(album: Self.page(summaries, offset: offset, count: size)
             .map(AlbumItem.init))
+    }
+
+    // MARK: - getGenres
+
+    /// Every genre, A–Z, grouped the way the Mac's Genres screen groups them.
+    func genres() async throws -> Genres {
+        Genres(genre: try await genreGrouping().genres.map(Genres.Item.init))
+    }
+
+    private func genreGrouping() async throws -> (genres: [Genre], albumsByGenre: [String: [Album]]) {
+        Genre.grouped(from: try await library.albums())
+    }
+
+    // MARK: - getCadenceCatalogs, getCadenceCatalog
+
+    /// Every catalog, in the Mac's order, with how many albums each holds.
+    func catalogs(now: Date) async throws -> Catalogs {
+        let catalogs = try await library.catalogs()
+        guard !catalogs.isEmpty else { return Catalogs(catalog: []) }
+        let albums = try await library.albums()
+        let context = Catalog.Context(playlists: try await library.playlists())
+        return Catalogs(catalog: catalogs.map {
+            CatalogItem($0, albums: $0.definition.albums(from: albums, now: now, context: context),
+                        context: context, includingAlbums: false)
+        })
+    }
+
+    /// One catalog with its albums, in the catalog's own order.
+    func catalog(_ request: HTTPRequest, now: Date) async throws -> CatalogItem {
+        let id = try Self.required("id", in: request)
+        guard let catalogID = WireID.catalog(from: id),
+              let catalog = try await library.catalogs().first(where: { $0.id == catalogID })
+        else { throw EndpointFailure.notFound }
+        let context = Catalog.Context(playlists: catalog.definition.usesPlaylists
+                                      ? try await library.playlists() : [])
+        let albums = catalog.definition.albums(from: try await library.albums(), now: now,
+                                               context: context)
+        return CatalogItem(catalog, albums: albums, context: context, includingAlbums: true)
     }
 
     // MARK: - search3
