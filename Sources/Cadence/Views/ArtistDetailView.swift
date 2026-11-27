@@ -188,7 +188,6 @@ struct AlbumSection: View {
     private var header: some View {
         HStack(alignment: .center, spacing: 20) {
             ArtworkView(artworkID: album.artworkID,
-                        cornerRadius: Tokens.Radius.card,
                         displaySize: 280)
                 .frame(width: Tokens.Layout.artistAlbumArt,
                        height: Tokens.Layout.artistAlbumArt)

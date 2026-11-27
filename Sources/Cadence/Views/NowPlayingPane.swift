@@ -33,7 +33,6 @@ struct NowPlayingPane: View {
         VStack(alignment: .leading, spacing: 0) {
             Button { model.isImmersive = true } label: {
                 ArtworkView(artworkID: track.artworkID,
-                            cornerRadius: Tokens.Radius.card,
                             caption: "ARTWORK",
                             stripe: 7,
                             displaySize: 360)

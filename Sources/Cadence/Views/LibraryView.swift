@@ -598,7 +598,6 @@ struct AlbumCard: View, Equatable {
     var body: some View {
         VStack(alignment: .leading, spacing: 11) {
             ArtworkView(artworkID: album.artworkID,
-                        cornerRadius: Tokens.Radius.control,
                         caption: album.artworkID == nil ? "NO COVER ART" : "COVER ART",
                         displaySize: 320)
                 .aspectRatio(1, contentMode: .fit)
@@ -618,8 +617,7 @@ struct AlbumCard: View, Equatable {
                     if !hovering { isHoveringPlay = false }
                 }
                 .keyboardFocusRing(isKeyboardFocused,
-                                  in: RoundedRectangle(cornerRadius: Tokens.Radius.control,
-                                                       style: .continuous))
+                                  in: Rectangle())
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(album.title)
@@ -725,12 +723,10 @@ private struct GenreGrid: View {
 /// A genre has no cover of its own, so it borrows its albums' — see `CoverMosaic`.
 struct GenreArtwork: View {
     var genre: Genre
-    var cornerRadius: CGFloat = Tokens.Radius.control
     var displaySize: Int = 200
 
     var body: some View {
-        CoverMosaic(artworkIDs: genre.artworkIDs, cornerRadius: cornerRadius,
-                    displaySize: displaySize)
+        CoverMosaic(artworkIDs: genre.artworkIDs, displaySize: displaySize)
     }
 }
 
@@ -751,8 +747,7 @@ private struct GenreCard: View {
                 GenreArtwork(genre: genre)
                     .aspectRatio(1, contentMode: .fit)
                     .keyboardFocusRing(isKeyboardFocused,
-                                      in: RoundedRectangle(cornerRadius: Tokens.Radius.control,
-                                                           style: .continuous))
+                                      in: Rectangle())
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(genre.name)
@@ -858,7 +853,7 @@ private struct PlaylistCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 11) {
             CoverMosaic(artworkIDs: model.coverIDs(forPlaylist: playlist),
-                        cornerRadius: Tokens.Radius.control, displaySize: 320)
+                        displaySize: 320)
                 .aspectRatio(1, contentMode: .fit)
                 // Built only while hovered, like `AlbumCard`'s: an idle scrim
                 // on every card is measurable cost in a long grid. An empty
@@ -878,15 +873,13 @@ private struct PlaylistCard: View {
                 }
                 .overlay {
                     if isTargeted {
-                        RoundedRectangle(cornerRadius: Tokens.Radius.control,
-                                         style: .continuous)
+                        Rectangle()
                             .strokeBorder(Tokens.Palette.accent, lineWidth: 2)
                             .allowsHitTesting(false)
                     }
                 }
                 .keyboardFocusRing(isKeyboardFocused,
-                                  in: RoundedRectangle(cornerRadius: Tokens.Radius.control,
-                                                       style: .continuous))
+                                  in: Rectangle())
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(playlist.name)
@@ -979,8 +972,7 @@ struct RecentCard: View {
                     if !hovering { isHoveringPlay = false }
                 }
                     .keyboardFocusRing(isKeyboardFocused,
-                                       in: RoundedRectangle(cornerRadius: Tokens.Radius.control,
-                                                            style: .continuous))
+                                       in: Rectangle())
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
@@ -1034,12 +1026,10 @@ struct RecentCard: View {
         switch item {
         case .album(let album):
             ArtworkView(artworkID: album.artworkID,
-                        cornerRadius: Tokens.Radius.control,
                         caption: album.artworkID == nil ? "NO COVER ART" : "COVER ART",
                         displaySize: 320)
         case .playlist(let playlist):
             CoverMosaic(artworkIDs: model.coverIDs(forPlaylist: playlist),
-                        cornerRadius: Tokens.Radius.control,
                         displaySize: 320)
                 .overlay(alignment: .bottomLeading) {
                     CadenceIcon("music.note.list", size: 10)

@@ -55,7 +55,6 @@ struct AlbumDetailView: View {
         HStack(alignment: .top, spacing: 48) {
             ArtworkView(
                 artworkID: album.artworkID,
-                cornerRadius: Tokens.Radius.card,
                 caption: album.artworkID == nil ? "NO ARTWORK" : "ALBUM ARTWORK\n1400 × 1400",
                 captionSize: 10,
                 stripe: 7,

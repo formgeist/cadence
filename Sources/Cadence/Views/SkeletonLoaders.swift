@@ -156,7 +156,7 @@ private struct SkeletonAlbumCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 11) {
-            SkeletonBlock(cornerRadius: Tokens.Radius.control, delay: delay)
+            SkeletonBlock(cornerRadius: 0, delay: delay)
                 .aspectRatio(1, contentMode: .fit)
             VStack(alignment: .leading, spacing: 6) {
                 SkeletonBlock(cornerRadius: 4, delay: delay).frame(width: titleWidth, height: 12)
@@ -225,7 +225,7 @@ struct SkeletonAlbumDetail: View {
 
     private var header: some View {
         HStack(alignment: .top, spacing: 48) {
-            SkeletonBlock(cornerRadius: Tokens.Radius.card, delay: 0)
+            SkeletonBlock(cornerRadius: 0, delay: 0)
                 .frame(width: Tokens.Layout.albumHeaderArt, height: Tokens.Layout.albumHeaderArt)
 
             VStack(alignment: .leading, spacing: 14) {

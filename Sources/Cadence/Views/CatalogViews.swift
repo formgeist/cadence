@@ -50,12 +50,11 @@ struct CatalogGrid: View {
 struct CatalogArtwork: View {
     @Environment(AppModel.self) private var model
     var catalog: Catalog
-    var cornerRadius: CGFloat = Tokens.Radius.control
     var displaySize: Int = 320
 
     var body: some View {
         CoverMosaic(artworkIDs: model.coverIDs(forCatalog: catalog),
-                    cornerRadius: cornerRadius, displaySize: displaySize)
+                    displaySize: displaySize)
     }
 }
 
@@ -112,8 +111,7 @@ private struct CatalogCard: View {
                     if !hovering { isHoveringPlay = false }
                 }
                 .keyboardFocusRing(isKeyboardFocused,
-                                  in: RoundedRectangle(cornerRadius: Tokens.Radius.control,
-                                                       style: .continuous))
+                                  in: Rectangle())
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(catalog.name)
@@ -278,7 +276,7 @@ struct CatalogDetailView: View {
 
         return
         HStack(alignment: .bottom, spacing: 32) {
-            CatalogArtwork(catalog: catalog, cornerRadius: Tokens.Radius.card)
+            CatalogArtwork(catalog: catalog)
                 .frame(width: Tokens.Layout.artistHeaderArt,
                        height: Tokens.Layout.artistHeaderArt)
                 .shadow(color: .black.opacity(0.55), radius: 25, y: 12)

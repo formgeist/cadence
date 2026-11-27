@@ -114,7 +114,7 @@ struct CatalogEditorSheet: View {
 
             HStack(spacing: Tokens.Space.m) {
                 CoverMosaic(artworkIDs: Catalog.covers(of: matches),
-                            cornerRadius: 4, displaySize: 80)
+                            displaySize: 80)
                     .frame(width: 36, height: 36)
                     .opacity(matches.isEmpty ? 0.4 : 1)
                     .accessibilityHidden(true)

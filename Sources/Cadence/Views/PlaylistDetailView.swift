@@ -84,7 +84,7 @@ struct PlaylistDetailView: View {
     private var editCoverOverlay: some View {
         if model.canEditPlaylistImage {
             ZStack {
-                RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous)
+                Rectangle()
                     .fill(.black.opacity(isHoveringArt ? 0.55 : 0))
                     .allowsHitTesting(false)
 
@@ -111,7 +111,6 @@ struct PlaylistDetailView: View {
         return HStack(alignment: .bottom, spacing: 32) {
             CoverMosaic(
                 artworkIDs: coverIDs,
-                cornerRadius: Tokens.Radius.card,
                 caption: coverIDs.isEmpty ? "EMPTY PLAYLIST" : nil,
                 captionSize: 10,
                 stripe: 7,
@@ -402,8 +401,7 @@ private struct PlaylistTrackRow: View {
             .foregroundStyle(isCurrent ? Tokens.Palette.accent : Color(hex: 0x5C5C66))
             .frame(width: 28, alignment: .leading)
 
-            ArtworkView(artworkID: track.artworkID, cornerRadius: Tokens.Radius.thumb,
-                        stripe: 4, displaySize: 40)
+            ArtworkView(artworkID: track.artworkID, stripe: 4, displaySize: 40)
                 .frame(width: 32, height: 32)
 
             VStack(alignment: .leading, spacing: 2) {

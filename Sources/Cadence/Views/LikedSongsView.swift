@@ -40,8 +40,7 @@ struct LikedSongsView: View {
 
     private func header(tracks: [Track]) -> some View {
         HStack(alignment: .bottom, spacing: 32) {
-            LikedSongsBadge(side: Tokens.Layout.artistHeaderArt, glyphSize: 46,
-                            cornerRadius: Tokens.Radius.card)
+            LikedSongsBadge(side: Tokens.Layout.artistHeaderArt, glyphSize: 46)
                 .shadow(color: .black.opacity(0.55), radius: 25, y: 12)
 
             VStack(alignment: .leading, spacing: 12) {
@@ -248,8 +247,7 @@ private struct LikedTrackRow: View {
             .foregroundStyle(isCurrent ? Tokens.Palette.accent : Color(hex: 0x5C5C66))
             .frame(width: 28, alignment: .leading)
 
-            ArtworkView(artworkID: track.artworkID, cornerRadius: Tokens.Radius.thumb,
-                        stripe: 4, displaySize: 40)
+            ArtworkView(artworkID: track.artworkID, stripe: 4, displaySize: 40)
                 .frame(width: 32, height: 32)
 
             VStack(alignment: .leading, spacing: 2) {

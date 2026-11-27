@@ -584,7 +584,6 @@ private func modalGroup(_ label: String, _ rows: [SearchRow],
                             .frame(width: 40, height: 40)
                     } else {
                         ArtworkView(artworkID: row.artworkID,
-                                    cornerRadius: Tokens.Radius.thumb,
                                     isCircular: row.isRound,
                                     stripe: 5,
                                     displaySize: 52)
@@ -634,8 +633,7 @@ private struct TopHitRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: Tokens.Space.l) {
-                ArtworkView(artworkID: album.artworkID, cornerRadius: Tokens.Radius.card,
-                            displaySize: 128)
+                ArtworkView(artworkID: album.artworkID, displaySize: 128)
                     .frame(width: 64, height: 64)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(album.title)
